@@ -139,8 +139,8 @@ function sebarJadwal(e) {
       var targetSs = SpreadsheetApp.openById(modulIDs[mKey]);
       var targetSheet = getSheetByNames_(targetSs, masterTokoAliases);
       if (targetSheet) {
-        appendDataInChunks_(targetSheet, modulBatches[mKey], 1000);
-        Logger.log("Modul " + mKey + ": Berhasil kirim " + modulBatches[mKey].length + " baris ke tab '" + targetSheet.getName() + "'");
+        var addedCount = appendDataWithoutDuplicates_(targetSheet, modulBatches[mKey], 1000);
+        Logger.log("Modul " + mKey + ": Berhasil sebar " + addedCount + " baris baru (skip " + (modulBatches[mKey].length - addedCount) + " duplikat) ke tab '" + targetSheet.getName() + "'");
       } else {
         Logger.log("ERROR " + mKey + ": Tab 'Master_Toko' tidak ditemukan di ID " + modulIDs[mKey]);
       }
@@ -154,8 +154,8 @@ function sebarJadwal(e) {
       var absenSs = SpreadsheetApp.openById(absenIDs[aKey]);
       var absenSheet = getSheetByNames_(absenSs, tokoAbsenAliases);
       if (absenSheet) {
-        appendDataInChunks_(absenSheet, absenBatches[aKey], 1000);
-        Logger.log("Absen " + aKey + ": Berhasil kirim " + absenBatches[aKey].length + " baris ke tab '" + absenSheet.getName() + "'");
+        var addedCountA = appendDataWithoutDuplicates_(absenSheet, absenBatches[aKey], 1000);
+        Logger.log("Absen " + aKey + ": Berhasil sebar " + addedCountA + " baris baru (skip " + (absenBatches[aKey].length - addedCountA) + " duplikat) ke tab '" + absenSheet.getName() + "'");
       } else {
         Logger.log("ERROR Absen " + aKey + ": Tab 'Toko_Absen' tidak ditemukan di ID " + absenIDs[aKey]);
       }
@@ -169,8 +169,8 @@ function sebarJadwal(e) {
       var extSs = SpreadsheetApp.openById(externalIDs[eKey]);
       var extSheet = getSheetByNames_(extSs, masterToko2Aliases);
       if (extSheet) {
-        appendDataInChunks_(extSheet, extBatches[eKey], 1000);
-        Logger.log("External " + eKey + ": Berhasil kirim " + extBatches[eKey].length + " baris ke tab '" + extSheet.getName() + "'");
+        var addedCountE = appendDataWithoutDuplicates_(extSheet, extBatches[eKey], 1000);
+        Logger.log("External " + eKey + ": Berhasil sebar " + addedCountE + " baris baru (skip " + (extBatches[eKey].length - addedCountE) + " duplikat) ke tab '" + extSheet.getName() + "'");
       } else {
         Logger.log("ERROR External " + eKey + ": Tab 'Master_Toko2' tidak ditemukan di ID " + externalIDs[eKey]);
       }
@@ -526,6 +526,48 @@ function getActualLastRow_(sheet) {
   return 1;
 }
 
+function makeRowFingerprint_(row) {
+  if (!row || !Array.isArray(row)) return "";
+  return row.map(function(cell) {
+    if (cell instanceof Date) {
+      return Utilities.formatDate(cell, "GMT+7", "yyyy-MM-dd");
+    }
+    return String(cell || "").trim().toUpperCase();
+  }).join("|#|");
+}
+
+function appendDataWithoutDuplicates_(targetSheet, rows, chunkSize) {
+  if (!targetSheet || !rows || rows.length === 0) return 0;
+  
+  var existingLastRow = getActualLastRow_(targetSheet);
+  var existingKeys = {};
+
+  if (existingLastRow > 1) {
+    var existingCols = Math.min(targetSheet.getLastColumn(), rows[0].length);
+    var existingData = targetSheet.getRange(2, 1, existingLastRow - 1, existingCols).getValues();
+    for (var e = 0; e < existingData.length; e++) {
+      var fp = makeRowFingerprint_(existingData[e]);
+      if (fp) {
+        existingKeys[fp] = true;
+      }
+    }
+  }
+
+  var filteredRows = [];
+  for (var r = 0; r < rows.length; r++) {
+    var rowFp = makeRowFingerprint_(rows[r]);
+    if (!existingKeys[rowFp]) {
+      filteredRows.push(rows[r]);
+      existingKeys[rowFp] = true;
+    }
+  }
+
+  if (filteredRows.length > 0) {
+    appendDataInChunks_(targetSheet, filteredRows, chunkSize);
+  }
+  return filteredRows.length;
+}
+
 function appendDataInChunks_(targetSheet, rows, chunkSize) {
   if (!targetSheet || !rows || rows.length === 0) return;
   chunkSize = chunkSize || 2000;
@@ -537,6 +579,85 @@ function appendDataInChunks_(targetSheet, rows, chunkSize) {
     ensureGridSize_(targetSheet, startRow + chunk.length, numCols);
     targetSheet.getRange(startRow, 1, chunk.length, numCols).setValues(chunk);
   }
+}
+
+/**
+ * Pembersih Duplikat In-Place di Seluruh Spreadsheet Cabang
+ * AMAN untuk AppSheet: TIDAK menghapus sheet (tidak clearContents).
+ * Mempertahankan baris pertama yang sah dan hanya membuang baris duplikat di bawahnya.
+ */
+function bersihkanDuplikatDiSemuaCabang() {
+  Logger.log("=== MEMULAI PEMBERSIHAN DUPLIKAT IN-PLACE DI SEMUA CABANG (AMAN APPSHEET) ===");
+  
+  var masterTokoAliases = ["Master_Toko", "master_toko", "Master Toko", "Master_toko", "MasterToko", "DATA TOKO", "Data_Toko", "Sheet1"];
+  var tokoAbsenAliases = ["Toko_Absen", "toko_absen", "Toko Absen", "TokoAbsen", "Master_Toko", "master_toko", "Absensi"];
+  var masterToko2Aliases = ["Master_Toko2", "Master_Toko", "master_toko", "Master Toko 2", "Master Toko", "Sheet1"];
+  
+  var allTargets = [];
+  
+  for (var mKey in modulIDs) {
+    allTargets.push({ label: "Modul " + mKey, id: modulIDs[mKey], aliases: masterTokoAliases });
+  }
+  for (var aKey in absenIDs) {
+    allTargets.push({ label: "Absen " + aKey, id: absenIDs[aKey], aliases: tokoAbsenAliases });
+  }
+  for (var eKey in externalIDs) {
+    allTargets.push({ label: "External " + eKey, id: externalIDs[eKey], aliases: masterToko2Aliases });
+  }
+
+  var totalCleaned = 0;
+
+  for (var t = 0; t < allTargets.length; t++) {
+    var item = allTargets[t];
+    try {
+      var ss = SpreadsheetApp.openById(item.id);
+      var sheet = getSheetByNames_(ss, item.aliases);
+      if (!sheet) continue;
+
+      var lastRow = sheet.getLastRow();
+      var lastCol = sheet.getLastColumn();
+      if (lastRow < 3 || lastCol < 1) continue;
+
+      var fullRange = sheet.getRange(1, 1, lastRow, lastCol);
+      var values = fullRange.getValues();
+      var header = values[0];
+      
+      var seen = {};
+      var uniqueData = [];
+      var removedCount = 0;
+
+      for (var r = 1; r < values.length; r++) {
+        var row = values[r];
+        // Skip baris yang benar-benar kosong
+        var isAllEmpty = row.every(function(cell) { return String(cell || '').trim() === ''; });
+        if (isAllEmpty) continue;
+
+        var fp = makeRowFingerprint_(row);
+        if (!seen[fp]) {
+          seen[fp] = true;
+          uniqueData.push(row);
+        } else {
+          removedCount++;
+        }
+      }
+
+      if (removedCount > 0) {
+        // Tulis ulang baris bersih in-place tanpa clear format/sheet
+        sheet.getRange(2, 1, uniqueData.length, lastCol).setValues(uniqueData);
+        var extraRows = lastRow - 1 - uniqueData.length;
+        if (extraRows > 0) {
+          // Kosongkan baris sisa duplikat di bagian bawah
+          sheet.getRange(2 + uniqueData.length, 1, extraRows, lastCol).clearContent();
+        }
+        totalCleaned += removedCount;
+        Logger.log(item.label + ": Ditemukan & dibersihkan " + removedCount + " baris duplikat. (Tersisa " + uniqueData.length + " baris sah).");
+      }
+    } catch (err) {
+      Logger.log("Error membersihkan " + item.label + ": " + err.message);
+    }
+  }
+
+  Logger.log("=== SELESAI PEMBERSIHAN: Total " + totalCleaned + " baris duplikat berhasil dibersihkan dengan aman ===");
 }
 
 function bersihkanDanPulihkanMasterToko() {

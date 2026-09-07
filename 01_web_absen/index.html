@@ -182,11 +182,16 @@
             type="text" 
             id="searchInput" 
             class="search-input" 
-            placeholder="Cari nama toko, kode toko, kecamatan (min. 4 karakter)..." 
+            placeholder="Ketik kode / nama toko..." 
             autocomplete="off"
+            enterkeyhint="search"
           >
-          <button type="button" class="search-clear" id="searchClear">
+          <button type="button" class="search-clear" id="searchClear" title="Hapus teks">
             <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+          </button>
+          <button type="button" class="btn-search-submit" id="btnSearchSubmit" title="Klik untuk Cari">
+            <i data-lucide="search" style="width: 13px; height: 13px;"></i>
+            <span>Cari</span>
           </button>
         </div>
 

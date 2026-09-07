@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full" :class="theme === 'dark' ? 'dark' : ''" x-data="galleryApp()" x-init="initApp()">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Cimory Retail Ops - Display & Planogram Gallery</title>
+  <meta name="description" content="Portal Galeri Foto Pajangan Toko & Audit Kepatuhan Planogram Cimory Retail Operations.">
+
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Outfit', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- External Libraries -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="./css/portal.css">
+
+  <style>
+    #initial-preloader {
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen w-full overflow-x-hidden antialiased font-sans flex flex-col bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-200">
+
+  <!-- INITIAL SPLASH PRELOADER -->
+  <div id="initial-preloader" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl">
+    <div class="glass-card rounded-3xl p-6 sm:p-8 max-w-[320px] sm:max-w-sm w-full shadow-2xl flex flex-col items-center text-center border border-brand-500/30">
+      <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-brand-500/30 mb-4 animate-pulse">
+        <i data-lucide="image" class="w-7 h-7"></i>
+      </div>
+      <h3 class="font-display font-extrabold text-base sm:text-lg text-slate-900 dark:text-white tracking-tight">CIMORY RETAIL OPS</h3>
+      <p class="text-xs text-brand-600 dark:text-brand-400 font-semibold mt-1">Display & Planogram Gallery</p>
+      <p class="text-[11px] text-slate-400 mt-2">Menghubungkan ke Database Foto...</p>
+      <div class="w-44 bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full mt-4 overflow-hidden relative">
+        <div class="bg-gradient-to-r from-brand-500 to-sky-400 h-full w-full animate-loading-bar rounded-full"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FULLSCREEN LOADING MODAL -->
+  <div x-show="isLoading" x-cloak
+    class="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md transition-all duration-300">
+    <div class="glass-card max-w-md w-full p-6 sm:p-8 rounded-3xl border border-slate-800 text-center shadow-2xl relative overflow-hidden">
+      <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/30 text-white animate-pulse">
+        <i data-lucide="refresh-cw" class="w-8 h-8 animate-spin"></i>
+      </div>
+      <h3 class="font-display font-extrabold text-xl text-white mb-1">Memuat Galeri Foto</h3>
+      <p class="text-xs text-slate-400 mb-4" x-text="loadingMessage"></p>
+      <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden relative">
+        <div class="bg-gradient-to-r from-brand-500 via-sky-400 to-emerald-400 h-full w-full animate-loading-bar rounded-full"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================================== -->
+  <!-- 1. HEADER UTAMA & NAVIGASI -->
+  <!-- ============================================================================== -->
+  <header class="sticky top-0 z-40 glass-header border-b border-slate-200 dark:border-slate-800 transition-colors">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+      
+      <!-- Brand Logo & Title -->
+      <div class="flex items-center space-x-3 min-w-0">
+        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20 flex-shrink-0">
+          <i data-lucide="image" class="w-5 h-5"></i>
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center space-x-2">
+            <h1 class="font-display font-extrabold text-sm sm:text-base text-slate-900 dark:text-white truncate">Cimory Display Portal</h1>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20">PLANOGRAM</span>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400 truncate flex items-center gap-1">
+            <span>Galeri Foto Pajangan Toko</span>
+            <span class="text-slate-300 dark:text-slate-700">•</span>
+            <span class="text-emerald-600 dark:text-emerald-400 font-semibold" x-text="activeDateLabel || 'Semua Data'"></span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Right Controls -->
+      <div class="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
+        
+        <!-- Portal Hub Link -->
+        <a href="../index.html" title="Kembali ke Menu Utama Portal"
+          class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors">
+          <i data-lucide="layout-grid" class="w-3.5 h-3.5 text-brand-500"></i>
+          <span class="hidden md:inline">Portal Hub</span>
+        </a>
+
+        <!-- SPV Review Mode Switch -->
+        <button type="button" @click="isReviewMode = !isReviewMode; $nextTick(() => { if (window.lucide) lucide.createIcons(); })"
+          class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+          :class="isReviewMode ? 'bg-amber-500 text-white shadow-amber-500/30 ring-2 ring-amber-400 animate-pulse-glow' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'">
+          <i data-lucide="check-square" class="w-4 h-4"></i>
+          <span class="hidden sm:inline" x-text="isReviewMode ? 'Mode Audit SPV (ON)' : 'Mode Audit SPV'"></span>
+          <span class="sm:hidden" x-text="isReviewMode ? 'Audit (ON)' : 'Audit'"></span>
+        </button>
+
+        <!-- Refresh Button -->
+        <button type="button" @click="refreshData(true)" title="Muat Ulang Data Foto"
+          class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+        </button>
+
+        <!-- Dark Mode Toggle -->
+        <button type="button" @click="toggleTheme()" title="Ubah Tema"
+          class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer">
+          <i data-lucide="sun" class="w-4 h-4 hidden dark:block"></i>
+          <i data-lucide="moon" class="w-4 h-4 block dark:hidden"></i>
+        </button>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================================================================== -->
+  <!-- 2. REVIEWER BAR (Tampil Jika Mode Review SPV Aktif) -->
+  <!-- ============================================================================== -->
+  <div x-show="isReviewMode" x-cloak x-transition
+    class="bg-amber-500/10 border-b border-amber-500/20 py-2.5 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs">
+      <div class="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold">
+        <i data-lucide="shield-check" class="w-4 h-4 text-amber-600"></i>
+        <span>Pilih Akun Reviewer / Penilai:</span>
+      </div>
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <template x-for="r in CONFIG.REVIEWERS.filter(rev => rev.id !== 'ALL')" :key="r.id">
+          <button type="button" @click="setReviewer(r.id)"
+            class="px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer shadow-sm"
+            :class="activeReviewer === r.id ? 'bg-amber-600 text-white shadow-amber-600/30 ring-2 ring-amber-400' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-amber-100 dark:hover:bg-amber-950/40 border border-slate-200 dark:border-slate-700'">
+            <span x-text="r.name"></span>
+          </button>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================================== -->
+  <!-- 3. MAIN CONTENT CONTAINER -->
+  <!-- ============================================================================== -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- ============================================================================== -->
+    <!-- A. EXECUTIVE SCORECARD (PLANOGRAM COMPLIANCE SUMMARY FOR KAM / MANAGEMENT) -->
+    <!-- ============================================================================== -->
+    <div class="glass-card rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200/70 dark:border-slate-800 pb-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="font-display font-extrabold text-base sm:text-lg text-slate-900 dark:text-white">Scorecard Kepatuhan Planogram Display</h2>
+            <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">LIVE AUDIT</span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Analisis kesesuaian display pajangan toko berdasarkan hasil audit visual foto sebelum dirapikan</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button type="button" @click="exportScorecardCsv()"
+            class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer active:scale-95">
+            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+            <span>Export Scorecard Excel (KAM)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Metrics Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5 pt-4">
+        
+        <!-- Metric 1: Overall Compliance Rate -->
+        <div class="p-3.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+          <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Planogram Compliance</div>
+          <div class="text-2xl font-display font-extrabold mt-1"
+            :class="scorecard.complianceRate >= 80 ? 'text-emerald-500' : (scorecard.complianceRate >= 60 ? 'text-amber-500' : 'text-rose-500')"
+            x-text="`${scorecard.complianceRate}%`"></div>
+          <div class="text-[10.5px] text-slate-400 mt-0.5" x-text="`${scorecard.compliantCount} dari ${scorecard.reviewedCount} foto sesuai`"></div>
+        </div>
+
+        <!-- Metric 2: Total Foto Display -->
+        <div class="p-3.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+          <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Foto Pajangan</div>
+          <div class="text-2xl font-display font-extrabold text-slate-900 dark:text-white mt-1" x-text="scorecard.totalPhotos"></div>
+          <div class="text-[10.5px] text-slate-400 mt-0.5" x-text="`${scorecard.totalBefore} Before • ${scorecard.totalAfter} After`"></div>
+        </div>
+
+        <!-- Metric 3: Toko Ter-Audit -->
+        <div class="p-3.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+          <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Toko Ter-Audit</div>
+          <div class="text-2xl font-display font-extrabold text-brand-600 dark:text-brand-400 mt-1" x-text="scorecard.totalStores"></div>
+          <div class="text-[10.5px] text-slate-400 mt-0.5">Titik toko unik</div>
+        </div>
+
+        <!-- Metric 4: Evaluasi SPV -->
+        <div class="p-3.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+          <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Status Evaluasi SPV</div>
+          <div class="text-2xl font-display font-extrabold text-indigo-500 mt-1" x-text="`${scorecard.reviewedCount}/${scorecard.totalBefore}`"></div>
+          <div class="text-[10.5px] text-slate-400 mt-0.5" x-text="`${scorecard.totalBefore - scorecard.reviewedCount} belum dinilai`"></div>
+        </div>
+
+      </div>
+
+      <!-- Account Compliance Progress Bars (Quick View for KAM) -->
+      <div class="mt-4 pt-3.5 border-t border-slate-200/70 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <template x-for="acc in scorecard.accountStats.slice(0, 4)" :key="acc.account">
+          <div class="p-2.5 rounded-lg bg-white/60 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 text-xs">
+            <div class="flex items-center justify-between font-bold">
+              <span class="truncate text-slate-800 dark:text-slate-200" x-text="acc.account"></span>
+              <span :class="acc.rate >= 80 ? 'text-emerald-500' : 'text-amber-500'" x-text="`${acc.rate}%`"></span>
+            </div>
+            <div class="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden">
+              <div class="h-full rounded-full transition-all"
+                :class="acc.rate >= 80 ? 'bg-emerald-500' : 'bg-amber-500'"
+                :style="`width: ${acc.rate}%`"></div>
+            </div>
+            <div class="flex justify-between text-[10px] text-slate-400 mt-1">
+              <span x-text="`${acc.compliant} Sesuai`"></span>
+              <span x-text="`${acc.totalBefore} Foto Total`"></span>
+            </div>
+          </div>
+        </template>
+      </div>
+
+    </div>
+
+    <!-- ============================================================================== -->
+    <!-- B. FILTER TOOLBAR -->
+    <!-- ============================================================================== -->
+    <div class="glass-card rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3.5">
+      
+      <!-- Top Filters Row -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        
+        <!-- 1. Modul Filter -->
+        <div>
+          <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Wilayah / Modul</label>
+          <select x-model="selectedModul" @change="selectedMds = 'ALL'; refreshData(false)"
+            class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
+            <template x-for="m in CONFIG.MODULES" :key="m.code">
+              <option :value="m.code" x-text="m.name"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- 2. MDS / Personil Filter (Dropdown Ringan & Cepat) -->
+        <div>
+          <label class="block text-[11px] font-bold text-brand-600 dark:text-brand-400 mb-1.5 uppercase tracking-wider flex items-center justify-between">
+            <span>Personil MDS</span>
+            <span class="text-[10px] text-slate-400 font-normal" x-text="`${availableMdsList.length} MDS`"></span>
+          </label>
+          <select x-model="selectedMds" @change="currentPage = 1"
+            class="w-full h-10 text-xs font-bold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
+            <option value="ALL">👤 Semua MDS (Semua Personil)</option>
+            <template x-for="c in availableMdsList" :key="c.name">
+              <option :value="c.name" x-text="`${c.name} (${c.modul} • ${c.photoCount} foto)`"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- 3. Account Filter -->
+        <div>
+          <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Account Ritel</label>
+          <select x-model="selectedAccount"
+            class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
+            <template x-for="acc in CONFIG.ACCOUNTS" :key="acc">
+              <option :value="acc" x-text="acc === 'ALL' ? 'Semua Account' : acc"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- 4. Tipe Foto Filter -->
+        <div>
+          <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Tipe Foto</label>
+          <select x-model="selectedPhotoType"
+            class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
+            <option value="ALL">Semua Foto (Before & After)</option>
+            <option value="BEFORE">📸 Foto Before Saja</option>
+            <option value="AFTER">✨ Foto After Saja</option>
+          </select>
+        </div>
+
+        <!-- 5. Periode Waktu -->
+        <div>
+          <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Periode Waktu</label>
+          <select x-model="dateFilter" @change="onDateFilterChange()"
+            class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
+            <option value="LATEST_DAY">⚡ Hari Terakhir Aktif (Auto)</option>
+            <option value="TODAY">Hari Ini Saja</option>
+            <option value="YESTERDAY">Kemarin (Evaluasi H-1)</option>
+            <option value="7_DAYS">7 Hari Terakhir</option>
+            <option value="THIS_MONTH">Bulan Ini (Semua)</option>
+            <option value="CUSTOM">📅 Pilih Rentang Tanggal...</option>
+          </select>
+        </div>
+
+      </div>
+
+      <!-- Custom Date Picker with Range Protection -->
+      <div x-show="dateFilter === 'CUSTOM'" x-cloak x-transition
+        class="p-3.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2.5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] gap-2.5 items-end">
+          <div>
+            <span class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Dari Tanggal</span>
+            <input type="date" x-model="customStartInput" :max="customEndInput"
+              class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200">
+          </div>
+          <div>
+            <span class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Sampai Tanggal</span>
+            <input type="date" x-model="customEndInput" :min="customStartInput"
+              class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200">
+          </div>
+          <div>
+            <button type="button" @click="applyCustomDates()"
+              class="w-full lg:w-auto h-10 px-4 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center space-x-1.5 cursor-pointer">
+              <i data-lucide="check" class="w-4 h-4"></i>
+              <span>Terapkan Rentang</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search & Status Filter Row -->
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-2 border-t border-slate-200/70 dark:border-slate-800">
+        
+        <!-- Status Review Pills -->
+        <div class="flex items-center gap-1.5 overflow-x-auto max-w-full touch-scroll pb-1 lg:pb-0">
+          <button type="button" @click="selectedReviewStatus = 'ALL'; currentPage = 1"
+            class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
+            :class="selectedReviewStatus === 'ALL' ? 'bg-brand-500 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'">
+            Semua Foto (<span x-text="allPhotoItems.length"></span>)
+          </button>
+          <button type="button" @click="selectedReviewStatus = 'UNREVIEWED'; currentPage = 1"
+            class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
+            :class="selectedReviewStatus === 'UNREVIEWED' ? 'bg-slate-700 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'">
+            Belum Dinilai (<span x-text="allPhotoItems.filter(p => p.review === null).length"></span>)
+          </button>
+          <button type="button" @click="selectedReviewStatus = 'COMPLIANT'; currentPage = 1"
+            class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
+            :class="selectedReviewStatus === 'COMPLIANT' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 border border-emerald-500/20'">
+            🟢 Sesuai Planogram
+          </button>
+          <button type="button" @click="selectedReviewStatus = 'NON_COMPLIANT'; currentPage = 1"
+            class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
+            :class="selectedReviewStatus === 'NON_COMPLIANT' ? 'bg-rose-600 text-white shadow-sm' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 border border-rose-500/20'">
+            🔴 Tidak Sesuai
+          </button>
+        </div>
+
+        <!-- Search Box -->
+        <div class="relative w-full lg:w-72">
+          <input type="text" x-model="searchInputText" @keydown.enter.prevent="executeSearch()" placeholder="Cari Toko / MDS / Account..."
+            class="w-full h-9 text-xs font-medium pl-8 pr-16 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:ring-2 focus:ring-brand-500">
+          <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+            <i data-lucide="search" class="w-3.5 h-3.5"></i>
+          </div>
+          <button type="button" @click="executeSearch()" class="absolute right-1 top-1/2 -translate-y-1/2 h-7 px-2 bg-brand-500 text-white font-bold text-[10.5px] rounded-lg cursor-pointer">
+            Cari
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Grouping View Selector (Per MDS / Per Modul / Per Toko / Flat) -->
+      <div class="pt-2 border-t border-slate-200/70 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+        <div class="flex items-center gap-1.5 font-bold text-slate-600 dark:text-slate-400 text-[11px] uppercase tracking-wider">
+          <i data-lucide="layers" class="w-3.5 h-3.5 text-brand-500"></i>
+          <span>Kelompokkan Tampilan Galeri:</span>
+        </div>
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <button type="button" @click="setGroupBy('CREW')"
+            class="px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+            :class="groupBy === 'CREW' ? 'bg-brand-600 text-white shadow-brand-600/30 ring-2 ring-brand-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'">
+            <i data-lucide="users" class="w-3.5 h-3.5"></i>
+            <span>👤 Per MDS / Crew</span>
+          </button>
+
+          <button type="button" @click="setGroupBy('MODUL')"
+            class="px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+            :class="groupBy === 'MODUL' ? 'bg-brand-600 text-white shadow-brand-600/30 ring-2 ring-brand-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'">
+            <i data-lucide="building" class="w-3.5 h-3.5"></i>
+            <span>🏢 Per Modul</span>
+          </button>
+
+          <button type="button" @click="setGroupBy('TOKO')"
+            class="px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+            :class="groupBy === 'TOKO' ? 'bg-brand-600 text-white shadow-brand-600/30 ring-2 ring-brand-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'">
+            <i data-lucide="store" class="w-3.5 h-3.5"></i>
+            <span>🏪 Per Toko</span>
+          </button>
+
+          <button type="button" @click="setGroupBy('FLAT')"
+            class="px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+            :class="groupBy === 'FLAT' ? 'bg-brand-600 text-white shadow-brand-600/30 ring-2 ring-brand-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'">
+            <i data-lucide="grid" class="w-3.5 h-3.5"></i>
+            <span>🔲 Semua Foto (Flat)</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ============================================================================== -->
+    <!-- C. RESPONSIVE PHOTO GALLERY GRID (GROUPED & FLAT SUPPORT) -->
+    <!-- ============================================================================== -->
+    <div class="space-y-4">
+      
+      <!-- Results & Navigation Header Info -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
+        <div class="flex items-center gap-2 flex-wrap">
+          <div>
+            Menampilkan <span class="font-bold text-slate-800 dark:text-slate-200" x-text="filteredPhotos.length"></span> foto pajangan
+            <span class="text-slate-400" x-show="groupBy !== 'FLAT'" x-text="`(${groupedPhotoSections.length} ${groupBy === 'CREW' ? 'MDS' : (groupBy === 'MODUL' ? 'Modul' : 'Toko')})`"></span>
+          </div>
+
+          <!-- Active MDS Pill with Clear Button -->
+          <template x-if="selectedMds !== 'ALL'">
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20">
+              <span x-text="`MDS: ${selectedMds}`"></span>
+              <button type="button" @click="selectedMds = 'ALL'" title="Tampilkan Semua MDS" class="hover:text-rose-500">
+                <i data-lucide="x" class="w-3 h-3"></i>
+              </button>
+            </div>
+          </template>
+        </div>
+
+        <!-- Quick Expand/Collapse All Buttons (Only in Grouped Mode) -->
+        <div x-show="groupBy !== 'FLAT' && groupedPhotoSections.length > 1" class="flex items-center space-x-2">
+          <button type="button" @click="expandAllSections()" title="Buka Semua Foto"
+            class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-bold text-[11px] transition-all flex items-center gap-1 cursor-pointer">
+            <i data-lucide="chevrons-down" class="w-3.5 h-3.5"></i>
+            <span>Buka Semua</span>
+          </button>
+          <button type="button" @click="collapseAllSections()" title="Tutup Semua Foto"
+            class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-bold text-[11px] transition-all flex items-center gap-1 cursor-pointer">
+            <i data-lucide="chevrons-up" class="w-3.5 h-3.5"></i>
+            <span>Tutup Semua</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Grouped Sections Loop -->
+      <template x-for="section in groupedPhotoSections" :key="section.key">
+        <div class="space-y-3">
+          
+          <!-- Section Header Banner (Clickable Accordion) -->
+          <div @click="toggleSection(section.key)"
+            class="glass-card rounded-2xl px-4 py-3 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm bg-slate-100/70 hover:bg-slate-200/70 dark:bg-slate-800/50 dark:hover:bg-slate-800/80 cursor-pointer transition-all select-none">
+            
+            <div class="flex items-center space-x-3 min-w-0">
+              <div class="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20 flex-shrink-0">
+                <span x-show="groupBy === 'CREW'">👤</span>
+                <span x-show="groupBy === 'MODUL'">🏢</span>
+                <span x-show="groupBy === 'TOKO'">🏪</span>
+                <span x-show="groupBy === 'FLAT'">🔲</span>
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center space-x-2">
+                  <h3 class="font-display font-extrabold text-sm sm:text-base text-slate-900 dark:text-white truncate" x-text="section.title"></h3>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 flex-shrink-0" x-text="section.badge"></span>
+                  <span x-show="isSectionCollapsed(section.key)" class="text-[10px] text-amber-500 font-semibold hidden sm:inline">(Ditutup - Klik untuk buka)</span>
+                </div>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 truncate" x-text="section.subtitle"></p>
+              </div>
+            </div>
+
+            <!-- Group Compliance Score Badge & Expand Chevron -->
+            <div class="flex items-center space-x-2 flex-shrink-0">
+              <template x-if="section.complianceRate !== null">
+                <div class="px-3 py-1 rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-sm"
+                  :class="section.complianceRate >= 80 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : (section.complianceRate >= 60 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20' : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20')">
+                  <span>Kepatuhan:</span>
+                  <span x-text="`${section.complianceRate}%`"></span>
+                  <span class="text-[10px] opacity-75" x-text="`(${section.compliantBefore}/${section.reviewedBefore})`"></span>
+                </div>
+              </template>
+              <template x-if="section.complianceRate === null && groupBy !== 'FLAT'">
+                <div class="px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-slate-200/70 dark:bg-slate-700/60 text-slate-500">
+                  Belum Dinilai
+                </div>
+              </template>
+              <span class="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-white/70 dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-sm" x-text="`${section.totalPhotos} Foto • ${section.totalStores} Toko`"></span>
+
+              <!-- Chevron indicator -->
+              <div class="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-transform duration-200"
+                :class="isSectionCollapsed(section.key) ? '-rotate-90' : 'rotate-0'">
+                <i data-lucide="chevron-down" class="w-4 h-4"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stores Loop Inside MDS Section (Collapsible) -->
+          <div x-show="!isSectionCollapsed(section.key)" x-transition.opacity.duration.200ms class="space-y-4 pt-1">
+            <template x-for="store in section.stores" :key="store.idVisit">
+              <div class="glass-card rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-slate-800/90 shadow-sm space-y-3 bg-white/70 dark:bg-slate-900/50">
+                
+                <!-- Store Sub-Header Bar -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/70 dark:border-slate-800/80 pb-2.5">
+                  <div class="flex items-center space-x-2.5 min-w-0">
+                    <div class="w-7 h-7 rounded-lg flex items-center justify-center bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold text-xs flex-shrink-0">
+                      🏪
+                    </div>
+                    <div class="min-w-0">
+                      <div class="flex items-center space-x-2 flex-wrap">
+                        <h4 class="font-display font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate" x-text="store.namaToko"></h4>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="store.account"></span>
+                        <template x-if="store.kodeToko">
+                          <span class="text-[10.5px] text-slate-400 font-mono" x-text="`[${store.kodeToko}]`"></span>
+                        </template>
+                      </div>
+                      <p class="text-[10.5px] text-slate-500 dark:text-slate-400" x-text="`🕒 Kunjungan Jam ${store.time || '-'} • ${store.date || ''}`"></p>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center space-x-2 text-[11px] font-semibold text-slate-500">
+                    <span class="px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 font-bold text-[10.5px]" x-text="`${store.photos.length} Foto Display`"></span>
+                  </div>
+                </div>
+
+                <!-- Photos Grid for THIS Store -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
+                  <template x-for="item in store.photos" :key="item.id">
+                    <div class="photo-card glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between transition-all hover:shadow-md hover:border-brand-500/40">
+                      
+                      <!-- Card Image Container -->
+                      <div class="relative aspect-[4/3] bg-slate-900 overflow-hidden cursor-pointer group" @click="openPreviewModal(item)">
+                        <img :src="item.resolvedSrc || getPhotoSrc(item)" :alt="item.namaToko" loading="lazy"
+                          class="photo-card-img w-full h-full object-cover object-center transition-transform duration-300 group-hover:scale-105"
+                          onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 400 300\' fill=\'%230f172a\'%3E%3Crect width=\'400\' height=\'300\' fill=\'%230f172a\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' font-family=\'sans-serif\' font-size=\'12\' font-weight=\'bold\' fill=\'%2394a3b8\'%3E%F0%9F%93%B7 Foto Display Toko%3C/text%3E%3C/svg%3E'">
+
+                        <!-- Overlay Type Badge -->
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                          <span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold shadow-md backdrop-blur-md"
+                            :class="item.type === 'BEFORE' ? 'bg-indigo-600/90 text-white' : 'bg-emerald-600/90 text-white'"
+                            x-text="item.typeLabel"></span>
+                        </div>
+
+                        <!-- Overlay Planogram Score Badge -->
+                        <div class="absolute top-2.5 right-2.5">
+                          <template x-if="item.review">
+                            <span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold shadow-md backdrop-blur-md"
+                              :class="item.review.skorPlanogram === 1 ? 'bg-emerald-500/90 text-white' : 'bg-rose-500/90 text-white'"
+                              x-text="item.review.skorPlanogram === 1 ? '🟢 Sesuai (1)' : '🔴 Tidak Sesuai (0)'"></span>
+                          </template>
+                          <template x-if="!item.review">
+                            <span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-slate-900/80 text-slate-300 border border-slate-700 shadow-md backdrop-blur-md">
+                              ⚪ Belum Dinilai
+                            </span>
+                          </template>
+                        </div>
+
+                        <!-- Hover Zoom Hint -->
+                        <div class="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1">
+                          <i data-lucide="zoom-in" class="w-5 h-5"></i>
+                          <span>Lihat Foto HD</span>
+                        </div>
+                      </div>
+
+                      <!-- Card Metadata & Review Details -->
+                      <div class="p-3.5 flex-1 flex flex-col justify-between space-y-2.5">
+                        
+                        <div>
+                          <!-- Store Name & Account -->
+                          <div class="font-bold text-xs text-slate-900 dark:text-white truncate" :title="item.namaToko" x-text="item.namaToko"></div>
+                          <div class="flex items-center gap-1.5 text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            <span class="font-extrabold text-brand-600 dark:text-brand-400" x-text="item.account"></span>
+                            <span>•</span>
+                            <span x-text="item.modul"></span>
+                            <span>•</span>
+                            <span x-text="item.date"></span>
+                          </div>
+                          <div class="text-[10px] text-slate-400 truncate mt-0.5">MDS: <span class="font-semibold text-slate-700 dark:text-slate-300" x-text="item.namaCrew"></span></div>
+                        </div>
+
+                        <!-- SPV Note / Checklist if reviewed -->
+                        <template x-if="item.review">
+                          <div class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800/80 text-[10.5px] space-y-1 border border-slate-200 dark:border-slate-700">
+                            <div class="flex items-center justify-between text-slate-500">
+                              <span class="font-bold" x-text="item.review.reviewer || 'SPV'"></span>
+                              <div class="flex items-center gap-1 font-bold">
+                                <span :class="item.review.ceklisPricetag ? 'text-emerald-500' : 'text-slate-400'" title="Pricetag">[PT]</span>
+                                <span :class="item.review.ceklisPosm ? 'text-emerald-500' : 'text-slate-400'" title="POSM / Promo">[POSM]</span>
+                              </div>
+                            </div>
+                            <template x-if="item.review.catatan">
+                              <p class="text-slate-700 dark:text-slate-300 italic line-clamp-2" :title="item.review.catatan" x-text="`&ldquo;${item.review.catatan}&rdquo;`"></p>
+                            </template>
+                          </div>
+                        </template>
+
+                        <!-- Action Button -->
+                        <div class="pt-1 flex items-center gap-1.5">
+                          <button type="button" @click="openReviewModal(item)"
+                            class="flex-1 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                            :class="item.review ? 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700' : 'bg-brand-600 hover:bg-brand-500 text-white shadow-sm shadow-brand-500/20'">
+                            <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                            <span x-text="item.review ? 'Edit Catatan Audit' : 'Detail Audit'"></span>
+                          </button>
+                        </div>
+
+                      </div>
+
+                    </div>
+                  </template>
+                </div>
+
+              </div>
+            </template>
+          </div>
+
+        </div>
+      </template>
+
+      <!-- Empty State -->
+      <template x-if="!isLoading && filteredPhotos.length === 0">
+        <div class="glass-card rounded-2xl p-12 text-center border border-slate-200 dark:border-slate-800 space-y-3">
+          <i data-lucide="image-off" class="w-12 h-12 mx-auto text-slate-400"></i>
+          <h3 class="font-display font-bold text-base text-slate-800 dark:text-slate-200">Tidak Ada Foto Ditemukan</h3>
+          <p class="text-xs text-slate-500 max-w-sm mx-auto">Tidak ada foto pajangan yang sesuai dengan kriteria filter atau periode yang dipilih.</p>
+          <button type="button" @click="selectedPhotoType = 'ALL'; selectedAccount = 'ALL'; selectedReviewStatus = 'ALL'; clearSearch()"
+            class="px-4 py-2 rounded-xl bg-brand-600 text-white text-xs font-bold transition-all shadow-sm">
+            Reset Semua Filter
+          </button>
+        </div>
+      </template>
+
+      <!-- Pagination Controls (Shown only on FLAT View when multi-page) -->
+      <div x-show="groupBy === 'FLAT' && totalPages > 1" class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500">
+        <div>
+          Halaman <span class="font-bold text-slate-800 dark:text-slate-200" x-text="currentPage"></span> dari <span class="font-bold text-slate-800 dark:text-slate-200" x-text="totalPages"></span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button type="button" @click="currentPage = Math.max(1, currentPage - 1); window.scrollTo({ top: 400, behavior: 'smooth' })" :disabled="currentPage === 1"
+            class="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-800 font-bold">
+            Sebelumnya
+          </button>
+          <span class="px-3 py-1 font-bold text-brand-600 dark:text-brand-400" x-text="`${currentPage} / ${totalPages}`"></span>
+          <button type="button" @click="currentPage = Math.min(totalPages, currentPage + 1); window.scrollTo({ top: 400, behavior: 'smooth' })" :disabled="currentPage === totalPages"
+            class="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-800 font-bold">
+            Berikutnya
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ============================================================================== -->
+  <!-- 4. MODAL PENILAIAN SPV (AUDIT FORM POPUP) -->
+  <!-- ============================================================================== -->
+  <div x-show="reviewModal.isOpen" x-cloak
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md transition-all">
+    <div class="glass-card max-w-lg w-full rounded-3xl border border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+      @click.away="reviewModal.isOpen = false">
+      
+      <!-- Modal Header -->
+      <div class="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div>
+          <h3 class="font-display font-extrabold text-base text-slate-900 dark:text-white">Detail & Catatan Audit Toko</h3>
+          <p class="text-xs text-brand-600 dark:text-brand-400 font-semibold" x-text="`Reviewer: ${reviewModal.reviewerName || 'SPV'}`"></p>
+        </div>
+        <button type="button" @click="reviewModal.isOpen = false" class="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-4 sm:p-5 overflow-y-auto space-y-4 touch-scroll text-xs">
+        
+        <!-- Store Info Pill -->
+        <template x-if="reviewModal.photoItem">
+          <div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
+            <div>
+              <div class="font-bold text-slate-900 dark:text-white" x-text="reviewModal.photoItem.namaToko"></div>
+              <div class="text-[10.5px] text-slate-500" x-text="`${reviewModal.photoItem.account} • ${reviewModal.photoItem.modul} • ${reviewModal.photoItem.date}`"></div>
+            </div>
+            <span class="px-2 py-1 rounded-lg text-[10.5px] font-extrabold bg-indigo-600 text-white" x-text="reviewModal.photoItem.typeLabel"></span>
+          </div>
+        </template>
+
+        <!-- Photo Preview -->
+        <template x-if="reviewModal.photoItem">
+          <div class="relative aspect-video rounded-2xl overflow-hidden bg-slate-950 border border-slate-700 shadow-inner">
+            <img :src="reviewModal.photoItem.previewUrl || getPhotoSrc(reviewModal.photoItem)" class="w-full h-full object-contain">
+          </div>
+        </template>
+
+        <!-- 1. Kesesuaian Planogram Display (0 vs 1) -->
+        <div class="space-y-1.5">
+          <label class="block font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px]">Kesesuaian Planogram Rak:</label>
+          <div class="grid grid-cols-2 gap-2.5">
+            <button type="button" @click="reviewModal.skorPlanogram = 1"
+              class="py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-2 border transition-all cursor-pointer"
+              :class="reviewModal.skorPlanogram === 1 ? 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-600/30 ring-2 ring-emerald-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'">
+              <i data-lucide="check-circle" class="w-4 h-4"></i>
+              <span>1 - Sesuai Standar</span>
+            </button>
+            <button type="button" @click="reviewModal.skorPlanogram = 0"
+              class="py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-2 border transition-all cursor-pointer"
+              :class="reviewModal.skorPlanogram === 0 ? 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-600/30 ring-2 ring-rose-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'">
+              <i data-lucide="x-circle" class="w-4 h-4"></i>
+              <span>0 - Tidak Sesuai</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Checklist Kelengkapan Display -->
+        <div class="space-y-1.5">
+          <label class="block font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px]">Checklist Tambahan:</label>
+          <div class="grid grid-cols-2 gap-2.5">
+            <label class="flex items-center space-x-2 p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer">
+              <input type="checkbox" x-model="reviewModal.ceklisPricetag" class="w-4 h-4 rounded text-brand-600 focus:ring-brand-500">
+              <span class="font-semibold text-slate-700 dark:text-slate-200">Pricetag Terpasang</span>
+            </label>
+            <label class="flex items-center space-x-2 p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer">
+              <input type="checkbox" x-model="reviewModal.ceklisPosm" class="w-4 h-4 rounded text-brand-600 focus:ring-brand-500">
+              <span class="font-semibold text-slate-700 dark:text-slate-200">Sarana Promo / POSM</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 3. Catatan / Komentar SPV -->
+        <div class="space-y-1.5">
+          <label class="block font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px]">Catatan / Rekomendasi Audit:</label>
+          <textarea x-model="reviewModal.catatan" rows="3" placeholder="Tulis catatan audit di sini (contoh: Posisi display eye level belum rapi, pricetag tertutup produk lain...)"
+            class="w-full text-xs font-medium p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500"></textarea>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="p-4 sm:p-5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end space-x-2.5 bg-slate-50/50 dark:bg-slate-900/50">
+        <button type="button" @click="reviewModal.isOpen = false"
+          class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800">
+          Batal
+        </button>
+        <button type="button" @click="submitReview()" :disabled="reviewModal.isSaving"
+          class="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-brand-600/30 flex items-center space-x-2 cursor-pointer active:scale-95">
+          <i data-lucide="save" class="w-4 h-4" :class="reviewModal.isSaving ? 'animate-spin' : ''"></i>
+          <span x-text="reviewModal.isSaving ? 'Menyimpan Catatan...' : 'Simpan Catatan Audit'"></span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================================================================== -->
+  <!-- 5. MODAL ZOOM FOTO RESOLUSI PENUH (HD PREVIEW) -->
+  <!-- ============================================================================== -->
+  <div x-show="previewModal.isOpen" x-cloak
+    class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/90 backdrop-blur-xl transition-all">
+    <div class="max-w-4xl w-full rounded-3xl overflow-hidden flex flex-col max-h-[96vh] relative"
+      @click.away="previewModal.isOpen = false">
+      
+      <!-- Close Top Right -->
+      <button type="button" @click="previewModal.isOpen = false"
+        class="absolute top-3 right-3 z-10 p-2 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-slate-700 shadow-lg cursor-pointer">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <!-- Image Area -->
+      <div class="flex-1 bg-black flex items-center justify-center p-2 min-h-[300px] overflow-hidden">
+        <img :src="previewModal.photoUrl" :alt="previewModal.title" class="max-h-[80vh] w-auto object-contain rounded-xl">
+      </div>
+
+      <!-- Caption Bar -->
+      <div class="glass-card p-3 sm:p-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+        <div>
+          <h4 class="font-bold text-slate-900 dark:text-white" x-text="previewModal.title"></h4>
+          <p class="text-slate-500 dark:text-slate-400 text-[11px]" x-text="previewModal.subtitle"></p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <template x-if="previewModal.visitInfo">
+            <button type="button" @click="openReviewModal(previewModal.visitInfo); previewModal.isOpen = false"
+              class="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer">
+              <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+              <span>Detail Audit</span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="./js/config.js?v=20260907_07"></script>
+  <script src="./js/db.js?v=20260907_07"></script>
+  <script src="./js/api.js?v=20260907_07"></script>
+  <script src="./js/app.js?v=20260907_07"></script>
+
+  <!-- Failsafe auto-dismiss preloader -->
+  <script>
+    setTimeout(function() {
+      var p = document.getElementById('initial-preloader');
+      if (p) {
+        p.classList.add('opacity-0', 'pointer-events-none');
+        setTimeout(function() { if (p.parentNode) p.parentNode.removeChild(p); }, 300);
+      }
+    }, 1200);
+  </script>
+
+</body>
+</html>

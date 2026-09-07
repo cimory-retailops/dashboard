@@ -206,6 +206,58 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   background: #1e293b;
 }
 
+/* Reset Leaflet Div Icon Bawaan agar tidak kotak */
+.leaflet-div-icon,
+.custom-map-pin-container {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Leaflet Enhanced Pin Styling & Route Badges */
+.custom-map-pin {
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  background: transparent !important;
+  border: none !important;
+}
+
+.custom-map-pin:hover {
+  transform: scale(1.25);
+  z-index: 1000 !important;
+}
+
+.numbered-route-pin {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 50% !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  font-size: 11px !important;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4) !important;
+  border: 2px solid #ffffff !important;
+  transition: all 0.2s ease !important;
+  user-select: none !important;
+  box-sizing: border-box !important;
+}
+
+.numbered-route-pin:hover {
+  transform: scale(1.25);
+  z-index: 2000 !important;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.7) !important;
+}
+
+.pulse-target-pin {
+  border-radius: 50% !important;
+  animation: map-pulse 1.8s infinite !important;
+  box-sizing: border-box !important;
+}
+
+@keyframes map-pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7); }
+  70% { transform: scale(1.15); box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+}
+
 /* Modal Transitions */
 .modal-enter {
   opacity: 0;

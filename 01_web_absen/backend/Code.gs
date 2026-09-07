@@ -198,19 +198,61 @@ function appendRouteToUnifiedPipeline(moduleName, crewCode, crewName, rute, stor
   const crewNameIdx = headers.findIndex(h => h.includes("namacrew") || h.includes("crewname") || (h.includes("crew") && !h.includes("kode")));
   const ruteIdx = headers.findIndex(h => h.includes("rute") || h.includes("route"));
 
-  const rowsToAppend = stores.map(store => {
+  const cMod = modIdx >= 0 ? modIdx : 0;
+  const cAcc = accIdx >= 0 ? accIdx : 1;
+  const cCode = codeIdx >= 0 ? codeIdx : 2;
+  const cName = nameIdx >= 0 ? nameIdx : 3;
+  const cCrewCode = crewCodeIdx >= 0 ? crewCodeIdx : 4;
+  const cCrewName = crewNameIdx >= 0 ? crewNameIdx : 5;
+  const cRute = ruteIdx >= 0 ? ruteIdx : 6;
+
+  // 1. Kumpulkan Fingerprint Jadwal Existing di Sentral
+  const existingScheduleKeys = {};
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const eMod = (row[cMod] || "").toString().trim().toUpperCase().replace(/\s+/g, "");
+    const eCode = (row[cCode] || "").toString().trim().toUpperCase();
+    const eCrew = (row[cCrewCode] || "").toString().trim();
+    const eRute = (row[cRute] || "").toString().trim().replace(/^rute\s*/i, "");
+    const eAcc = (row[cAcc] || "").toString().trim().toUpperCase();
+
+    if (eCode && eRute) {
+      // Key unik: Modul + Crew + Rute + Kode Toko + Account
+      const key = `${eMod}_${eCrew}_${eRute}_${eCode}_${eAcc}`;
+      existingScheduleKeys[key] = true;
+    }
+  }
+
+  // 2. Filter Toko: Hanya tambahkan toko yang belum pernah terinput di rute/tanggal ini
+  const rowsToAppend = [];
+  const cleanModule = moduleName.toUpperCase().replace(/\s+/g, "");
+  const cleanRute = rute.toString().trim().replace(/^rute\s*/i, "");
+  const cleanCrewCode = (crewCode || "").toString().trim();
+  const cleanCrewName = (crewName || "").toString().trim();
+
+  for (let s = 0; s < stores.length; s++) {
+    const store = stores[s];
     const account = (store.account || "ALFAMART").toString().trim().toUpperCase();
     const kode = (store.kodeToko || store.kode || "").toString().trim().toUpperCase();
     const nama = (store.namaToko || store.nama || "").toString().trim();
-    const cleanRute = rute.toString().trim();
-    const cleanCrewCode = (crewCode || "").toString().trim();
-    const cleanCrewName = (crewName || "").toString().trim();
+
+    if (!kode) continue;
+
+    const targetKey = `${cleanModule}_${cleanCrewCode}_${cleanRute}_${kode}_${account}`;
+    
+    // Jika jadwal toko ini sudah ada di Sentral untuk crew & rute yang sama, lewati (Anti-Dobel)
+    if (existingScheduleKeys[targetKey]) {
+      continue;
+    }
+
+    // Tandai agar tidak dobel di dalam batch yang sama
+    existingScheduleKeys[targetKey] = true;
 
     if (headers.length >= 6) {
       const numCols = Math.max(headers.length, 7);
       const row = new Array(numCols).fill("");
 
-      if (modIdx >= 0) row[modIdx] = moduleName;
+      if (modIdx >= 0) row[modIdx] = cleanModule;
       if (accIdx >= 0) row[accIdx] = account;
       if (codeIdx >= 0) row[codeIdx] = kode;
       if (nameIdx >= 0) row[nameIdx] = nama;
@@ -218,19 +260,24 @@ function appendRouteToUnifiedPipeline(moduleName, crewCode, crewName, rute, stor
       if (crewNameIdx >= 0) row[crewNameIdx] = cleanCrewName;
       if (ruteIdx >= 0) row[ruteIdx] = cleanRute;
 
-      return row;
+      rowsToAppend.push(row);
     } else {
-      return [
-        moduleName,
+      rowsToAppend.push([
+        cleanModule,
         account,
         kode,
         nama,
         cleanCrewCode,
         cleanCrewName,
         cleanRute
-      ];
+      ]);
     }
-  });
+  }
+
+  if (rowsToAppend.length === 0) {
+    // Semua toko sudah pernah terinput sebelumnya, tidak ada baris baru yang ditambahkan
+    return 0;
+  }
 
   const lastRow = sheet.getLastRow();
   const startRow = lastRow + 1;

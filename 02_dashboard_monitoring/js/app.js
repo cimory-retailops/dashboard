@@ -24,7 +24,10 @@ function dashboardApp() {
     activeDateLabel: '',
     startDate: '',
     endDate: '',
+    customStartInput: '',
+    customEndInput: '',
     selectedAccount: 'ALL',
+    searchInputText: '',
     searchQuery: '',
     selectedCrew: '',
 
@@ -73,6 +76,7 @@ function dashboardApp() {
     // Pagination
     currentPage: 1,
     itemsPerPage: 15,
+    pageSize: 15,
 
     /**
      * Save active dashboard state & data to IndexedDB
@@ -181,6 +185,7 @@ function dashboardApp() {
     async initApp() {
       this.initTheme();
       this.setDefaultDates();
+      this.dismissPreloader();
 
       // Check if session can be restored instantly from IndexedDB (< 15ms) - Zero Loading Screen!
       const restored = await this.restoreSessionState();
@@ -188,7 +193,6 @@ function dashboardApp() {
       if (restored && this.visits.length > 0) {
         this.isLoading = false;
         this.currentPage = 1;
-        this.dismissPreloader();
 
         this.$nextTick(() => {
           this.refreshCharts();
@@ -204,7 +208,6 @@ function dashboardApp() {
       } else {
         // Initial Fetch
         await this.refreshAllData(true);
-        this.dismissPreloader();
         this.loadArchiveMonths();
       }
 
@@ -254,6 +257,139 @@ function dashboardApp() {
       const dd = String(now.getDate()).padStart(2, '0');
       this.startDate = `${yyyy}-${mm}-${dd}`;
       this.endDate = `${yyyy}-${mm}-${dd}`;
+    },
+
+    executeSearch() {
+      this.selectedCrew = '';
+      this.searchQuery = (this.searchInputText || '').trim();
+      this.currentPage = 1;
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+        if (typeof MapService !== 'undefined' && MapService.renderVisitsOnMap) {
+          MapService.renderVisitsOnMap(this.filteredVisits, this.searchQuery);
+        }
+      });
+    },
+
+    clearSearch() {
+      this.selectedCrew = '';
+      this.searchInputText = '';
+      this.searchQuery = '';
+      this.currentPage = 1;
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+        if (typeof MapService !== 'undefined' && MapService.renderVisitsOnMap) {
+          MapService.renderVisitsOnMap(this.filteredVisits, '');
+        }
+      });
+    },
+
+    flyToVisit(visit) {
+      if (!visit) return;
+      const mapCard = document.getElementById('visits-map');
+      if (mapCard) {
+        mapCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      if (typeof MapService !== 'undefined' && MapService.flyToVisit) {
+        MapService.flyToVisit(visit);
+      }
+    },
+
+    get matchingCrewSuggestions() {
+      const q = (this.searchInputText || this.searchQuery || '').trim().toUpperCase();
+      if (!q || q.length < 2) return [];
+
+      const crewMap = new Map();
+
+      // Helper to generate consistent unique key per crew person
+      const getCrewKey = (name, rawModul) => {
+        const cleanName = (name || '').trim().toUpperCase();
+        const officialMod = (this.getCrewOfficialModul(name, rawModul) || rawModul || '').trim().toUpperCase();
+        return `${cleanName}_${officialMod}`;
+      };
+
+      // 1. Ambil dari masterUser (seluruh master database crew)
+      if (Array.isArray(this.masterUser)) {
+        this.masterUser.forEach(u => {
+          const name = (u.nama || '').trim();
+          const code = (u.id || u.kode || u.kodeCrew || '').trim();
+          if (!name) return;
+
+          if (name.toUpperCase().includes(q) || code.toUpperCase().includes(q)) {
+            const officialMod = this.getCrewOfficialModul(name, u.modul) || u.modul || '';
+            const key = getCrewKey(name, officialMod);
+            if (!crewMap.has(key)) {
+              crewMap.set(key, {
+                namaCrew: name,
+                kodeCrew: code,
+                modul: officialMod,
+                account: u.account || '',
+                visitCount: 0
+              });
+            } else {
+              const existing = crewMap.get(key);
+              if (!existing.kodeCrew && code) existing.kodeCrew = code;
+              if (!existing.modul && officialMod) existing.modul = officialMod;
+            }
+          }
+        });
+      }
+
+      // 2. Ambil & hitung visit dari data kunjungan
+      const visitData = this.visits || [];
+      visitData.forEach(v => {
+        const name = (v.namaCrew || '').trim();
+        const code = (v.kodeCrew || '').trim();
+        if (!name) return;
+
+        if (name.toUpperCase().includes(q) || code.toUpperCase().includes(q)) {
+          const officialMod = v._officialModul || this.getCrewOfficialModul(name, v.modul) || v.modul || v.prefix || '';
+          const key = getCrewKey(name, officialMod);
+          if (!crewMap.has(key)) {
+            crewMap.set(key, {
+              namaCrew: name,
+              kodeCrew: code,
+              modul: officialMod,
+              account: v.account || '',
+              visitCount: 0
+            });
+          } else {
+            const existing = crewMap.get(key);
+            if (!existing.kodeCrew && code) existing.kodeCrew = code;
+            if (!existing.modul && officialMod) existing.modul = officialMod;
+          }
+          crewMap.get(key).visitCount++;
+        }
+      });
+
+      // Filter by selectedModul if active
+      let results = Array.from(crewMap.values());
+      if (this.selectedModul && this.selectedModul !== 'ALL') {
+        const selMod = this.selectedModul.toUpperCase();
+        results = results.filter(c => (c.modul || '').toUpperCase().startsWith(selMod));
+      }
+
+      // Sort by visit count descending
+      results.sort((a, b) => b.visitCount - a.visitCount);
+
+      return results;
+    },
+
+    selectCrewSuggestion(crew) {
+      if (!crew) return;
+      if (this.selectedCrew && this.selectedCrew.toUpperCase() === crew.namaCrew.toUpperCase()) {
+        // Toggle unselect
+        this.selectedCrew = '';
+      } else {
+        this.selectedCrew = crew.namaCrew;
+      }
+      this.currentPage = 1;
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+        if (typeof MapService !== 'undefined' && MapService.renderVisitsOnMap) {
+          MapService.renderVisitsOnMap(this.filteredVisits, this.selectedCrew || this.searchQuery);
+        }
+      });
     },
 
     /**
@@ -376,16 +512,18 @@ function dashboardApp() {
         console.error('Error refresh data:', error);
       } finally {
         if (showLoader) {
-          // Slight delay for smooth visual transition
           setTimeout(() => {
             this.isLoading = false;
           }, 300);
+        } else {
+          this.isLoading = false;
         }
+        this.dismissPreloader();
       }
     },
 
     /**
-     * Handle Date Filter Change
+     * Handle Date Filter Change (Instantaneous In-Memory Filtering < 10ms)
      */
     onDateFilterChange() {
       const now = new Date();
@@ -396,7 +534,6 @@ function dashboardApp() {
       if (this.dateFilter === 'TODAY') {
         this.startDate = `${yyyy}-${mm}-${dd}`;
         this.endDate = `${yyyy}-${mm}-${dd}`;
-        this.refreshAllData();
       } else if (this.dateFilter === 'YESTERDAY') {
         const yDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
         const y_yyyy = yDate.getFullYear();
@@ -404,35 +541,73 @@ function dashboardApp() {
         const y_dd = String(yDate.getDate()).padStart(2, '0');
         this.startDate = `${y_yyyy}-${y_mm}-${y_dd}`;
         this.endDate = `${y_yyyy}-${y_mm}-${y_dd}`;
-        this.refreshAllData();
       } else if (this.dateFilter === '7_DAYS') {
         const past7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         this.startDate = past7.toISOString().split('T')[0];
         this.endDate = `${yyyy}-${mm}-${dd}`;
-        this.refreshAllData();
       } else if (this.dateFilter === 'THIS_MONTH') {
         this.startDate = `${yyyy}-${mm}-01`;
         this.endDate = `${yyyy}-${mm}-${dd}`;
-        this.refreshAllData();
       } else if (this.dateFilter === 'LATEST_DAY') {
-        this.refreshAllData();
+        // Will automatically resolve to the latest day present in the active dataset
       } else if (this.dateFilter === 'CUSTOM') {
-        // Saat user memilih CUSTOM, tunggu klik tombol Terapkan agar tidak loading ganda
+        // Initialize temporary inputs without triggering reactive recomputation
+        this.customStartInput = this.startDate || `${yyyy}-${mm}-${dd}`;
+        this.customEndInput = this.endDate || `${yyyy}-${mm}-${dd}`;
+        return; // Don't re-filter until user clicks 'Terapkan Rentang'
       }
+
+      this.currentPage = 1;
+      this.updateActiveDateLabel(this.visits);
+      this.saveSessionState();
+
+      this.$nextTick(() => {
+        this.refreshCharts();
+        if (window.lucide) lucide.createIcons();
+        if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
+          MapService.renderVisitsOnMap(this.filteredVisits);
+        }
+      });
     },
 
     /**
-     * Apply Custom Date Range (Explicit button click, eliminates double loading)
+     * Apply Custom Date Range with strict validation & professional loading overlay
      */
     applyCustomDates() {
-      if (this.startDate && this.endDate) {
-        if (this.startDate > this.endDate) {
-          this.endDate = this.startDate;
-        }
-        this.refreshAllData(true);
-      } else {
-        alert('Mohon tentukan tanggal mulai dan tanggal akhir terlebih dahulu.');
+      if (!this.customStartInput || !this.customEndInput) {
+        alert('Mohon pilih tanggal awal dan tanggal akhir terlebih dahulu.');
+        return;
       }
+
+      // Protection: Start date cannot be after End date
+      if (this.customStartInput > this.customEndInput) {
+        alert(`⚠️ Tanggal Awal (${this.customStartInput}) tidak boleh melebihi Tanggal Akhir (${this.customEndInput})!\nRentang tanggal disesuaikan secara otomatis.`);
+        this.customEndInput = this.customStartInput;
+      }
+
+      // Show overlay loading immediately to prevent user clicking around during processing
+      this.isLoading = true;
+      this.loadingStage = 3;
+      this.loadingMessage = `Menyaring & mengolah data rentang ${this.customStartInput} s/d ${this.customEndInput}...`;
+
+      setTimeout(() => {
+        this.startDate = this.customStartInput;
+        this.endDate = this.customEndInput;
+        this.currentPage = 1;
+        this.updateActiveDateLabel(this.visits);
+        this.saveSessionState();
+
+        this.$nextTick(() => {
+          this.refreshCharts();
+          if (window.lucide) lucide.createIcons();
+          if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
+            MapService.renderVisitsOnMap(this.filteredVisits);
+          }
+          setTimeout(() => {
+            this.isLoading = false;
+          }, 250);
+        });
+      }, 80);
     },
 
     onPeriodChange() {
@@ -569,13 +744,30 @@ function dashboardApp() {
      * Pre-index dataset for high-speed O(1) filtering and eliminate CPU spikes
      */
     indexDataStore() {
+      this.crewDayVisitsMap = new Map();
+
       if (this.visits && this.visits.length > 0) {
         this.visits.forEach(v => {
-          v._iso = this.normalizeIsoDate(v.dateIso || v.date || v.tanggal, v.hariKe);
+          const iso = this.normalizeIsoDate(v.dateIso || v.date || v.tanggal, v.hariKe);
+          v._iso = iso;
           v._officialModul = this.getCrewOfficialModul(v.namaCrew || v.kodeCrew, v.modul || v.prefix);
           v._accUpper = (v.account || '').toUpperCase();
           v._searchStr = `${v.namaToko || ''} ${v.kodeToko || ''} ${v.namaCrew || ''} ${v.kodeCrew || ''} ${v.account || ''}`.toUpperCase();
+
+          const cName = (v.namaCrew || '').trim().toUpperCase();
+          if (iso && cName) {
+            const key = `${iso}_${cName}`;
+            if (!this.crewDayVisitsMap.has(key)) {
+              this.crewDayVisitsMap.set(key, []);
+            }
+            this.crewDayVisitsMap.get(key).push(v);
+          }
         });
+
+        // Sort each crew's day visits chronologically (earliest to latest in morning/afternoon) once
+        for (const list of this.crewDayVisitsMap.values()) {
+          list.sort((a, b) => String(a.time || a.waktu || '00:00').localeCompare(String(b.time || b.waktu || '00:00')));
+        }
 
         // Sort visits newest first (Date descending, Time descending)
         this.visits.sort((a, b) => {
@@ -587,6 +779,7 @@ function dashboardApp() {
           return timeB.localeCompare(timeA);
         });
       }
+
       if (this.absensi && this.absensi.length > 0) {
         this.absensi.forEach(a => {
           a._iso = this.normalizeIsoDate(a.dateIso || a.date || a.tanggal);
@@ -602,6 +795,7 @@ function dashboardApp() {
           return timeB.localeCompare(timeA);
         });
       }
+
       if (this.masterToko && this.masterToko.length > 0) {
         this.masterToko.forEach(m => {
           m._officialModul = this.getCrewOfficialModul(m.namaCrew || m.kodeCrew, m.modul);
@@ -677,8 +871,15 @@ function dashboardApp() {
         data = data.filter(v => (v._accUpper || (v.account || '').toUpperCase()).includes(selAcc));
       }
 
-      // 4. Filter by Search Query
-      if (this.searchQuery && this.searchQuery.trim()) {
+      // 4. Filter by Selected Crew / Search Query
+      if (this.selectedCrew) {
+        const selCrew = this.selectedCrew.toUpperCase().trim();
+        data = data.filter(v => {
+          const cName = (v.namaCrew || '').toUpperCase().trim();
+          const cCode = (v.kodeCrew || '').toUpperCase().trim();
+          return cName === selCrew || cCode === selCrew;
+        });
+      } else if (this.searchQuery && this.searchQuery.trim()) {
         const q = this.searchQuery.toUpperCase().trim();
         data = data.filter(v => (v._searchStr || `${v.namaToko || ''} ${v.kodeToko || ''} ${v.namaCrew || ''} ${v.kodeCrew || ''} ${v.account || ''}`).toUpperCase().includes(q));
       }
@@ -748,8 +949,15 @@ function dashboardApp() {
         }
       }
 
-      // 3. Filter by Search Query
-      if (this.searchQuery && this.searchQuery.trim()) {
+      // 3. Filter by Selected Crew / Search Query
+      if (this.selectedCrew) {
+        const selCrew = this.selectedCrew.toUpperCase().trim();
+        data = data.filter(a => {
+          const cName = (a.namaCrew || '').toUpperCase().trim();
+          const cCode = (a.kodeCrew || '').toUpperCase().trim();
+          return cName === selCrew || cCode === selCrew;
+        });
+      } else if (this.searchQuery && this.searchQuery.trim()) {
         const q = this.searchQuery.toUpperCase().trim();
         data = data.filter(a =>
           (a.namaCrew || '').toUpperCase().includes(q) ||
@@ -759,6 +967,161 @@ function dashboardApp() {
       }
 
       return data;
+    },
+
+    /**
+     * Computed Daily Consolidated Absensi (1 Row per Crew per Day: Masuk + Pulang)
+     */
+    get groupedAbsensi() {
+      const raw = this.filteredAbsensi || [];
+      if (raw.length === 0) return [];
+
+      const map = new Map();
+
+      raw.forEach(a => {
+        const iso = a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date);
+        const crewName = (a.namaCrew || '').trim();
+        const crewCode = (a.kodeCrew || '').trim();
+        if (!iso || !crewName) return;
+
+        const key = `${iso}_${crewName.toUpperCase()}`;
+
+        if (!map.has(key)) {
+          map.set(key, {
+            key: key,
+            tanggal: a.tanggal || iso,
+            iso: iso,
+            modul: a._officialModul || this.getCrewOfficialModul(crewName, a.modul) || a.modul || '',
+            namaCrew: crewName,
+            kodeCrew: crewCode,
+            namaToko: a.namaToko || '',
+            masuk: null, // { waktu, status, koordinat, foto, catatan }
+            pulang: null, // { waktu, status, koordinat, foto, catatan }
+            otherLogs: [],
+            durasiKerja: '-'
+          });
+        }
+
+        const entry = map.get(key);
+        const statusUpper = (a.status || '').toUpperCase().trim();
+
+        if (statusUpper.includes('MASUK') || statusUpper.includes('HADIR') || statusUpper.includes('IN')) {
+          if (!entry.masuk || (a.waktu && a.waktu < entry.masuk.waktu)) {
+            entry.masuk = a;
+          }
+        } else if (statusUpper.includes('PULANG') || statusUpper.includes('OUT')) {
+          if (!entry.pulang || (a.waktu && a.waktu > entry.pulang.waktu)) {
+            entry.pulang = a;
+          }
+        } else {
+          entry.otherLogs.push(a);
+        }
+      });
+
+      // Calculate work duration & overall status for each grouped entry
+      const now = new Date();
+      const y_today = now.getFullYear();
+      const m_today = String(now.getMonth() + 1).padStart(2, '0');
+      const d_today = String(now.getDate()).padStart(2, '0');
+      const todayIso = `${y_today}-${m_today}-${d_today}`;
+
+      const result = Array.from(map.values()).map(entry => {
+        const isToday = entry.iso === todayIso;
+        let durasiStr = '-';
+        if (entry.masuk && entry.pulang && entry.masuk.waktu && entry.pulang.waktu) {
+          const tMasuk = String(entry.masuk.waktu).split(':');
+          const tPulang = String(entry.pulang.waktu).split(':');
+          if (tMasuk.length >= 2 && tPulang.length >= 2) {
+            const minMasuk = parseInt(tMasuk[0], 10) * 60 + parseInt(tMasuk[1], 10);
+            const minPulang = parseInt(tPulang[0], 10) * 60 + parseInt(tPulang[1], 10);
+            const diffMin = minPulang - minMasuk;
+            if (diffMin > 0) {
+              const h = Math.floor(diffMin / 60);
+              const m = diffMin % 60;
+              durasiStr = `${h}j ${m > 0 ? m + 'm' : ''}`.trim();
+            }
+          }
+        } else if (entry.masuk && !entry.pulang) {
+          durasiStr = isToday ? 'Sedang Bertugas' : 'Tidak Pulang';
+        }
+
+        // Find visits for this crew on this specific date (O(1) instant lookup from pre-indexed map)
+        const visitKey = `${entry.iso}_${entry.namaCrew.toUpperCase()}`;
+        const crewVisits = (this.crewDayVisitsMap && this.crewDayVisitsMap.get(visitKey)) || [];
+
+        let firstStore = null;
+        let lastStore = null;
+        let masukDist = null;
+        let masukDistText = null;
+        let pulangDist = null;
+        let pulangDistText = null;
+
+        if (crewVisits.length > 0) {
+          firstStore = crewVisits[0];
+          lastStore = crewVisits[crewVisits.length - 1];
+
+          // Calculate distance for Masuk (vs Toko Pertama #1)
+          if (entry.masuk && entry.masuk.koordinat && firstStore.koordinat) {
+            if (!this.isGpsAnomaly(entry.masuk.koordinat) && !this.isGpsAnomaly(firstStore.koordinat)) {
+              masukDist = this.calculateDistanceMeters(entry.masuk.koordinat, firstStore.koordinat);
+              masukDistText = this.formatDistance(masukDist);
+            }
+          }
+
+          // Calculate distance for Pulang (vs Toko Terakhir #N)
+          if (entry.pulang && entry.pulang.koordinat && lastStore.koordinat) {
+            if (!this.isGpsAnomaly(entry.pulang.koordinat) && !this.isGpsAnomaly(lastStore.koordinat)) {
+              pulangDist = this.calculateDistanceMeters(entry.pulang.koordinat, lastStore.koordinat);
+              pulangDistText = this.formatDistance(pulangDist);
+            }
+          }
+        }
+
+        // Overall status
+        let overallStatus = 'LENGKAP';
+        let statusBadgeClass = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30';
+        
+        if (entry.masuk && entry.pulang) {
+          overallStatus = 'Lengkap (In & Out)';
+          statusBadgeClass = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30';
+        } else if (entry.masuk && !entry.pulang) {
+          if (isToday) {
+            overallStatus = 'Masuk (Sedang Bertugas)';
+            statusBadgeClass = 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/30';
+          } else {
+            overallStatus = '⚠️ Lupa Absen Pulang';
+            statusBadgeClass = 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40 font-bold';
+          }
+        } else if (!entry.masuk && entry.pulang) {
+          overallStatus = 'Hanya Pulang';
+          statusBadgeClass = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30';
+        } else if (entry.otherLogs.length > 0) {
+          overallStatus = entry.otherLogs[0].status || 'LAINNYA';
+          statusBadgeClass = 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/30';
+        }
+
+        return {
+          ...entry,
+          firstStore: firstStore,
+          lastStore: lastStore,
+          masukDist: masukDist,
+          masukDistText: masukDistText,
+          pulangDist: pulangDist,
+          pulangDistText: pulangDistText,
+          totalVisitsToday: crewVisits.length,
+          durasiKerja: durasiStr,
+          overallStatus: overallStatus,
+          statusBadgeClass: statusBadgeClass
+        };
+      });
+
+      // Sort by date descending (newest first), then by crew name
+      result.sort((a, b) => {
+        if (b.iso !== a.iso) return b.iso.localeCompare(a.iso);
+        return a.namaCrew.localeCompare(b.namaCrew);
+      });
+
+      return result;
     },
 
     /**
@@ -779,7 +1142,14 @@ function dashboardApp() {
         const selAcc = this.selectedAccount;
         data = data.filter(m => (m._accUpper || (m.account || '').toUpperCase()).includes(selAcc));
       }
-      if (this.searchQuery && this.searchQuery.trim()) {
+      if (this.selectedCrew) {
+        const selCrew = this.selectedCrew.toUpperCase().trim();
+        data = data.filter(m => {
+          const cName = (m.namaCrew || '').toUpperCase().trim();
+          const cCode = (m.kodeCrew || '').toUpperCase().trim();
+          return cName === selCrew || cCode === selCrew;
+        });
+      } else if (this.searchQuery && this.searchQuery.trim()) {
         const q = this.searchQuery.toUpperCase().trim();
         data = data.filter(m => (m._searchStr || `${m.namaToko || ''} ${m.kodeToko || ''} ${m.namaCrew || ''} ${m.kodeCrew || ''} ${m.account || ''}`).toUpperCase().includes(q));
       }
@@ -801,7 +1171,14 @@ function dashboardApp() {
       if (this.selectedAccount !== 'ALL') {
         data = data.filter(u => (u.account || '').toUpperCase().includes(this.selectedAccount));
       }
-      if (this.searchQuery.trim()) {
+      if (this.selectedCrew) {
+        const selCrew = this.selectedCrew.toUpperCase().trim();
+        data = data.filter(u => {
+          const cName = (u.nama || '').toUpperCase().trim();
+          const cCode = (u.id || '').toUpperCase().trim();
+          return cName === selCrew || cCode === selCrew;
+        });
+      } else if (this.searchQuery.trim()) {
         const q = this.searchQuery.toUpperCase().trim();
         data = data.filter(u =>
           (u.nama || '').toUpperCase().includes(q) ||
@@ -2148,6 +2525,31 @@ function dashboardApp() {
       this.photoModal.isOpen = true;
     },
 
+    /**
+     * Modal: Open Absensi Selfie Photo Viewer (Masuk / Pulang)
+     */
+    async openAbsenPhotoModal(entry, type = 'masuk') {
+      const target = type === 'masuk' ? entry.masuk : entry.pulang;
+      if (!target) return;
+
+      const photoRaw = target.foto || target.fotoSelfie || target.fotoSurat || '';
+      const photoUrl = photoRaw ? await ApiService.resolveImage(photoRaw) : '';
+
+      this.photoModal.visitInfo = {
+        namaCrew: entry.namaCrew,
+        namaToko: entry.namaToko || (entry.modul ? `Absensi Modul ${entry.modul}` : 'Absensi Harian'),
+        modul: entry.modul,
+        account: target.status || (type === 'masuk' ? 'MASUK' : 'PULANG')
+      };
+      this.photoModal.title = `Foto Absensi ${type === 'masuk' ? 'Masuk' : 'Pulang'}: ${entry.namaCrew}`;
+      this.photoModal.photoSelfie = photoUrl;
+      this.photoModal.photoBefore = [];
+      this.photoModal.photoAfter = [];
+      this.photoModal.activePhotoUrl = photoUrl;
+      this.photoModal.activePhotoLabel = `Foto Selfie Absensi ${type === 'masuk' ? 'Masuk (' + (target.waktu || '') + ')' : 'Pulang (' + (target.waktu || '') + ')'}`;
+      this.photoModal.isOpen = true;
+    },
+
     setActivePhoto(url, label) {
       this.photoModal.activePhotoUrl = url;
       this.photoModal.activePhotoLabel = label;
@@ -2155,6 +2557,72 @@ function dashboardApp() {
 
     closePhotoModal() {
       this.photoModal.isOpen = false;
+    },
+
+    /**
+     * Helper: Check if a GPS coordinate is 0, 0 / empty / invalid
+     */
+    isGpsAnomaly(coord) {
+      if (!coord) return true;
+      const s = String(coord).trim();
+      if (!s || s === '-' || s === '0' || s === '0,0' || s === '0, 0' || s === '0.0, 0.0') return true;
+      if (s.includes(',')) {
+        const parts = s.split(',');
+        const lat = parseFloat(parts[0]);
+        const lng = parseFloat(parts[1]);
+        if (isNaN(lat) || isNaN(lng)) return true;
+        if (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001) return true;
+      }
+      return false;
+    },
+
+    /**
+     * Helper: Parse koordinat "lat, lng" string to [lat, lng] array
+     */
+    parseCoordinates(coordStr) {
+      if (!coordStr) return null;
+      const clean = String(coordStr).replace(/['"\s]/g, '');
+      const parts = clean.split(',');
+      if (parts.length >= 2) {
+        const lat = parseFloat(parts[0]);
+        const lng = parseFloat(parts[1]);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          return [lat, lng];
+        }
+      }
+      return null;
+    },
+
+    /**
+     * Helper: Haversine Distance in Meters between 2 coordinate strings
+     */
+    calculateDistanceMeters(coord1, coord2) {
+      if (!coord1 || !coord2) return null;
+      const p1 = this.parseCoordinates(coord1);
+      const p2 = this.parseCoordinates(coord2);
+      if (!p1 || !p2) return null;
+      if (Math.abs(p1[0]) < 0.0001 && Math.abs(p1[1]) < 0.0001) return null;
+      if (Math.abs(p2[0]) < 0.0001 && Math.abs(p2[1]) < 0.0001) return null;
+
+      const R = 6371000; // Radius Bumi dalam meter
+      const lat1 = p1[0] * Math.PI / 180;
+      const lat2 = p2[0] * Math.PI / 180;
+      const dLat = (p2[0] - p1[0]) * Math.PI / 180;
+      const dLng = (p2[1] - p1[1]) * Math.PI / 180;
+
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1) * Math.cos(lat2) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return Math.round(R * c);
+    },
+
+    formatDistance(meters) {
+      if (meters === null || meters === undefined) return null;
+      if (meters < 1000) {
+        return `${meters} m`;
+      }
+      return `${(meters / 1000).toFixed(1)} km`;
     },
 
     /**
