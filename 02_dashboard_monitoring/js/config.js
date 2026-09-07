@@ -66,13 +66,10 @@ const CONFIG = {
     'ALFAMART',
     'INDOMARET',
     'ALFAMIDI',
+    'FAMILY MART',
     'LAWSON',
-    'DAN+DAN',
-    'SUPERINDO',
-    'HYPERMART',
     'CIRCLE K',
-    'YOMART',
-    'FAMILYMART'
+    'YOMART'
   ],
 
   // Cache & Request Timeouts

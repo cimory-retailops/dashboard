@@ -373,16 +373,29 @@ const ApiService = {
   },
 
   /**
-   * 3. Get Master Toko Schedule Targets
+   * 3. Get Master Toko Schedule Targets (High-Speed Direct Pipeline Stream + Parallel Branch Fallback)
    */
   async getMasterToko(params = {}) {
     const cacheKey = 'master_toko_' + JSON.stringify(params);
+
+    // 1. Direct High-Speed Fetch from 15 Branch Spreadsheets (< 1.5s)
+    try {
+      const directData = await this.getMasterTokoDirect(params);
+      if (directData && directData.length > 0) {
+        this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: directData });
+        if (window.DashboardDB) DashboardDB.set('master_toko', directData);
+        return directData;
+      }
+    } catch (e) {
+      console.warn('Direct getMasterToko fetch failed, falling back to cache or API:', e);
+    }
+
+    // 2. Check Memory / IndexedDB cache fallback
     const cached = this.memoryCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp < 30 * 60 * 1000)) {
       return cached.data;
     }
 
-    // Check IndexedDB if available
     if (window.DashboardDB) {
       try {
         const idbData = await DashboardDB.get('master_toko');
@@ -393,10 +406,10 @@ const ApiService = {
       } catch (e) {}
     }
 
-    // Fetch from Central Apps Script API
+    // 3. Fallback to Central Apps Script API
     const url = this.buildUrl('getMasterToko', params);
     try {
-      const res = await this.fetchWithTimeout(url, CONFIG.DEFAULT_TIMEOUT_MS);
+      const res = await this.fetchWithTimeout(url, CONFIG.FAST_TIMEOUT_MS);
       if (res && res.status === 'success' && res.data && res.data.length > 0) {
         this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: res.data });
         if (window.DashboardDB) DashboardDB.set('master_toko', res.data);
@@ -410,7 +423,118 @@ const ApiService = {
   },
 
   /**
-   * 3b. Get Official Master User Roster (Central Employee Database)
+   * Direct Stream for Master Toko from 15 Branch Spreadsheets in Parallel (Ground Truth Live Routes)
+   */
+  async getMasterTokoDirect(params = {}) {
+    // 1. Parallel fetch across 15 branch spreadsheets (Accurate Rute 1 - 31 assignments)
+    const targetModules = [];
+    for (const [modKey, sheetId] of Object.entries(CONFIG.MODUL_IDS)) {
+      if (!params.modul || params.modul === 'ALL') {
+        targetModules.push({ modKey, sheetId });
+      } else if (params.modul.length === 2 && modKey.startsWith(params.modul)) {
+        targetModules.push({ modKey, sheetId });
+      } else if (params.modul === modKey) {
+        targetModules.push({ modKey, sheetId });
+      }
+    }
+
+    const promises = targetModules.map(async ({ modKey, sheetId }) => {
+      try {
+        const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Master_Toko`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const text = await res.text();
+          return this.parseMasterTokoRows(text, params, modKey);
+        }
+      } catch (err) {
+        return [];
+      }
+      return [];
+    });
+
+    const results = await Promise.all(promises);
+    const flattened = results.flat();
+    if (flattened.length > 0) return flattened;
+
+    // 2. Fallback to Central Pipeline Spreadsheet
+    try {
+      const centralUrl = `https://docs.google.com/spreadsheets/d/${CONFIG.CENTRAL_ID}/gviz/tq?tqx=out:csv&sheet=Master_Toko`;
+      const resp = await fetch(centralUrl);
+      if (resp.ok) {
+        const text = await resp.text();
+        const parsed = this.parseMasterTokoRows(text, params);
+        if (parsed && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Central pipeline fallback stream failed:', e);
+    }
+
+    return [];
+  },
+
+  parseMasterTokoRows(csvText, params = {}, defaultModul = '') {
+    const rows = this.parseCsv(csvText);
+    if (rows.length < 2) return [];
+
+    const headers = rows[0].map(h => (h || '').toUpperCase().replace(/[\s_-]/g, ''));
+    
+    function findIdx(possibleNames, defaultIdx) {
+      for (const name of possibleNames) {
+        const cleanName = name.toUpperCase().replace(/[\s_-]/g, '');
+        const idx = headers.indexOf(cleanName);
+        if (idx !== -1) return idx;
+        const subIdx = headers.findIndex(h => h.includes(cleanName));
+        if (subIdx !== -1) return subIdx;
+      }
+      return defaultIdx;
+    }
+
+    const idxModul = findIdx(['MODUL', 'WILAYAH', 'BRANCH'], -1);
+    const idxAccount = findIdx(['ACCOUNT', 'AKUN'], 0);
+    const idxKodeToko = findIdx(['KODETOKO', 'KODE', 'STORECODE'], 1);
+    const idxNamaToko = findIdx(['NAMATOKO', 'NAMA', 'STORENAME'], 2);
+    const idxKodeCrew = findIdx(['KODECREW', 'IDCREW', 'CREWCODE', 'NIK'], 3);
+    const idxNamaCrew = findIdx(['NAMACREW', 'CREW', 'CREWNAME'], 4);
+    const idxRute = findIdx(['RUTE', 'ROUTE', 'HARIKE', 'HARI'], 5);
+    const idxTipeToko = findIdx(['TIPETOKO', 'FORMAT', 'TIPE'], 6);
+    const idxAlamat = findIdx(['ALAMAT', 'ADDRESS'], 8);
+    const idxNoTelp = findIdx(['NOTELP', 'TELP', 'PHONE'], 9);
+    const idxStatus = findIdx(['STATUS', 'KETERANGAN'], 12);
+
+    const list = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const kode = String(r[idxKodeToko] || '').trim();
+      const nama = String(r[idxNamaToko] || '').trim();
+      if (!kode && !nama) continue;
+
+      let mod = (idxModul !== -1 && r[idxModul]) ? String(r[idxModul]).trim() : defaultModul;
+      if (!mod && defaultModul) mod = defaultModul;
+
+      const rute = String(r[idxRute] || '').trim();
+      const nCrew = String(r[idxNamaCrew] || '').trim();
+      const kCrew = String(r[idxKodeCrew] || '').trim();
+
+      list.push({
+        modul: mod,
+        account: String(r[idxAccount] || 'ALFAMART').trim().toUpperCase(),
+        kodeToko: kode,
+        namaToko: nama,
+        kodeCrew: kCrew,
+        namaCrew: nCrew,
+        rute: rute,
+        tipeToko: String(r[idxTipeToko] || '').trim(),
+        alamat: String(r[idxAlamat] || '').trim(),
+        noTelp: String(r[idxNoTelp] || '').trim(),
+        status: String(r[idxStatus] || 'AKTIF').trim().toUpperCase()
+      });
+    }
+
+    return list;
+  },
+
+  /**
+   * 3b. Get Official Master User Roster (Direct High-Speed Pipeline Stream)
    */
   async getMasterUser(params = {}) {
     const cacheKey = 'master_user_' + JSON.stringify(params);
@@ -425,15 +549,34 @@ const ApiService = {
         const idbData = await DashboardDB.get('master_user');
         if (idbData && idbData.length > 0) {
           this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: idbData });
+          // Trigger background update silently
+          this.getMasterUserDirect(params).then(fresh => {
+            if (fresh && fresh.length > 0) {
+              this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: fresh });
+              DashboardDB.set('master_user', fresh);
+            }
+          }).catch(() => {});
           return idbData;
         }
       } catch (e) {}
     }
 
-    // Fetch from Central Apps Script API
+    // 1. Direct High-Speed Fetch from Central Sheet (< 1s)
+    try {
+      const directUsers = await this.getMasterUserDirect(params);
+      if (directUsers && directUsers.length > 0) {
+        this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: directUsers });
+        if (window.DashboardDB) DashboardDB.set('master_user', directUsers);
+        return directUsers;
+      }
+    } catch (e) {
+      console.warn('Direct getMasterUser fetch failed, falling back to central API:', e);
+    }
+
+    // 2. Fallback to Central Apps Script API
     const url = this.buildUrl('getMasterUser', params);
     try {
-      const res = await this.fetchWithTimeout(url, CONFIG.DEFAULT_TIMEOUT_MS);
+      const res = await this.fetchWithTimeout(url, CONFIG.FAST_TIMEOUT_MS);
       if (res && res.status === 'success' && res.data && res.data.length > 0) {
         this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: res.data });
         if (window.DashboardDB) DashboardDB.set('master_user', res.data);
@@ -448,12 +591,192 @@ const ApiService = {
   },
 
   /**
-   * 4. Get Master 49k Stores Catalog
+   * Direct Stream for Master User from Central Pipeline Spreadsheet
+   */
+  async getMasterUserDirect(params = {}) {
+    const url = `https://docs.google.com/spreadsheets/d/${CONFIG.CENTRAL_ID}/gviz/tq?tqx=out:csv&sheet=master_user`;
+    const resp = await fetch(url);
+    if (!resp.ok) return [];
+
+    const text = await resp.text();
+    const rows = this.parseCsv(text);
+    if (rows.length < 2) return [];
+
+    const headers = rows[0].map(h => (h || '').toUpperCase().replace(/[\s_-]/g, ''));
+    
+    function findIdx(possibleNames, defaultIdx) {
+      for (const name of possibleNames) {
+        const cleanName = name.toUpperCase().replace(/[\s_-]/g, '');
+        const idx = headers.indexOf(cleanName);
+        if (idx !== -1) return idx;
+      }
+      return defaultIdx;
+    }
+
+    const idxId = findIdx(['ID', 'IDCREW', 'KODECREW', 'NIK'], 0);
+    const idxNama = findIdx(['NAMA', 'NAMACREW', 'NAME'], 1);
+    const idxJabatan = findIdx(['JABATAN', 'ROLE', 'POSITION'], 2);
+    const idxDivisi = findIdx(['DIVISI', 'DIVISION', 'DEPT'], 3);
+    const idxAccount = findIdx(['ACCOUNT', 'AKUN'], 4);
+    const idxEmail = findIdx(['EMAIL', 'MAIL'], 5);
+    const idxRole = findIdx(['ROLE', 'HAKAKSES'], 6);
+    const idxModul = findIdx(['MODUL', 'WILAYAH', 'BRANCH'], 7);
+    const idxAlamat = findIdx(['ALAMATLENGKAP', 'ALAMAT', 'ADDRESS'], 8);
+    const idxKec = findIdx(['KECAMATAN', 'KEC'], 9);
+    const idxKota = findIdx(['KOTAKABUPATEN', 'KOTA', 'KABUPATEN', 'CITY'], 10);
+    const idxRegion = findIdx(['REGION', 'REGIONAL'], 11);
+    const idxStatus = findIdx(['STATUS'], 12);
+    const idxNoWa = findIdx(['NOWA', 'WA', 'TELP', 'NOTELP'], 13);
+
+    const users = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const nama = String(r[idxNama] || '').trim();
+      if (!nama) continue;
+
+      users.push({
+        id: String(r[idxId] || '').trim(),
+        nama: nama,
+        jabatan: String(r[idxJabatan] || 'Merchandiser').trim(),
+        divisi: String(r[idxDivisi] || 'Retail Operation').trim(),
+        account: String(r[idxAccount] || '').trim(),
+        email: String(r[idxEmail] || '').trim(),
+        role: String(r[idxRole] || 'MDS').trim(),
+        modul: String(r[idxModul] || '').trim().toUpperCase(),
+        alamat: String(r[idxAlamat] || '').trim(),
+        kecamatan: String(r[idxKec] || '').trim(),
+        kabKota: String(r[idxKota] || '').trim(),
+        region: String(r[idxRegion] || '').trim(),
+        status: String(r[idxStatus] || 'AKTIF').trim().toUpperCase(),
+        noWa: String(r[idxNoWa] || '').trim()
+      });
+    }
+
+    return users;
+  },
+
+  /**
+   * 4. Get Master 49k Stores Catalog (From IndexedDB / Direct Sheet Stream / Central Backend)
    */
   async getMasterStores49k(query = '', limit = 300) {
+    // Check IndexedDB first
+    if (window.DashboardDB) {
+      const cached = await DashboardDB.get('stores_49k', true);
+      if (cached && Array.isArray(cached) && cached.length > 0) {
+        if (!query) return cached.slice(0, limit);
+        const q = String(query).toLowerCase().trim();
+        return cached.filter(s => 
+          (s.kodeToko && s.kodeToko.toLowerCase().includes(q)) ||
+          (s.namaToko && s.namaToko.toLowerCase().includes(q)) ||
+          (s.branchName && s.branchName.toLowerCase().includes(q)) ||
+          (s.kabKota && s.kabKota.toLowerCase().includes(q)) ||
+          (s.kecamatan && s.kecamatan.toLowerCase().includes(q))
+        ).slice(0, limit);
+      }
+    }
+
     const url = this.buildUrl('getMasterStores49k', { q: query, limit });
-    const res = await this.fetchWithTimeout(url, CONFIG.FAST_TIMEOUT_MS);
-    return (res && res.status === 'success') ? res.data : [];
+    try {
+      const res = await this.fetchWithTimeout(url, CONFIG.FAST_TIMEOUT_MS);
+      return (res && res.status === 'success') ? res.data : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  /**
+   * High-Speed Direct Sync of Master Database 49k from Google Sheets to IndexedDB
+   */
+  async syncMasterStores49kFromSheet(onProgress) {
+    if (onProgress) onProgress('Mengunduh Master Database 49k dari Google Sheets...');
+    
+    // GID 1970488135 is the dedicated master_toko sheet
+    const csvUrl = 'https://docs.google.com/spreadsheets/d/16cokFfnQFIajmTd553TKy-CfkNFc1Gg7ElkhAer81QA/export?format=csv&gid=1970488135';
+    let csvText = '';
+
+    try {
+      const resp = await fetch(csvUrl);
+      if (resp.ok) {
+        csvText = await resp.text();
+      }
+    } catch (e) {
+      console.warn('Direct CSV download failed, trying local fallback or central API:', e);
+    }
+
+    // Fallback if CORS blocked direct CSV download: check local file or central backend
+    if (!csvText || csvText.length < 100) {
+      try {
+        const localResp = await fetch('../05_simulasi_rute/data/master_toko_nasional.csv');
+        if (localResp.ok) {
+          csvText = await localResp.text();
+        }
+      } catch (err) {
+        console.warn('Local CSV fallback failed:', err);
+      }
+    }
+
+    if (!csvText || csvText.length < 100) {
+      throw new Error('Gagal mengunduh data Master Toko 49k dari Google Sheets.');
+    }
+
+    if (onProgress) onProgress('Mem-parsing dan menata indeks database toko...');
+    const rows = this.parseCsv(csvText);
+    if (rows.length < 2) {
+      throw new Error('Format Master Toko CSV kosong atau tidak valid.');
+    }
+
+    const headers = rows[0].map(h => String(h || '').toLowerCase().replace(/[^a-z0-9]/g, ''));
+    const codeIdx = headers.findIndex(h => h.includes('kode') || h.includes('storecode') || h === 'code');
+    const nameIdx = headers.findIndex(h => h.includes('nama') || h.includes('storename'));
+    const branchCodeIdx = headers.findIndex(h => h.includes('dccode') || h.includes('branchcode') || h.includes('kodedc'));
+    const branchNameIdx = headers.findIndex(h => h.includes('dcname') || h.includes('branchname') || h.includes('namadc') || h.includes('dc'));
+    const kecIdx = headers.findIndex(h => h.includes('kecamatan') || h.includes('kec'));
+    const kabKotaIdx = headers.findIndex(h => h.includes('kab') || h.includes('kota') || h.includes('city'));
+    const accIdx = headers.findIndex(h => h.includes('account') || h.includes('tipe') || h.includes('type'));
+    const latIdx = headers.findIndex(h => h.includes('lat'));
+    const lonIdx = headers.findIndex(h => h.includes('lon') || h.includes('lng'));
+
+    const parsedStores = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const kode = String(r[codeIdx >= 0 ? codeIdx : 0] || '').trim();
+      const nama = String(r[nameIdx >= 0 ? nameIdx : 3] || r[nameIdx >= 0 ? nameIdx : 1] || '').trim();
+      if (!kode && !nama) continue;
+
+      let rawAcc = String(r[accIdx >= 0 ? accIdx : 9] || '').trim().toUpperCase();
+      if (!rawAcc || rawAcc === 'OTHER' || rawAcc === 'TIPE' || rawAcc.includes('SUPER') || rawAcc.includes('HYPER') || rawAcc.includes('DAN')) {
+        const upName = nama.toUpperCase();
+        if (upName.includes('ALFAMART') || upName.includes('SAT ') || upName.includes('[SAT')) rawAcc = 'ALFAMART';
+        else if (upName.includes('INDOMARET') || upName.includes('IDM ') || upName.includes('[IDM')) rawAcc = 'INDOMARET';
+        else if (upName.includes('ALFAMIDI') || upName.includes('MIDI')) rawAcc = 'ALFAMIDI';
+        else if (upName.includes('FAMILY MART') || upName.includes('FM ')) rawAcc = 'FAMILY MART';
+        else if (upName.includes('LAWSON')) rawAcc = 'LAWSON';
+        else if (upName.includes('CIRCLE K') || upName.includes('CK ')) rawAcc = 'CIRCLE K';
+        else if (upName.includes('YOMART')) rawAcc = 'YOMART';
+        else rawAcc = 'MINIMARKET';
+      }
+
+      parsedStores.push({
+        id: kode || `STORE_${i}`,
+        kodeToko: kode,
+        namaToko: nama,
+        account: rawAcc,
+        branchCode: String(r[branchCodeIdx >= 0 ? branchCodeIdx : 1] || '').trim(),
+        branchName: String(r[branchNameIdx >= 0 ? branchNameIdx : 2] || '').trim(),
+        kecamatan: String(r[kecIdx >= 0 ? kecIdx : 4] || '').trim(),
+        kabKota: String(r[kabKotaIdx >= 0 ? kabKotaIdx : 5] || '').trim(),
+        lat: String(r[latIdx >= 0 ? latIdx : 7] || '').trim(),
+        lon: String(r[lonIdx >= 0 ? lonIdx : 8] || '').trim()
+      });
+    }
+
+    if (onProgress) onProgress(`Menyimpan ${parsedStores.length} toko ke IndexedDB local...`);
+    if (window.DashboardDB) {
+      await DashboardDB.set('stores_49k', parsedStores, 7 * 24 * 60 * 60 * 1000);
+      await DashboardDB.set('stores_49k_synced_at', Date.now(), 7 * 24 * 60 * 60 * 1000);
+    }
+
+    return parsedStores;
   },
 
   /**
@@ -498,5 +821,43 @@ const ApiService = {
       }
     } catch (e) {}
     return null;
+  },
+
+  /**
+   * 9. Post Action to Central GAS Backend
+   */
+  async postAction(action, payload = {}) {
+    const fullPayload = { action, ...payload };
+    const url = CONFIG.API_URL;
+    
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(fullPayload)
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP Error ${response.status}`);
+      }
+      const data = await response.json();
+      if (data.status === 'error') {
+        throw new Error(data.message || 'Operasi gagal dieksekusi di Spreadsheet');
+      }
+      return data;
+    } catch (err) {
+      console.warn('Direct POST failed, attempting parameter fallback:', err);
+      const formBody = new URLSearchParams({
+        action: action,
+        data: JSON.stringify(fullPayload)
+      });
+      const fallbackResp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formBody.toString()
+      });
+      const data = await fallbackResp.json();
+      if (data.status === 'error') throw new Error(data.message);
+      return data;
+    }
   }
 };

@@ -10,6 +10,7 @@ function dashboardApp() {
     theme: localStorage.getItem('mds_theme') || 'dark',
     role: localStorage.getItem('mds_role') || 'admin', // 'admin' | 'mds'
     activeTab: 'kunjungan', // 'kunjungan' | 'absensi' | 'jadwal' | 'audit'
+    showAppMenu: false, // Dropdown switcher for 5 app modules
     isLoading: true,
     loadingMessage: 'Menghubungkan ke Database Central...',
     loadingStage: 1, // 1: Connecting, 2: Fetching, 3: Processing
@@ -18,7 +19,7 @@ function dashboardApp() {
     selectedPeriod: 'LIVE', // 'LIVE' or fileId of monthly backup
     archiveList: [],
 
-    // Filters
+    // 1. Filters Tab 1: Kunjungan Lapangan & KPI
     selectedModul: 'ALL',
     dateFilter: 'LATEST_DAY', // 'LATEST_DAY' | 'TODAY' | '7_DAYS' | 'THIS_MONTH' | 'CUSTOM'
     activeDateLabel: '',
@@ -30,6 +31,60 @@ function dashboardApp() {
     searchInputText: '',
     searchQuery: '',
     selectedCrew: '',
+
+    // 2. Filters Tab 2: Absensi Tim (Independent Scoped Filter)
+    filterAbsensi: {
+      modul: 'ALL',
+      dateFilter: 'LATEST_DAY',
+      activeDateLabel: '',
+      startDate: '',
+      endDate: '',
+      customStartInput: '',
+      customEndInput: '',
+      status: 'ALL', // 'ALL' | 'LENGKAP' | 'MASUK_ONLY' | 'PULANG_ONLY'
+      searchInputText: '',
+      searchQuery: ''
+    },
+
+    // 3. Filters Tab 3: Target Jadwal Rute (Independent Scoped Filter - On Demand)
+    filterJadwal: {
+      modul: 'ALL',
+      selectedCrew: 'ALL',
+      rute: 'ALL', // 'ALL' | '1' .. '31'
+      showRuteGridMenu: false,
+      account: 'ALL',
+      searchInputText: '',
+      searchQuery: '',
+      // Applied filter states (Activated on "Terapkan Filter")
+      appliedModul: 'ALL',
+      appliedSelectedCrew: 'ALL',
+      appliedRute: 'ALL',
+      appliedAccount: 'ALL',
+      appliedSearchQuery: ''
+    },
+
+    // 4. Filters Tab 4: Database Toko Nasional (49k) (IndexedDB High-Performance Cache)
+    stores49k: [],
+    isStores49kLoading: false,
+    stores49kLastSynced: null,
+    filterTokoNasional: {
+      searchInputText: '',
+      searchQuery: '',
+      account: 'ALL',
+      page: 1,
+      pageSize: 50
+    },
+
+    // Maps State for Tab 3 & Tab 4
+    jadwalMapStats: { totalStores: 0, validCount: 0, totalDistKm: '0' },
+    selectedStoreForMap: null,
+    nearest10Stores: [],
+
+    // Auto-Suggest State for Store Search (Tab 3 & Tab 4)
+    jadwalStoreSuggestions: [],
+    showJadwalSuggestions: false,
+    tokoNasionalSuggestions: [],
+    showTokoNasionalSuggestions: false,
 
     // Raw Data Stores
     visits: [],
@@ -71,6 +126,37 @@ function dashboardApp() {
       reportType: 'ROUTE_ONLY', // 'ROUTE_ONLY' | 'FULL_OPS'
       isGenerating: false,
       copiedSuccess: false
+    },
+
+    crudModal: {
+      isOpen: false,
+      mode: 'edit', // 'edit' | 'transfer' | 'delete' | 'create_master' | 'purge_duplicates'
+      title: '',
+      item: null,
+      formData: {
+        modul: '',
+        account: '',
+        kodeToko: '',
+        namaToko: '',
+        rute: '1',
+        namaCrew: '',
+        kodeCrew: '',
+        newModul: '',
+        newCrewName: '',
+        newCrewCode: '',
+        newRute: '1',
+        dcName: '',
+        kecamatan: '',
+        kota: '',
+        provinsi: '',
+        lat: '',
+        lon: ''
+      },
+      isSubmitting: false,
+      statusMsg: '',
+      isSuccess: false,
+      errorMsg: '',
+      auditResult: null
     },
 
     // Pagination
@@ -211,6 +297,9 @@ function dashboardApp() {
         this.loadArchiveMonths();
       }
 
+      // Initialize Master Database 49k Cache from IndexedDB in background
+      this.initStores49k();
+
       // Setup Lucide icons
       this.$nextTick(() => {
         if (window.lucide) lucide.createIcons();
@@ -222,6 +311,26 @@ function dashboardApp() {
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
           this.saveSessionState();
+        }
+      });
+
+      // Global event delegation for Leaflet interactive popups
+      document.addEventListener('click', (e) => {
+        const centerBtn = e.target.closest('#btn-assign-center-store');
+        if (centerBtn && this.selectedStoreForMap) {
+          this.openAssignStoreToMdsModal(this.selectedStoreForMap);
+          return;
+        }
+
+        const nearBtn = e.target.closest('.btn-assign-nearest-store');
+        if (nearBtn) {
+          const code = nearBtn.getAttribute('data-store-code');
+          if (code) {
+            const targetStore = (this.nearest10Stores || []).find(s => s.kodeToko === code) || (this.stores49k || []).find(s => s.kodeToko === code);
+            if (targetStore) {
+              this.openAssignStoreToMdsModal(targetStore);
+            }
+          }
         }
       });
     },
@@ -242,6 +351,10 @@ function dashboardApp() {
       if (this.activeTab === 'kunjungan') {
         MapService.initMap('visits-map', this.theme === 'dark');
         MapService.renderVisitsOnMap(this.filteredVisits);
+      } else if (this.activeTab === 'jadwal' && this.isJadwalRouteActive) {
+        this.renderJadwalRouteMap();
+      } else if (this.activeTab === 'tokonasional' && this.selectedStoreForMap) {
+        this.selectStoreForMap(this.selectedStoreForMap);
       }
     },
 
@@ -434,30 +547,11 @@ function dashboardApp() {
             this.loadingMessage = 'Mengunduh data Kunjungan, Absensi & Master Rute...';
           }
 
-          // Master User & Master Toko static datasets - check in-memory or IndexedDB first
-          let masterTokoPromise;
-          if (this.masterToko && this.masterToko.length > 0) {
-            masterTokoPromise = Promise.resolve(this.masterToko);
-          } else if (window.DashboardDB) {
-            masterTokoPromise = DashboardDB.get('master_toko', true).then(cached => {
-              return (cached && cached.length > 0) ? cached : ApiService.getMasterToko({ modul: 'ALL' });
-            });
-          } else {
-            masterTokoPromise = ApiService.getMasterToko({ modul: 'ALL' });
-          }
+          // Always fetch fresh Master Toko & Master User from live spreadsheets
+          const masterTokoPromise = ApiService.getMasterToko({ modul: 'ALL' });
+          const masterUserPromise = ApiService.getMasterUser({ modul: 'ALL' });
 
-          let masterUserPromise;
-          if (this.masterUser && this.masterUser.length > 0) {
-            masterUserPromise = Promise.resolve(this.masterUser);
-          } else if (window.DashboardDB) {
-            masterUserPromise = DashboardDB.get('master_user', true).then(cached => {
-              return (cached && cached.length > 0) ? cached : ApiService.getMasterUser({ modul: 'ALL' });
-            });
-          } else {
-            masterUserPromise = ApiService.getMasterUser({ modul: 'ALL' });
-          }
-
-          // Fetch Live Data in parallel
+          // Fetch Live Data in parallel (< 1.5s)
           const [visitsData, absensiData, masterTokoData, masterUserData] = await Promise.all([
             ApiService.getVisits(visitParams),
             ApiService.getAbsensi({ 
@@ -473,9 +567,11 @@ function dashboardApp() {
           this.absensi = absensiData || [];
           if (masterTokoData && masterTokoData.length > 0) {
             this.masterToko = masterTokoData;
+            if (window.DashboardDB) DashboardDB.set('master_toko', masterTokoData);
           }
           if (masterUserData && masterUserData.length > 0) {
             this.masterUser = masterUserData;
+            if (window.DashboardDB) DashboardDB.set('master_user', masterUserData);
           }
 
         } else {
@@ -888,51 +984,54 @@ function dashboardApp() {
     },
 
     /**
-     * Computed Filtered Absensi (Smart Date, Modul & Search Filtering)
+     * Computed Filtered Absensi (Smart Date, Modul & Search Filtering - Tab Absensi Scoped)
      */
     get filteredAbsensi() {
       let data = this.absensi;
       if (!data || data.length === 0) return [];
 
+      const f = this.filterAbsensi || {};
+      const dFilter = f.dateFilter || 'LATEST_DAY';
+
       // 1. Smart Date Filtering
-      if (this.dateFilter === 'LATEST_DAY') {
+      if (dFilter === 'LATEST_DAY') {
         const latestIso = (this.visits && this.visits.length > 0 && this.visits[0]._iso)
           ? this.visits[0]._iso
           : (data[0]._iso || this.normalizeIsoDate(data[0].tanggal || data[0].dateIso || data[0].date));
         if (latestIso) {
           data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === latestIso);
         }
-      } else if (this.dateFilter === 'TODAY') {
+      } else if (dFilter === 'TODAY') {
         const now = new Date();
         const y = now.getFullYear();
         const m = String(now.getMonth() + 1).padStart(2, '0');
         const d = String(now.getDate()).padStart(2, '0');
         const todayIso = `${y}-${m}-${d}`;
         data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === todayIso);
-      } else if (this.dateFilter === 'YESTERDAY') {
+      } else if (dFilter === 'YESTERDAY') {
         const yDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const y_y = yDate.getFullYear();
         const y_m = String(yDate.getMonth() + 1).padStart(2, '0');
         const y_d = String(yDate.getDate()).padStart(2, '0');
         const yIso = `${y_y}-${y_m}-${y_d}`;
         data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === yIso);
-      } else if (this.dateFilter === 'CUSTOM' && this.startDate && this.endDate) {
-        const start = this.startDate;
-        const end = this.endDate;
+      } else if (dFilter === 'CUSTOM' && f.startDate && f.endDate) {
+        const start = f.startDate;
+        const end = f.endDate;
         data = data.filter(a => {
           const aIso = a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date);
           return aIso && aIso >= start && aIso <= end;
         });
-      } else if (this.dateFilter === '7_DAYS' && this.startDate && this.endDate) {
-        const start = this.startDate;
-        const end = this.endDate;
+      } else if (dFilter === '7_DAYS' && f.startDate && f.endDate) {
+        const start = f.startDate;
+        const end = f.endDate;
         data = data.filter(a => {
           const aIso = a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date);
           return aIso && aIso >= start && aIso <= end;
         });
-      } else if (this.dateFilter === 'THIS_MONTH' && this.startDate && this.endDate) {
-        const start = this.startDate;
-        const end = this.endDate;
+      } else if (dFilter === 'THIS_MONTH' && f.startDate && f.endDate) {
+        const start = f.startDate;
+        const end = f.endDate;
         data = data.filter(a => {
           const aIso = a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date);
           return aIso && aIso >= start && aIso <= end;
@@ -940,8 +1039,8 @@ function dashboardApp() {
       }
 
       // 2. Filter by Modul
-      if (this.selectedModul !== 'ALL') {
-        const selMod = this.selectedModul;
+      const selMod = f.modul || 'ALL';
+      if (selMod !== 'ALL') {
         if (selMod.length === 2) {
           data = data.filter(a => (a._officialModul || this.getCrewOfficialModul(a.namaCrew || a.kodeCrew, a.modul)).startsWith(selMod));
         } else {
@@ -949,16 +1048,9 @@ function dashboardApp() {
         }
       }
 
-      // 3. Filter by Selected Crew / Search Query
-      if (this.selectedCrew) {
-        const selCrew = this.selectedCrew.toUpperCase().trim();
-        data = data.filter(a => {
-          const cName = (a.namaCrew || '').toUpperCase().trim();
-          const cCode = (a.kodeCrew || '').toUpperCase().trim();
-          return cName === selCrew || cCode === selCrew;
-        });
-      } else if (this.searchQuery && this.searchQuery.trim()) {
-        const q = this.searchQuery.toUpperCase().trim();
+      // 3. Filter by Search Query
+      const q = (f.searchQuery || '').toUpperCase().trim();
+      if (q) {
         data = data.filter(a =>
           (a.namaCrew || '').toUpperCase().includes(q) ||
           (a.kodeCrew || '').toUpperCase().includes(q) ||
@@ -1125,35 +1217,403 @@ function dashboardApp() {
     },
 
     /**
-     * Computed Filtered Master Toko
+     * Computed Filtered Master Toko (Tab Target Jadwal Rute Scoped - Triggered on "Terapkan Filter")
      */
     get filteredMasterToko() {
       let data = this.masterToko;
       if (!data || data.length === 0) return [];
-      if (this.selectedModul !== 'ALL') {
-        const selMod = this.selectedModul;
-        if (selMod.length === 2) {
-          data = data.filter(m => (m._officialModul || this.getCrewOfficialModul(m.namaCrew || m.kodeCrew, m.modul)).startsWith(selMod));
-        } else {
-          data = data.filter(m => (m._officialModul || this.getCrewOfficialModul(m.namaCrew || m.kodeCrew, m.modul)) === selMod);
-        }
-      }
-      if (this.selectedAccount !== 'ALL') {
-        const selAcc = this.selectedAccount;
-        data = data.filter(m => (m._accUpper || (m.account || '').toUpperCase()).includes(selAcc));
-      }
-      if (this.selectedCrew) {
-        const selCrew = this.selectedCrew.toUpperCase().trim();
+
+      const f = this.filterJadwal || {};
+
+      // 1. Filter MDS / Personil Crew (PRIORITAS: Jika memilih MDS spesifik, cari langsung nama MDS tersebut)
+      const selCrew = (f.appliedSelectedCrew || 'ALL').toUpperCase().trim();
+      if (selCrew !== 'ALL') {
         data = data.filter(m => {
           const cName = (m.namaCrew || '').toUpperCase().trim();
           const cCode = (m.kodeCrew || '').toUpperCase().trim();
-          return cName === selCrew || cCode === selCrew;
+          return cName === selCrew || cCode === selCrew || (cName && (cName.includes(selCrew) || selCrew.includes(cName)));
         });
-      } else if (this.searchQuery && this.searchQuery.trim()) {
-        const q = this.searchQuery.toUpperCase().trim();
+      } else {
+        // Hanya filter modul wilayah jika sedang memilih "Semua MDS"
+        const selMod = f.appliedModul || 'ALL';
+        if (selMod !== 'ALL') {
+          if (selMod.length === 2) {
+            data = data.filter(m => (m._officialModul || this.getCrewOfficialModul(m.namaCrew || m.kodeCrew, m.modul)).startsWith(selMod));
+          } else {
+            data = data.filter(m => (m._officialModul || this.getCrewOfficialModul(m.namaCrew || m.kodeCrew, m.modul)) === selMod);
+          }
+        }
+      }
+
+      // 2. Filter Nomor Rute (1 - 31 atau ALL)
+      const selRute = String(f.appliedRute || 'ALL').trim();
+      if (selRute !== 'ALL') {
+        const numSel = parseInt(selRute, 10);
+        data = data.filter(m => {
+          const rawRute = String(m.rute || '').trim();
+          const numRaw = parseInt(rawRute.replace(/[^0-9]/g, ''), 10);
+          if (!isNaN(numSel) && !isNaN(numRaw)) {
+            return numSel === numRaw;
+          }
+          return rawRute.toUpperCase() === selRute.toUpperCase() || rawRute.toUpperCase() === ('RUTE ' + selRute).toUpperCase();
+        });
+      }
+
+      // 3. Filter Account
+      const selAcc = f.appliedAccount || 'ALL';
+      if (selAcc !== 'ALL') {
+        data = data.filter(m => (m._accUpper || (m.account || '').toUpperCase()).includes(selAcc));
+      }
+
+      // 4. Search Query (Kode Toko / Nama Toko / MDS)
+      const q = (f.appliedSearchQuery || '').toUpperCase().trim();
+      if (q) {
         data = data.filter(m => (m._searchStr || `${m.namaToko || ''} ${m.kodeToko || ''} ${m.namaCrew || ''} ${m.kodeCrew || ''} ${m.account || ''}`).toUpperCase().includes(q));
       }
+
       return data;
+    },
+
+    /**
+     * Check if user changed filter inputs but hasn't clicked "Terapkan Filter" yet
+     */
+    get hasPendingJadwalFilter() {
+      const f = this.filterJadwal || {};
+      const curMod = f.modul || 'ALL';
+      const appMod = f.appliedModul || 'ALL';
+      const curCrew = f.selectedCrew || 'ALL';
+      const appCrew = f.appliedSelectedCrew || 'ALL';
+      const curRute = String(f.rute || 'ALL');
+      const appRute = String(f.appliedRute || 'ALL');
+      const curAcc = f.account || 'ALL';
+      const appAcc = f.appliedAccount || 'ALL';
+      const curText = (f.searchInputText || '').trim();
+      const appText = (f.appliedSearchQuery || '').trim();
+
+      return curMod !== appMod || curCrew !== appCrew || curRute !== appRute || curAcc !== appAcc || curText !== appText;
+    },
+
+    _cachedCrewListByModul: new Map(),
+
+    /**
+     * Unique MDS list available in the selected module of Tab Jadwal (Cached for 0ms response)
+     */
+    get jadwalCrewList() {
+      if (!this.masterToko || this.masterToko.length === 0) return [];
+      const selMod = (this.filterJadwal && this.filterJadwal.modul) || 'ALL';
+      
+      if (!this._cachedCrewListByModul) this._cachedCrewListByModul = new Map();
+      if (this._cachedCrewListByModul.has(selMod)) {
+        return this._cachedCrewListByModul.get(selMod);
+      }
+
+      let dataset = this.masterToko;
+      if (selMod !== 'ALL') {
+        if (selMod.length === 2) {
+          dataset = dataset.filter(m => (m._officialModul || this.getCrewOfficialModul(m.namaCrew || m.kodeCrew, m.modul)).startsWith(selMod));
+        } else {
+          dataset = dataset.filter(m => (m._officialModul || this.getCrewOfficialModul(m.namaCrew || m.kodeCrew, m.modul)) === selMod);
+        }
+      }
+      
+      const nonMdsKeywords = ['VACANT', 'OPEN', 'SPV', 'RESIGN', 'ADMIN', 'EMPTY', 'LEADER', 'CIMORY', 'TEST', '-'];
+      const crewSet = new Map();
+
+      dataset.forEach(m => {
+        const rawName = (m.namaCrew || '').trim();
+        if (!rawName) return;
+        const upper = rawName.toUpperCase();
+        if (nonMdsKeywords.some(kw => upper.includes(kw))) return;
+
+        if (!crewSet.has(upper)) {
+          crewSet.set(upper, {
+            name: rawName,
+            upper: upper,
+            modul: m._officialModul || m.modul || ''
+          });
+        }
+      });
+
+      const list = Array.from(crewSet.values()).sort((a, b) => a.name.localeCompare(b.name));
+      this._cachedCrewListByModul.set(selMod, list);
+      return list;
+    },
+
+    /**
+     * Computed KPI statistics for Tab Target Jadwal Rute (Clean & Accurate)
+     */
+    get jadwalStats() {
+      const data = this.filteredMasterToko;
+      const totalToko = data.length;
+      
+      const nonMdsKeywords = ['VACANT', 'OPEN', 'SPV', 'RESIGN', 'ADMIN', 'EMPTY', 'LEADER', 'CIMORY', 'TEST', '-'];
+      const mdsNames = data
+        .map(m => (m.namaCrew || '').trim())
+        .filter(n => n && !nonMdsKeywords.some(kw => n.toUpperCase().includes(kw)));
+      
+      const uniqueMdsSet = new Set(mdsNames.map(n => n.toUpperCase()));
+      const uniqueMds = uniqueMdsSet.size;
+      const uniqueRute = new Set(data.map(m => String(m.rute || '').replace(/[^0-9]/g, '')).filter(Boolean)).size;
+      const avgTokoPerMds = uniqueMds > 0 ? Math.round(totalToko / uniqueMds) : 0;
+      const avgTokoPerRute = uniqueRute > 0 ? (totalToko / uniqueRute).toFixed(1) : 0;
+      
+      return {
+        totalToko,
+        uniqueMds,
+        uniqueRute,
+        avgTokoPerMds,
+        avgTokoPerRute
+      };
+    },
+
+    /**
+     * Initialize Master Database 49k Cache from IndexedDB (< 15ms)
+     */
+    async initStores49k() {
+      try {
+        if (window.DashboardDB) {
+          const cached = await DashboardDB.get('stores_49k', true);
+          const lastSync = await DashboardDB.get('stores_49k_synced_at', true);
+          if (cached && Array.isArray(cached) && cached.length > 0) {
+            this.stores49k = cached;
+            this.stores49kLastSynced = lastSync;
+            return;
+          }
+        }
+        // If not in DB yet, trigger initial load
+        this.syncStores49k(false);
+      } catch (e) {
+        console.warn('initStores49k Error:', e);
+      }
+    },
+
+    /**
+     * Sync Master Database 49k from Google Sheet
+     */
+    async syncStores49k(force = true) {
+      if (this.isStores49kLoading) return;
+      this.isStores49kLoading = true;
+      try {
+        const data = await ApiService.syncMasterStores49kFromSheet((msg) => {
+          console.log('[Sync 49k]:', msg);
+        });
+        if (data && data.length > 0) {
+          this.stores49k = data;
+          this.stores49kLastSynced = Date.now();
+        }
+      } catch (err) {
+        console.warn('Sync Master Toko 49k Error:', err);
+      } finally {
+        this.isStores49kLoading = false;
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+      }
+    },
+
+    /**
+     * Filtered Master 49k Store Collection (Instant In-Memory Search < 15ms)
+     */
+    get filteredTokoNasionalAll() {
+      let list = this.stores49k || [];
+      const f = this.filterTokoNasional;
+
+      if (f.account && f.account !== 'ALL') {
+        list = list.filter(s => (s.account || '').toUpperCase() === f.account);
+      }
+
+      if (f.searchQuery) {
+        const q = f.searchQuery.toLowerCase().trim();
+        list = list.filter(s =>
+          (s.kodeToko && s.kodeToko.toLowerCase().includes(q)) ||
+          (s.namaToko && s.namaToko.toLowerCase().includes(q)) ||
+          (s.branchName && s.branchName.toLowerCase().includes(q)) ||
+          (s.branchCode && s.branchCode.toLowerCase().includes(q)) ||
+          (s.kabKota && s.kabKota.toLowerCase().includes(q)) ||
+          (s.kecamatan && s.kecamatan.toLowerCase().includes(q))
+        );
+      }
+
+      return list;
+    },
+
+    get totalTokoNasionalCount() {
+      return this.filteredTokoNasionalAll.length;
+    },
+
+    get totalTokoNasionalPages() {
+      const total = this.totalTokoNasionalCount;
+      const size = this.filterTokoNasional.pageSize || 50;
+      return Math.max(1, Math.ceil(total / size));
+    },
+
+    get filteredTokoNasional() {
+      const all = this.filteredTokoNasionalAll;
+      const page = Math.min(this.filterTokoNasional.page || 1, this.totalTokoNasionalPages);
+      const size = this.filterTokoNasional.pageSize || 50;
+      const start = (page - 1) * size;
+      return all.slice(start, start + size);
+    },
+
+    onTokoNasionalSearchInput() {
+      const q = (this.filterTokoNasional.searchInputText || '').trim().toUpperCase();
+      if (q.length < 2) {
+        this.tokoNasionalSuggestions = [];
+        this.showTokoNasionalSuggestions = false;
+        return;
+      }
+      const list = this.stores49k || [];
+      const results = [];
+      const seen = new Set();
+      
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        const name = item.namaToko || '';
+        const code = item.kodeToko || '';
+        const str = item._searchStr || `${name} ${code} ${item.account || ''} ${item.alamat || ''}`;
+        
+        if (str.toUpperCase().includes(q)) {
+          const key = (code || name).toUpperCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            results.push({
+              kodeToko: item.kodeToko,
+              namaToko: item.namaToko,
+              account: item.account,
+              alamat: item.alamat,
+              lat: item.lat,
+              lon: item.lon
+            });
+            if (results.length >= 8) break;
+          }
+        }
+      }
+      this.tokoNasionalSuggestions = results;
+      this.showTokoNasionalSuggestions = results.length > 0;
+    },
+
+    selectTokoNasionalSuggestion(item) {
+      if (!item) return;
+      this.filterTokoNasional.searchInputText = item.namaToko || item.kodeToko;
+      this.showTokoNasionalSuggestions = false;
+      this.executeTokoNasionalSearch();
+    },
+
+    executeTokoNasionalSearch() {
+      this.showTokoNasionalSuggestions = false;
+      this.filterTokoNasional.searchQuery = (this.filterTokoNasional.searchInputText || '').trim();
+      this.filterTokoNasional.page = 1;
+    },
+
+    clearTokoNasionalSearch() {
+      this.filterTokoNasional.searchInputText = '';
+      this.filterTokoNasional.searchQuery = '';
+      this.tokoNasionalSuggestions = [];
+      this.showTokoNasionalSuggestions = false;
+      this.filterTokoNasional.page = 1;
+    },
+
+    setTokoNasionalPage(p) {
+      const pageNum = Math.max(1, Math.min(p, this.totalTokoNasionalPages));
+      this.filterTokoNasional.page = pageNum;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+
+    prevTokoNasionalPage() {
+      if (this.filterTokoNasional.page > 1) {
+        this.setTokoNasionalPage(this.filterTokoNasional.page - 1);
+      }
+    },
+
+    nextTokoNasionalPage() {
+      if (this.filterTokoNasional.page < this.totalTokoNasionalPages) {
+        this.setTokoNasionalPage(this.filterTokoNasional.page + 1);
+      }
+    },
+
+    get tokoNasionalPaginationWindow() {
+      const current = this.filterTokoNasional.page || 1;
+      const total = this.totalTokoNasionalPages;
+      const pages = [];
+      const delta = 2;
+      const left = Math.max(1, current - delta);
+      const right = Math.min(total, current + delta);
+
+      for (let i = left; i <= right; i++) {
+        pages.push(i);
+      }
+      return pages;
+    },
+
+    /**
+     * Modal Openers for Tab 4 Database Toko Nasional
+     */
+    openAssignStoreToMdsModal(store) {
+      this.crudModal.mode = 'assign_schedule';
+      this.crudModal.title = 'Jadwalkan Toko ke Personil MDS';
+      this.crudModal.item = store;
+      
+      const defaultModul = 'DK1';
+      const availableCrews = this.getCrewsByModul(defaultModul);
+      const firstCrew = availableCrews.length > 0 ? availableCrews[0] : { namaCrew: '', kodeCrew: '' };
+
+      this.crudModal.formData = {
+        kodeToko: store.kodeToko,
+        namaToko: store.namaToko,
+        account: store.account || 'ALFAMART',
+        modul: defaultModul,
+        namaCrew: firstCrew.namaCrew,
+        kodeCrew: firstCrew.kodeCrew,
+        rute: '1',
+        dcName: store.branchName || '',
+        kecamatan: store.kecamatan || '',
+        kota: store.kabKota || ''
+      };
+      this.crudModal.isSubmitting = false;
+      this.crudModal.isSuccess = false;
+      this.crudModal.errorMsg = '';
+      this.crudModal.statusMsg = '';
+      this.crudModal.auditResult = null;
+      this.crudModal.isOpen = true;
+    },
+
+    openEditMasterStoreModal(store) {
+      this.crudModal.mode = 'edit_master';
+      this.crudModal.title = 'Edit Data Toko di Master Database Toko';
+      this.crudModal.item = store;
+      this.crudModal.formData = {
+        kodeToko: store.kodeToko,
+        namaToko: store.namaToko,
+        account: store.account || 'ALFAMART',
+        dcCode: store.branchCode || '',
+        dcName: store.branchName || '',
+        kecamatan: store.kecamatan || '',
+        kota: store.kabKota || '',
+        provinsi: store.provinsi || '',
+        lat: store.lat || '',
+        lon: store.lon || ''
+      };
+      this.crudModal.isSubmitting = false;
+      this.crudModal.isSuccess = false;
+      this.crudModal.errorMsg = '';
+      this.crudModal.statusMsg = '';
+      this.crudModal.auditResult = null;
+      this.crudModal.isOpen = true;
+    },
+
+    openDeleteMasterStoreModal(store) {
+      this.crudModal.mode = 'delete_master';
+      this.crudModal.title = 'Hapus / Tandai Toko Tutup di Master Database';
+      this.crudModal.item = store;
+      this.crudModal.formData = {
+        kodeToko: store.kodeToko,
+        namaToko: store.namaToko,
+        account: store.account
+      };
+      this.crudModal.isSubmitting = false;
+      this.crudModal.isSuccess = false;
+      this.crudModal.errorMsg = '';
+      this.crudModal.statusMsg = '';
+      this.crudModal.auditResult = null;
+      this.crudModal.isOpen = true;
     },
 
     /**
@@ -2687,7 +3147,729 @@ function dashboardApp() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+    },
+
+    /**
+     * Tab 2: Date Filter Change Handler for Absensi
+     */
+    onAbsensiDateFilterChange() {
+      const f = this.filterAbsensi;
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+
+      if (f.dateFilter === 'TODAY') {
+        f.startDate = `${yyyy}-${mm}-${dd}`;
+        f.endDate = `${yyyy}-${mm}-${dd}`;
+      } else if (f.dateFilter === 'YESTERDAY') {
+        const yDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const y_y = yDate.getFullYear();
+        const y_m = String(yDate.getMonth() + 1).padStart(2, '0');
+        const y_d = String(yDate.getDate()).padStart(2, '0');
+        f.startDate = `${y_y}-${y_m}-${y_d}`;
+        f.endDate = `${y_y}-${y_m}-${y_d}`;
+      } else if (f.dateFilter === '7_DAYS') {
+        const past7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        f.startDate = `${past7.getFullYear()}-${String(past7.getMonth() + 1).padStart(2, '0')}-${String(past7.getDate()).padStart(2, '0')}`;
+        f.endDate = `${yyyy}-${mm}-${dd}`;
+      } else if (f.dateFilter === 'THIS_MONTH') {
+        f.startDate = `${yyyy}-${mm}-01`;
+        f.endDate = `${yyyy}-${mm}-${dd}`;
+      } else if (f.dateFilter === 'CUSTOM') {
+        f.customStartInput = f.startDate || `${yyyy}-${mm}-${dd}`;
+        f.customEndInput = f.endDate || `${yyyy}-${mm}-${dd}`;
+        return;
+      }
+      this.updateAbsensiDateLabel();
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
+    applyAbsensiCustomDates() {
+      const f = this.filterAbsensi;
+      if (!f.customStartInput || !f.customEndInput) return;
+      if (f.customStartInput > f.customEndInput) f.customEndInput = f.customStartInput;
+      f.startDate = f.customStartInput;
+      f.endDate = f.customEndInput;
+      this.updateAbsensiDateLabel();
+    },
+
+    updateAbsensiDateLabel() {
+      const f = this.filterAbsensi;
+      if (f.dateFilter === 'LATEST_DAY') {
+        f.activeDateLabel = 'Data Terakhir';
+      } else if (f.dateFilter === 'TODAY') {
+        f.activeDateLabel = 'Hari Ini';
+      } else if (f.dateFilter === 'YESTERDAY') {
+        f.activeDateLabel = 'Kemarin';
+      } else if (f.dateFilter === '7_DAYS') {
+        f.activeDateLabel = '7 Hari Terakhir';
+      } else if (f.dateFilter === 'THIS_MONTH') {
+        f.activeDateLabel = 'Bulan Ini';
+      } else if (f.dateFilter === 'CUSTOM' && f.startDate && f.endDate) {
+        f.activeDateLabel = `${f.startDate} s/d ${f.endDate}`;
+      }
+    },
+
+    executeAbsensiSearch() {
+      this.filterAbsensi.searchQuery = this.filterAbsensi.searchInputText;
+    },
+
+    clearAbsensiSearch() {
+      this.filterAbsensi.searchInputText = '';
+      this.filterAbsensi.searchQuery = '';
+    },
+
+    applyJadwalFilter() {
+      if (!this.filterJadwal) return;
+      this.filterJadwal.appliedModul = this.filterJadwal.modul || 'ALL';
+      this.filterJadwal.appliedSelectedCrew = this.filterJadwal.selectedCrew || 'ALL';
+      this.filterJadwal.appliedRute = this.filterJadwal.rute || 'ALL';
+      this.filterJadwal.appliedAccount = this.filterJadwal.account || 'ALL';
+      this.filterJadwal.appliedSearchQuery = (this.filterJadwal.searchInputText || '').trim();
+      
+      this.renderJadwalRouteMap();
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+
+    resetJadwalFilter() {
+      if (!this.filterJadwal) return;
+      this.filterJadwal.modul = 'ALL';
+      this.filterJadwal.selectedCrew = 'ALL';
+      this.filterJadwal.rute = 'ALL';
+      this.filterJadwal.account = 'ALL';
+      this.filterJadwal.searchInputText = '';
+      this.applyJadwalFilter();
+    },
+
+    onJadwalSearchInput() {
+      const q = (this.filterJadwal.searchInputText || '').trim().toUpperCase();
+      if (q.length < 2) {
+        this.jadwalStoreSuggestions = [];
+        this.showJadwalSuggestions = false;
+        return;
+      }
+      const list = this.masterToko || [];
+      const results = [];
+      const seen = new Set();
+      
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        const name = item.namaToko || '';
+        const code = item.kodeToko || '';
+        const crew = item.namaCrew || '';
+        const str = item._searchStr || `${name} ${code} ${crew} ${item.account || ''}`;
+        
+        if (str.toUpperCase().includes(q)) {
+          const key = (code || name).toUpperCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            results.push({
+              kodeToko: item.kodeToko,
+              namaToko: item.namaToko,
+              account: item.account,
+              namaCrew: item.namaCrew,
+              rute: item.rute,
+              modul: item.modul
+            });
+            if (results.length >= 8) break;
+          }
+        }
+      }
+      this.jadwalStoreSuggestions = results;
+      this.showJadwalSuggestions = results.length > 0;
+    },
+
+    selectJadwalSuggestion(item) {
+      if (!item) return;
+      this.filterJadwal.searchInputText = item.namaToko || item.kodeToko;
+      this.showJadwalSuggestions = false;
+      this.applyJadwalFilter();
+    },
+
+    executeJadwalSearch() {
+      this.showJadwalSuggestions = false;
+      this.applyJadwalFilter();
+    },
+
+    clearJadwalSearch() {
+      if (!this.filterJadwal) return;
+      this.filterJadwal.searchInputText = '';
+      this.jadwalStoreSuggestions = [];
+      this.showJadwalSuggestions = false;
+      this.applyJadwalFilter();
+    },
+
+    get isJadwalRouteActive() {
+      const f = this.filterJadwal || {};
+      return f.appliedSelectedCrew && f.appliedSelectedCrew !== 'ALL';
+    },
+
+    storeGeoMap: new Map(),
+
+    buildStoreGeoIndex() {
+      const map = new Map();
+      // 1. Index from stores49k
+      if (this.stores49k && Array.isArray(this.stores49k)) {
+        for (let i = 0; i < this.stores49k.length; i++) {
+          const s = this.stores49k[i];
+          const lat = parseFloat(s.lat);
+          const lon = parseFloat(s.lon);
+          if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
+            const code = String(s.kodeToko || '').trim().toUpperCase();
+            const name = String(s.namaToko || '').trim().toUpperCase();
+            if (code && !map.has(code)) map.set(code, { lat: s.lat, lon: s.lon });
+            if (name && !map.has(name)) map.set(name, { lat: s.lat, lon: s.lon });
+          }
+        }
+      }
+      // 2. Index from visits
+      if (this.visits && Array.isArray(this.visits)) {
+        for (let i = 0; i < this.visits.length; i++) {
+          const v = this.visits[i];
+          if (v.koordinat && !this.isGpsAnomaly(v.koordinat)) {
+            const coords = this.parseCoordinates(v.koordinat);
+            if (coords) {
+              const code = String(v.kodeToko || '').trim().toUpperCase();
+              const name = String(v.namaToko || '').trim().toUpperCase();
+              if (code && !map.has(code)) map.set(code, { lat: String(coords[0]), lon: String(coords[1]) });
+              if (name && !map.has(name)) map.set(name, { lat: String(coords[0]), lon: String(coords[1]) });
+            }
+          }
+        }
+      }
+      this.storeGeoMap = map;
+    },
+
+    getStoreGeoFromCatalog(kodeToko, namaToko) {
+      if (!this.storeGeoMap || this.storeGeoMap.size === 0) {
+        this.buildStoreGeoIndex();
+      }
+      const cCode = String(kodeToko || '').trim().toUpperCase();
+      const cName = String(namaToko || '').trim().toUpperCase();
+
+      if (cCode && this.storeGeoMap.has(cCode)) {
+        return this.storeGeoMap.get(cCode);
+      }
+      if (cName && this.storeGeoMap.has(cName)) {
+        return this.storeGeoMap.get(cName);
+      }
+      return null;
+    },
+
+    renderJadwalRouteMap() {
+      if (!this.isJadwalRouteActive) {
+        if (MapService.jadwalMarkerGroup) {
+          MapService.jadwalMarkerGroup.clearLayers();
+          MapService.jadwalPolylineGroup.clearLayers();
+        }
+        this.jadwalMapStats = { totalStores: 0, validCount: 0, totalDistKm: '0' };
+        return;
+      }
+
+      const rawStores = this.filteredMasterToko;
+      if (!rawStores || rawStores.length === 0) {
+        if (MapService.jadwalMarkerGroup) {
+          MapService.jadwalMarkerGroup.clearLayers();
+          MapService.jadwalPolylineGroup.clearLayers();
+        }
+        this.jadwalMapStats = { totalStores: 0, validCount: 0, totalDistKm: '0' };
+        return;
+      }
+
+      // Enrich with coordinates
+      const enriched = rawStores.map(st => {
+        let lat = st.lat || st.latitude;
+        let lon = st.lon || st.lng || st.longitude;
+        if (!lat || !lon) {
+          const geo = this.getStoreGeoFromCatalog(st.kodeToko, st.namaToko);
+          if (geo) {
+            lat = geo.lat;
+            lon = geo.lon;
+          }
+        }
+        return { ...st, lat, lon };
+      });
+
+      this.$nextTick(() => {
+        const mapEl = document.getElementById('jadwal-map');
+        if (!mapEl) return;
+        MapService.initJadwalMap('jadwal-map', this.theme === 'dark');
+        const ruteLabel = this.filterJadwal.appliedRute === 'ALL' ? 'Semua Rute' : `Rute ${this.filterJadwal.appliedRute}`;
+        const stats = MapService.renderJadwalRouteOnMap(enriched, this.filterJadwal.appliedSelectedCrew, ruteLabel);
+        if (stats) this.jadwalMapStats = stats;
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+
+    selectStoreForMap(store) {
+      if (!store) return;
+      this.selectedStoreForMap = store;
+
+      let lat = parseFloat(store.lat || store.latitude);
+      let lon = parseFloat(store.lon || store.lng || store.longitude);
+
+      if (isNaN(lat) || isNaN(lon) || (lat === 0 && lon === 0)) {
+        const geo = this.getStoreGeoFromCatalog(store.kodeToko, store.namaToko);
+        if (geo) {
+          lat = parseFloat(geo.lat);
+          lon = parseFloat(geo.lon);
+          store.lat = lat;
+          store.lon = lon;
+        }
+      }
+
+      if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
+        this.nearest10Stores = MapService.findNearest10Stores({ ...store, lat, lon }, this.stores49k, 10);
+        this.$nextTick(() => {
+          MapService.initTokoMap('tokonasional-map', this.theme === 'dark');
+          MapService.renderTokoWithNearestOnMap({ ...store, lat, lon }, this.nearest10Stores);
+          const container = document.getElementById('tokonasional-map-container');
+          if (container) {
+            container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+          if (window.lucide) lucide.createIcons();
+        });
+      } else {
+        this.nearest10Stores = [];
+      }
+    },
+
+    clearStoreForMap() {
+      this.selectedStoreForMap = null;
+      this.nearest10Stores = [];
+      if (MapService.tokoMarkerGroup) {
+        MapService.tokoMarkerGroup.clearLayers();
+        MapService.tokoPolylineGroup.clearLayers();
+      }
+    },
+
+    exportMasterJadwalExcel() {
+      const data = this.filteredMasterToko;
+      if (!data || data.length === 0) {
+        alert('Tidak ada data jadwal yang bisa diexport.');
+        return;
+      }
+      if (typeof XLSX === 'undefined') {
+        alert('Library XLSX belum siap, silakan refresh halaman.');
+        return;
+      }
+      const rows = data.map((m, idx) => ({
+        'No': idx + 1,
+        'Modul': m.modul || m._officialModul || '',
+        'Nama MDS / Crew': m.namaCrew || '',
+        'Kode Toko': m.kodeToko || '',
+        'Nama Toko': m.namaToko || '',
+        'Account': m.account || '',
+        'Rute': m.rute || '',
+        'Status': m.status || 'Active'
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Target Jadwal Rute');
+      const filename = `Master_Jadwal_Rute_${this.filterJadwal.modul}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, filename);
+    },
+
+    exportAbsensiExcel() {
+      const data = this.groupedAbsensi;
+      if (!data || data.length === 0) {
+        alert('Tidak ada data absensi yang bisa diexport.');
+        return;
+      }
+      if (typeof XLSX === 'undefined') {
+        alert('Library XLSX belum siap, silakan refresh halaman.');
+        return;
+      }
+      const rows = data.map((a, idx) => ({
+        'No': idx + 1,
+        'Tanggal': a.iso || a.tanggal || '',
+        'Modul': a.modul || '',
+        'Nama Crew': a.namaCrew || '',
+        'Kode Crew': a.kodeCrew || '',
+        'Jam Masuk': a.masuk ? a.masuk.waktu : '-',
+        'Status Masuk': a.masuk ? a.masuk.status : '-',
+        'Jarak Masuk vs Toko 1': a.masukDistText || '-',
+        'Jam Pulang': a.pulang ? a.pulang.waktu : '-',
+        'Status Pulang': a.pulang ? a.pulang.status : '-',
+        'Jarak Pulang vs Toko Akhir': a.pulangDistText || '-',
+        'Total Visit Hari Ini': a.totalVisitsToday || 0,
+        'Durasi Kerja': a.durasiKerja || '-',
+        'Status Evaluasi': a.overallStatus || '-'
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Absensi Tim');
+      const filename = `Laporan_Absensi_MDS_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, filename);
+    },
+
+    // ==============================================================================
+    // MULTI-SPREADSHEET CRUD & SYNC METHODS
+    // ==============================================================================
+
+    openEditJadwalModal(item) {
+      this.crudModal.mode = 'edit';
+      this.crudModal.title = 'Edit Jadwal & Informasi Toko';
+      this.crudModal.item = item;
+      this.crudModal.formData = {
+        modul: item.modul || item._officialModul || 'DK1',
+        account: item.account || 'ALFAMART',
+        kodeToko: item.kodeToko || '',
+        namaToko: item.namaToko || '',
+        rute: String(item.rute || '1').replace(/[^0-9]/g, '') || '1',
+        namaCrew: item.namaCrew || '',
+        kodeCrew: item.kodeCrew || ''
+      };
+      this.crudModal.isSubmitting = false;
+      this.crudModal.isSuccess = false;
+      this.crudModal.errorMsg = '';
+      this.crudModal.statusMsg = '';
+      this.crudModal.auditResult = null;
+      this.crudModal.isOpen = true;
+    },
+
+    openTransferJadwalModal(item) {
+      this.crudModal.mode = 'transfer';
+      this.crudModal.title = 'Transfer Toko ke Personil MDS Lain';
+      this.crudModal.item = item;
+      this.crudModal.formData = {
+        modul: item.modul || item._officialModul || 'DK1',
+        account: item.account || 'ALFAMART',
+        kodeToko: item.kodeToko || '',
+        namaToko: item.namaToko || '',
+        rute: String(item.rute || '1').replace(/[^0-9]/g, '') || '1',
+        oldNamaCrew: item.namaCrew || '',
+        oldKodeCrew: item.kodeCrew || '',
+        newModul: item.modul || item._officialModul || 'DK1',
+        newCrewName: '',
+        newCrewCode: '',
+        newRute: String(item.rute || '1').replace(/[^0-9]/g, '') || '1'
+      };
+      this.crudModal.isSubmitting = false;
+      this.crudModal.isSuccess = false;
+      this.crudModal.errorMsg = '';
+      this.crudModal.statusMsg = '';
+      this.crudModal.auditResult = null;
+      this.crudModal.isOpen = true;
+    },
+
+    onNewCrewSelected(crewName) {
+      if (!crewName) return;
+      const crewObj = (this.jadwalCrewList || []).find(c => c.name === crewName);
+      if (crewObj) {
+        this.crudModal.formData.newCrewCode = crewObj.id || crewObj.code || '';
+        this.crudModal.formData.newModul = crewObj.modul || this.crudModal.formData.modul;
+      }
+    },
+
+    openDeleteJadwalModal(item) {
+      this.crudModal.mode = 'delete';
+      this.crudModal.title = 'Hapus Toko dari Jadwal Kunjungan';
+      this.crudModal.item = item;
+      this.crudModal.formData = {
+        modul: item.modul || item._officialModul || '',
+        account: item.account || '',
+        kodeToko: item.kodeToko || '',
+        namaToko: item.namaToko || '',
+        rute: item.rute || '',
+        namaCrew: item.namaCrew || '',
+        kodeCrew: item.kodeCrew || ''
+      };
+      this.crudModal.isSubmitting = false;
+      this.crudModal.isSuccess = false;
+      this.crudModal.errorMsg = '';
+      this.crudModal.statusMsg = '';
+      this.crudModal.auditResult = null;
+      this.crudModal.isOpen = true;
+    },
+
+    openCreateMasterStoreModal() {
+      this.crudModal.mode = 'create_master';
+      this.crudModal.title = 'Tambah Toko Baru ke Master Database Toko';
+      this.crudModal.item = null;
+      this.crudModal.formData = {
+        kodeToko: '',
+        namaToko: '',
+        account: 'ALFAMART',
+        dcName: '',
+        kecamatan: '',
+        kota: '',
+        provinsi: '',
+        lat: '',
+        lon: ''
+      };
+      this.crudModal.isSubmitting = false;
+      this.crudModal.isSuccess = false;
+      this.crudModal.errorMsg = '';
+      this.crudModal.statusMsg = '';
+      this.crudModal.auditResult = null;
+      this.crudModal.isOpen = true;
+    },
+
+    openPurgeDuplicatesModal() {
+      this.crudModal.mode = 'purge_duplicates';
+      this.crudModal.title = 'Scan & Bersihkan Duplikat Jadwal (Anti-Dobel)';
+      this.crudModal.item = null;
+      this.crudModal.formData = {
+        modul: this.filterJadwal.modul || 'ALL'
+      };
+      this.crudModal.isSubmitting = false;
+      this.crudModal.isSuccess = false;
+      this.crudModal.errorMsg = '';
+      this.crudModal.statusMsg = '';
+      this.crudModal.auditResult = null;
+      this.crudModal.isOpen = true;
+    },
+
+    closeCrudModal() {
+      this.crudModal.isOpen = false;
+      this.crudModal.isSubmitting = false;
+      this.crudModal.isSuccess = false;
+      this.crudModal.errorMsg = '';
+      this.crudModal.statusMsg = '';
+      this.crudModal.auditResult = null;
+    },
+
+    async executeCrudSubmit() {
+      const mode = this.crudModal.mode;
+      const f = this.crudModal.formData;
+      const item = this.crudModal.item;
+
+      this.crudModal.isSubmitting = true;
+      this.crudModal.errorMsg = '';
+      this.crudModal.statusMsg = 'Menghubungkan ke Central Backend Spreadsheet...';
+
+      try {
+        if (mode === 'edit') {
+          if (!f.kodeToko || !f.namaToko) throw new Error('Kode Toko dan Nama Toko wajib diisi.');
+
+          const payload = {
+            oldData: {
+              modul: item.modul || item._officialModul,
+              account: item.account,
+              kodeToko: item.kodeToko,
+              namaToko: item.namaToko,
+              rute: item.rute,
+              namaCrew: item.namaCrew,
+              kodeCrew: item.kodeCrew
+            },
+            newData: {
+              modul: f.modul,
+              account: f.account,
+              kodeToko: f.kodeToko,
+              namaToko: f.namaToko,
+              rute: f.rute
+            }
+          };
+
+          this.crudModal.statusMsg = 'Mengupdate baris di Pipeline Sentral & Modul Spreadsheet...';
+          const res = await ApiService.postAction('update_store_route_info', payload);
+
+          // Optimistic local cache update
+          const foundIdx = this.masterToko.findIndex(m => m === item || (m.kodeToko === item.kodeToko && m.rute === item.rute && m.namaCrew === item.namaCrew));
+          if (foundIdx !== -1) {
+            this.masterToko[foundIdx] = {
+              ...this.masterToko[foundIdx],
+              modul: f.modul,
+              _officialModul: f.modul,
+              account: f.account,
+              kodeToko: f.kodeToko,
+              namaToko: f.namaToko,
+              rute: f.rute
+            };
+          }
+
+          this.crudModal.isSuccess = true;
+          this.crudModal.auditResult = res.data;
+          this.crudModal.statusMsg = (res.data && res.data.message) || 'Perubahan berhasil disinkronkan ke seluruh spreadsheet!';
+          
+          // Clear API cache & Trigger Fresh Background Sync
+          if (ApiService.memoryCache) ApiService.memoryCache.clear();
+          this.saveSessionState();
+          await this.refreshAllData(false);
+
+        } else if (mode === 'transfer') {
+          if (!f.newCrewName) throw new Error('Silakan pilih Personil MDS baru tujuan transfer.');
+
+          const payload = {
+            store: item,
+            oldCrewName: item.namaCrew,
+            oldCrewCode: item.kodeCrew,
+            oldModul: item.modul || item._officialModul,
+            oldRute: item.rute,
+            newCrewName: f.newCrewName,
+            newCrewCode: f.newCrewCode,
+            newModul: f.newModul,
+            newRute: f.newRute
+          };
+
+          this.crudModal.statusMsg = `Mentransfer toko ke ${f.newCrewName} di Modul ${f.newModul}...`;
+          const res = await ApiService.postAction('transfer_store_crew', payload);
+
+          // Optimistic local cache update
+          const foundIdx = this.masterToko.findIndex(m => m === item || (m.kodeToko === item.kodeToko && m.rute === item.rute && m.namaCrew === item.namaCrew));
+          if (foundIdx !== -1) {
+            this.masterToko[foundIdx] = {
+              ...this.masterToko[foundIdx],
+              namaCrew: f.newCrewName,
+              kodeCrew: f.newCrewCode,
+              modul: f.newModul,
+              _officialModul: f.newModul,
+              rute: f.newRute
+            };
+          }
+
+          this.crudModal.isSuccess = true;
+          this.crudModal.auditResult = res.data;
+          this.crudModal.statusMsg = (res.data && res.data.message) || `Toko berhasil ditransfer ke ${f.newCrewName}!`;
+          
+          // Clear API cache & Trigger Fresh Background Sync
+          if (ApiService.memoryCache) ApiService.memoryCache.clear();
+          this.saveSessionState();
+          await this.refreshAllData(false);
+
+        } else if (mode === 'delete') {
+          const payload = {
+            store: {
+              modul: item.modul || item._officialModul,
+              account: item.account,
+              kodeToko: item.kodeToko,
+              namaToko: item.namaToko,
+              rute: item.rute,
+              namaCrew: item.namaCrew,
+              kodeCrew: item.kodeCrew
+            }
+          };
+
+          this.crudModal.statusMsg = 'Menghapus baris jadwal di Spreadsheet Pipeline & Modul...';
+          const res = await ApiService.postAction('delete_scheduled_store', payload);
+
+          // Optimistic local cache removal
+          this.masterToko = this.masterToko.filter(m => !(m === item || (m.kodeToko === item.kodeToko && m.rute === item.rute && m.namaCrew === item.namaCrew)));
+
+          this.crudModal.isSuccess = true;
+          this.crudModal.auditResult = res.data;
+          this.crudModal.statusMsg = (res.data && res.data.message) || 'Toko berhasil dihapus dari jadwal kunjungan!';
+          
+          // Clear API cache & Trigger Fresh Background Sync
+          if (ApiService.memoryCache) ApiService.memoryCache.clear();
+          this.saveSessionState();
+          await this.refreshAllData(false);
+
+        } else if (mode === 'create_master') {
+          if (!f.kodeToko || !f.namaToko) throw new Error('Kode Toko dan Nama Toko wajib diisi.');
+
+          this.crudModal.statusMsg = 'Mendaftarkan toko ke Master Database 49k...';
+          const res = await ApiService.postAction('create_or_update_master_store', { store: f });
+
+          this.crudModal.isSuccess = true;
+          this.crudModal.auditResult = res.data;
+          this.crudModal.statusMsg = (res.data && res.data.message) || 'Toko baru berhasil tersimpan di Master Database!';
+          
+          // Clear API cache & Trigger Fresh Background Sync
+          if (ApiService.memoryCache) ApiService.memoryCache.clear();
+          await this.refreshAllData(false);
+
+        } else if (mode === 'assign_schedule') {
+          if (!f.namaCrew) throw new Error('Silakan pilih personil MDS tujuan.');
+          this.crudModal.statusMsg = `Menjadwalkan toko ke ${f.namaCrew} (Modul ${f.modul}, Rute ${f.rute})...`;
+          const res = await ApiService.postAction('assign_scheduled_store', {
+            store: item,
+            modul: f.modul,
+            namaCrew: f.namaCrew,
+            kodeCrew: f.kodeCrew,
+            rute: f.rute
+          });
+
+          // Optimistic local add to masterToko
+          this.masterToko.push({
+            modul: f.modul,
+            _officialModul: f.modul,
+            account: item.account || f.account,
+            kodeToko: item.kodeToko,
+            namaToko: item.namaToko,
+            kodeCrew: f.kodeCrew,
+            namaCrew: f.namaCrew,
+            rute: f.rute
+          });
+
+          this.crudModal.isSuccess = true;
+          this.crudModal.auditResult = res.data;
+          this.crudModal.statusMsg = (res.data && res.data.message) || `Toko berhasil dijadwalkan ke ${f.namaCrew}!`;
+          if (ApiService.memoryCache) ApiService.memoryCache.clear();
+          this.saveSessionState();
+          await this.refreshAllData(false);
+
+        } else if (mode === 'edit_master') {
+          if (!f.kodeToko || !f.namaToko) throw new Error('Kode Toko dan Nama Toko wajib diisi.');
+          this.crudModal.statusMsg = 'Menyimpan perubahan toko di Master Database 49k...';
+          const res = await ApiService.postAction('create_or_update_master_store', { store: f });
+
+          // Optimistic local update in stores49k
+          const sIdx = this.stores49k.findIndex(s => s.kodeToko === f.kodeToko || s === item);
+          if (sIdx !== -1) {
+            this.stores49k[sIdx] = {
+              ...this.stores49k[sIdx],
+              namaToko: f.namaToko,
+              account: f.account,
+              branchName: f.dcName,
+              kecamatan: f.kecamatan,
+              kabKota: f.kota,
+              lat: f.lat,
+              lon: f.lon
+            };
+            if (window.DashboardDB) {
+              await DashboardDB.set('stores_49k', this.stores49k, 7 * 24 * 60 * 60 * 1000);
+            }
+          }
+
+          this.crudModal.isSuccess = true;
+          this.crudModal.auditResult = res.data;
+          this.crudModal.statusMsg = (res.data && res.data.message) || 'Data Master Toko berhasil diperbarui!';
+          if (ApiService.memoryCache) ApiService.memoryCache.clear();
+
+        } else if (mode === 'delete_master') {
+          this.crudModal.statusMsg = 'Menghapus toko dari Master Database 49k...';
+          const res = await ApiService.postAction('delete_master_store', { kodeToko: f.kodeToko });
+
+          // Optimistic local removal from stores49k
+          this.stores49k = this.stores49k.filter(s => s.kodeToko !== f.kodeToko && s !== item);
+          if (window.DashboardDB) {
+            await DashboardDB.set('stores_49k', this.stores49k, 7 * 24 * 60 * 60 * 1000);
+          }
+
+          this.crudModal.isSuccess = true;
+          this.crudModal.auditResult = res.data;
+          this.crudModal.statusMsg = (res.data && res.data.message) || 'Toko berhasil dihapus dari Master Database!';
+          if (ApiService.memoryCache) ApiService.memoryCache.clear();
+
+        } else if (mode === 'purge_duplicates') {
+          this.crudModal.statusMsg = 'Memindai seluruh baris duplikat di Master_Toko...';
+          const res = await ApiService.postAction('purge_duplicate_routes', { modul: f.modul });
+
+          this.crudModal.isSuccess = true;
+          this.crudModal.auditResult = res.data;
+          this.crudModal.statusMsg = (res.data && res.data.message) || 'Pembersihan duplikat selesai!';
+          
+          // Clear API cache & Re-fetch clean master toko data
+          if (ApiService.memoryCache) ApiService.memoryCache.clear();
+          await this.refreshAllData(false);
+        }
+
+      } catch (err) {
+        console.error('CRUD Execution Error:', err);
+        this.crudModal.errorMsg = err.message || 'Terjadi kesalahan saat memproses data ke Google Sheet.';
+      } finally {
+        this.crudModal.isSubmitting = false;
+        this.$nextTick(() => {
+          if (window.lucide) lucide.createIcons();
+        });
+      }
     }
   };
 }
+
 

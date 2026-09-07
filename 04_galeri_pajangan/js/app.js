@@ -9,6 +9,7 @@ function galleryApp() {
     theme: localStorage.getItem('gallery_theme') || 'dark',
     isLoading: true,
     loadingMessage: 'Menghubungkan ke Database Foto...',
+    showAppMenu: false,
     
     // SPV Review Mode
     isReviewMode: false,

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id" class="h-full" :class="theme === 'dark' ? 'dark' : ''" x-data="dashboardApp()" x-init="initApp()">
+<html lang="id" class="min-h-full scroll-smooth" :class="theme === 'dark' ? 'dark' : ''" x-data="dashboardApp()" x-init="initApp()">
 
 <head>
   <meta charset="UTF-8">
@@ -48,10 +48,11 @@
     }
   </script>
 
-  <!-- External Libraries: Lucide, Chart.js, Leaflet.js, Alpine.js, html2canvas -->
+  <!-- External Libraries: Lucide, Chart.js, Leaflet.js, Alpine.js, html2canvas, SheetJS (XLSX) -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
@@ -67,7 +68,7 @@
   </style>
 </head>
 
-<body class="min-h-screen w-full overflow-x-hidden antialiased font-sans flex flex-col bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-200">
+<body class="min-h-screen w-full antialiased font-sans flex flex-col bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-200">
 
   <!-- INITIAL SPLASH PRELOADER (Visible on first load before Alpine scripts finish) -->
   <div id="initial-preloader" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl">
@@ -95,10 +96,12 @@
   </div>
 
   <!-- ============================================================================== -->
-  <!-- 1. TOP NAVBAR -->
+  <!-- 1. FIXED TOP NAVBAR & TABS CONTAINER -->
   <!-- ============================================================================== -->
-  <header class="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 glass-nav border-b border-slate-200 dark:border-slate-800 w-full max-w-full overflow-hidden">
-    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-1.5">
+  <header class="fixed top-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+    
+    <!-- Top Row: Logo & Controls -->
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-1.5 border-b border-slate-200/60 dark:border-slate-800/60">
       
       <!-- Brand Logo -->
       <div class="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
@@ -121,6 +124,94 @@
       <!-- Center / Right Controls -->
       <div class="flex items-center space-x-1.5 sm:space-x-3 flex-shrink-0">
         
+        <!-- Universal 5-Module App Switcher Dropdown -->
+        <div class="relative" @click.away="showAppMenu = false">
+          <button type="button" @click="showAppMenu = !showAppMenu; $nextTick(() => { if (window.lucide) lucide.createIcons(); })"
+            class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm">
+            <i data-lucide="layout-grid" class="w-3.5 h-3.5 text-brand-500"></i>
+            <span class="hidden sm:inline">Pindah Modul</span>
+            <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400 transition-transform duration-200" :class="showAppMenu ? 'rotate-180' : ''"></i>
+          </button>
+
+          <!-- Dropdown Menu -->
+          <div x-show="showAppMenu" x-cloak
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="opacity-0 scale-95 -translate-y-1"
+            x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+            x-transition:leave="transition ease-in duration-150"
+            x-transition:leave-start="opacity-100 scale-100 translate-y-0"
+            x-transition:leave-end="opacity-0 scale-95 -translate-y-1"
+            class="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-2 z-50 space-y-1 text-xs">
+            
+            <div class="px-2.5 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+              Pusat Navigasi Modul Cimory
+            </div>
+
+            <!-- 0. Portal Hub -->
+            <a href="../index.html"
+              class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
+              <div class="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                🏠
+              </div>
+              <div class="min-w-0">
+                <div class="font-bold text-slate-900 dark:text-white">Portal Hub Utama</div>
+                <div class="text-[10px] text-slate-400 truncate">Menu utama navigasi seluruh modul</div>
+              </div>
+            </a>
+
+            <!-- 1. Web Absen -->
+            <a href="../01_web_absen/index.html"
+              class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
+              <div class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                📱
+              </div>
+              <div class="min-w-0">
+                <div class="font-bold text-slate-900 dark:text-white">01. Web Absen & Jadwal</div>
+                <div class="text-[10px] text-slate-400 truncate">Input absensi GPS & jadwal lapangan</div>
+              </div>
+            </a>
+
+            <!-- 2. Dashboard Monitoring (Active) -->
+            <div class="flex items-center gap-2.5 p-2 rounded-xl bg-brand-500/10 border border-brand-500/20 text-brand-600 dark:text-brand-400 font-bold">
+              <div class="w-7 h-7 rounded-lg bg-brand-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                📊
+              </div>
+              <div class="min-w-0">
+                <div class="text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span>02. Dashboard Monitoring</span>
+                  <span class="px-1.5 py-0.2 rounded text-[9px] font-black bg-brand-500 text-white">AKTIF</span>
+                </div>
+                <div class="text-[10px] text-brand-600 dark:text-brand-400 truncate">Analitik operasional DK, LK, LP & KPI</div>
+              </div>
+            </div>
+
+            <!-- 4. Galeri Pajangan -->
+            <a href="../04_galeri_pajangan/index.html"
+              class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
+              <div class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                🖼️
+              </div>
+              <div class="min-w-0">
+                <div class="font-bold text-slate-900 dark:text-white">04. Galeri Pajangan</div>
+                <div class="text-[10px] text-slate-400 truncate">Audit foto Before/After planogram</div>
+              </div>
+            </a>
+
+            <!-- 5. Simulasi Rute -->
+            <a href="../05_simulasi_rute/index.html"
+              class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
+              <div class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                🗺️
+              </div>
+              <div class="min-w-0">
+                <div class="font-bold text-slate-900 dark:text-white">05. Simulasi Rute MDS</div>
+                <div class="text-[10px] text-slate-400 truncate">Simulasi 25 hari kerja & perdin</div>
+              </div>
+            </a>
+
+          </div>
+        </div>
+
         <!-- Period / Archive Selector Dropdown -->
         <div class="relative">
           <select x-model="selectedPeriod" @change="onPeriodChange()"
@@ -137,7 +228,7 @@
 
         <!-- Role Toggle Pill -->
         <button @click="toggleRole()"
-          class="hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+          class="hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer"
           :class="role === 'admin' ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'">
           <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
           <span x-text="role === 'admin' ? 'Supervisor' : 'Field MDS'"></span>
@@ -145,29 +236,25 @@
 
         <!-- Refresh Button -->
         <button @click="refreshAllData()" title="Refresh Data Real-time"
-          class="p-1.5 sm:p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+          class="p-1.5 sm:p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer">
           <i data-lucide="refresh-cw" class="w-3.5 h-3.5 sm:w-4 sm:h-4" :class="isLoading ? 'animate-spin text-brand-500' : ''"></i>
         </button>
 
         <!-- Theme Toggle -->
         <button @click="toggleTheme()" title="Ubah Tema"
-          class="p-1.5 sm:p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+          class="p-1.5 sm:p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer">
           <i data-lucide="sun" class="w-3.5 h-3.5 sm:w-4 sm:h-4 hidden dark:block"></i>
           <i data-lucide="moon" class="w-3.5 h-3.5 sm:w-4 sm:h-4 block dark:hidden"></i>
         </button>
       </div>
 
     </div>
-  </header>
 
-  <!-- ============================================================================== -->
-  <!-- 2. MAIN NAVIGATION TABS -->
-  <!-- ============================================================================== -->
-  <div class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+    <!-- Bottom Row: Navigation Tabs (Fixed & Sticky with Header) -->
     <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 flex space-x-2 sm:space-x-3 overflow-x-auto py-2.5 touch-scroll no-scrollbar">
       
       <button @click="activeTab = 'kunjungan'"
-        class="flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0"
+        class="flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
         :class="activeTab === 'kunjungan' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'">
         <i data-lucide="map-pin" class="w-4 h-4"></i>
         <span>Kunjungan Lapangan</span>
@@ -175,7 +262,7 @@
       </button>
 
       <button @click="activeTab = 'absensi'"
-        class="flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0"
+        class="flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
         :class="activeTab === 'absensi' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'">
         <i data-lucide="clock" class="w-4 h-4"></i>
         <span>Absensi Tim</span>
@@ -183,201 +270,206 @@
       </button>
 
       <button @click="activeTab = 'jadwal'"
-        class="flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0"
+        class="flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
         :class="activeTab === 'jadwal' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'">
         <i data-lucide="calendar" class="w-4 h-4"></i>
         <span>Target Jadwal Rute</span>
         <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-bold" x-text="filteredMasterToko.length"></span>
       </button>
 
-    </div>
-  </div>
-
-  <!-- ============================================================================== -->
-  <!-- 3. FILTER & ACTION BAR -->
-  <!-- ============================================================================== -->
-  <section class="max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6">
-    <div class="glass-card rounded-2xl p-3.5 sm:p-4 shadow-sm border border-slate-200/80 dark:border-slate-800/80 space-y-3">
-      
-      <!-- Primary Controls Grid (4 Symmetrical Columns: Modul, Periode, Account, Search MDS/Toko) -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        
-        <!-- 1. Modul Wilayah -->
-        <div>
-          <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Modul Wilayah</label>
-          <div class="relative">
-            <select x-model="selectedModul" @change="refreshAllData()"
-              class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer">
-              <template x-for="m in CONFIG.MODULES" :key="m.code">
-                <option :value="m.code" x-text="m.name"></option>
-              </template>
-            </select>
-          </div>
-        </div>
-
-        <!-- 2. Periode Waktu -->
-        <div>
-          <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Periode Waktu</label>
-          <div class="relative">
-            <select x-model="dateFilter" @change="onDateFilterChange()"
-              class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer">
-              <option value="LATEST_DAY">⚡ Hari Terakhir Aktif (Auto)</option>
-              <option value="YESTERDAY">Kemarin / H-1 (Evaluasi)</option>
-              <option value="TODAY">Hari Ini Saja (Real-time)</option>
-              <option value="7_DAYS">7 Hari Terakhir</option>
-              <option value="THIS_MONTH">Bulan Ini (Semua)</option>
-              <option value="CUSTOM">📅 Pilih Rentang Tanggal...</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- 3. Account Toko -->
-        <div>
-          <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Account Toko</label>
-          <div class="relative">
-            <select x-model="selectedAccount"
-              class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer">
-              <template x-for="acc in CONFIG.ACCOUNTS" :key="acc">
-                <option :value="acc" x-text="acc === 'ALL' ? 'Semua Account' : acc"></option>
-              </template>
-            </select>
-          </div>
-        </div>
-
-        <!-- 4. Pencarian MDS / Toko (Global Search) -->
-        <div>
-          <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Cari MDS / Toko</label>
-          <div class="relative flex items-center">
-            <input type="text" x-model="searchInputText" @keydown.enter.prevent="executeSearch()" placeholder="Ketik nama MDS / Toko..."
-              class="w-full h-10 text-xs font-medium pl-8 pr-20 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all">
-            <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-              <i data-lucide="search" class="w-3.5 h-3.5"></i>
-            </div>
-            <button type="button" x-show="searchInputText" @click="clearSearch()" class="absolute right-14 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1" title="Hapus teks">
-              <i data-lucide="x" class="w-3.5 h-3.5"></i>
-            </button>
-            <button type="button" @click="executeSearch()" class="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 px-2.5 bg-brand-500 hover:bg-brand-600 active:scale-95 text-white font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 shadow-sm" title="Klik atau tekan Enter untuk cari">
-              <span>Cari</span>
-            </button>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- MULTI-MDS DISAMBIGUATION SUGGESTION BAR (GLOBAL ACROSS ALL TABS) -->
-      <div x-show="matchingCrewSuggestions.length > 0 && (searchQuery || searchInputText).trim().length >= 2" x-cloak
-        class="p-2.5 px-3.5 rounded-xl bg-brand-50/90 dark:bg-brand-950/40 border border-brand-200/70 dark:border-brand-800/50 flex flex-wrap items-center gap-2 text-xs transition-all">
-        <div class="flex items-center gap-1.5 text-brand-700 dark:text-brand-300 font-semibold flex-shrink-0">
-          <i data-lucide="users" class="w-3.5 h-3.5"></i>
-          <span x-text="`Ditemukan ${matchingCrewSuggestions.length} MDS '${(searchQuery || searchInputText).trim()}':`"></span>
-        </div>
-        
-        <div class="flex flex-wrap items-center gap-1.5">
-          <template x-for="c in matchingCrewSuggestions" :key="c.namaCrew + c.kodeCrew">
-            <button type="button" @click="selectCrewSuggestion(c)"
-              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shadow-sm cursor-pointer"
-              :class="(selectedCrew || '').toUpperCase() === c.namaCrew.toUpperCase() ? 'bg-brand-500 text-white shadow-brand-500/30 ring-2 ring-brand-400' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-brand-100 dark:hover:bg-brand-900/50 border border-slate-200 dark:border-slate-700'">
-              <span x-text="c.namaCrew"></span>
-              <span class="px-1.5 py-0.2 rounded text-[9.5px] font-extrabold"
-                :class="(selectedCrew || '').toUpperCase() === c.namaCrew.toUpperCase() ? 'bg-white/25 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'"
-                x-text="`${c.modul}${c.visitCount > 0 ? ' • ' + c.visitCount + ' Toko' : ' • 0 Toko'}`"></span>
-            </button>
-          </template>
-        </div>
-      </div>
-
-      <!-- Custom Date Range Picker (Responsive Fluid Grid) -->
-      <!-- Custom Date Range Picker (Responsive Fluid Grid with Full Range Protection) -->
-      <div x-show="dateFilter === 'CUSTOM'" x-cloak x-transition
-        class="p-3 sm:p-3.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 space-y-2.5">
-        <div class="flex items-center space-x-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-          <i data-lucide="calendar-range" class="w-4 h-4 text-brand-500 flex-shrink-0"></i>
-          <span>Tentukan Rentang Tanggal:</span>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] gap-2.5 items-end">
-          <div class="min-w-0">
-            <span class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Dari Tanggal</span>
-            <input type="date" x-model="customStartInput" :max="customEndInput" title="Dari Tanggal"
-              class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500">
-          </div>
-          <div class="min-w-0">
-            <span class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Sampai Tanggal</span>
-            <input type="date" x-model="customEndInput" :min="customStartInput" title="Sampai Tanggal"
-              class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500">
-          </div>
-          <div class="sm:col-span-2 lg:col-span-1">
-            <button @click="applyCustomDates()" title="Terapkan Tanggal"
-              class="w-full lg:w-auto h-10 px-4 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center space-x-1.5 flex-shrink-0 cursor-pointer">
-              <i data-lucide="check" class="w-4 h-4"></i>
-              <span>Terapkan Rentang</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Action Toolbar & Active Date Status -->
-      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between pt-2.5 border-t border-slate-200/70 dark:border-slate-800/80 gap-2.5">
-        
-        <!-- Left: Status Active Date Pill & Active Filter Pill -->
-        <div class="flex flex-wrap items-center gap-2 text-xs min-w-0">
-          <div class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20 font-semibold text-[11px] truncate max-w-full">
-            <i data-lucide="calendar" class="w-3.5 h-3.5 text-brand-500 flex-shrink-0"></i>
-            <span class="flex-shrink-0">Data:</span>
-            <span class="font-bold truncate" x-text="activeDateLabel || 'Memuat tanggal...'"></span>
-          </div>
-
-          <!-- Active Filter Pill with 1-Click Clear from Any Tab -->
-          <div x-show="selectedCrew || searchQuery" x-cloak class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-semibold text-[11px] transition-all">
-            <i data-lucide="filter" class="w-3 h-3 text-amber-500 flex-shrink-0"></i>
-            <span>Filter:</span>
-            <span class="font-bold text-amber-800 dark:text-amber-200" x-text="selectedCrew ? `MDS: ${selectedCrew}` : `Cari: '${searchQuery}'`"></span>
-            <button type="button" @click="clearSearch()" class="ml-1 p-0.5 rounded hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center cursor-pointer" title="Hapus Filter">
-              <i data-lucide="x" class="w-3.5 h-3.5"></i>
-            </button>
-          </div>
-        </div>
-
-        <!-- Right: Action Buttons Group (3 Equal Columns on Mobile, Flex on Desktop) -->
-        <div class="grid grid-cols-3 sm:flex sm:items-center gap-2 w-full sm:w-auto">
-          
-          <!-- Audit Anomali Button -->
-          <button @click="openAnomalyModal()" title="Audit Anomali Absen vs Kunjungan"
-            class="h-9 flex items-center justify-center space-x-1.5 px-2.5 sm:px-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shadow-sm active:scale-95"
-            :class="auditAnomalies.totalAnomalies > 0 ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/20 animate-pulse' : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'">
-            <i data-lucide="shield-alert" class="w-3.5 h-3.5 flex-shrink-0"></i>
-            <span class="hidden sm:inline">Audit Anomali</span>
-            <span class="sm:hidden">Audit</span>
-            <span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold" :class="auditAnomalies.totalAnomalies > 0 ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700'" x-text="auditAnomalies.totalAnomalies"></span>
-          </button>
-
-          <!-- Share WA Button -->
-          <button @click="openWaReportModal()" title="Bagikan Format Laporan ke WhatsApp"
-            class="h-9 flex items-center justify-center space-x-1.5 px-2.5 sm:px-3.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-95 whitespace-nowrap">
-            <i data-lucide="share-2" class="w-3.5 h-3.5 flex-shrink-0"></i>
-            <span>Share WA</span>
-          </button>
-
-          <!-- Export CSV Button -->
-          <button @click="exportVisitsToCSV()" title="Export CSV Data Kunjungan"
-            class="h-9 flex items-center justify-center space-x-1.5 px-2.5 sm:px-3 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors whitespace-nowrap active:scale-95">
-            <i data-lucide="download" class="w-3.5 h-3.5 flex-shrink-0"></i>
-            <span>CSV</span>
-          </button>
-
-        </div>
-
-      </div>
+      <button @click="activeTab = 'tokonasional'"
+        class="flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
+        :class="activeTab === 'tokonasional' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'">
+        <i data-lucide="store" class="w-4 h-4"></i>
+        <span>Database Toko</span>
+        <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-bold" x-text="stores49k.length ? stores49k.length.toLocaleString('id-ID') : '0'"></span>
+      </button>
 
     </div>
-  </section>
+  </header>
 
   <!-- ============================================================================== -->
-  <!-- 4. TAB 1: KUNJUNGAN LAPANGAN CONTENT -->
+  <!-- 3. MAIN DASHBOARD CONTENT (TABS CONTAINER) -->
   <!-- ============================================================================== -->
-  <main class="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-6 overflow-x-hidden min-w-0">
+  <main class="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pt-28 sm:pt-32 pb-8 space-y-6 overflow-x-hidden min-w-0">
 
-    <!-- TAB 1: KUNJUNGAN -->
+    <!-- ============================================================================== -->
+    <!-- 4. TAB 1: KUNJUNGAN LAPANGAN & KPI OVERVIEW -->
+    <!-- ============================================================================== -->
     <div x-show="activeTab === 'kunjungan'" class="space-y-6 min-w-0">
+      
+      <!-- TAB 1: DEDICATED FILTER & ACTION BAR -->
+      <div class="glass-card rounded-2xl p-3.5 sm:p-4 shadow-sm border border-slate-200/80 dark:border-slate-800/80 space-y-3 relative z-20">
+        
+        <!-- Primary Controls Grid (4 Symmetrical Columns: Modul, Periode, Account, Search MDS/Toko) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          
+          <!-- 1. Modul Wilayah -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Modul Wilayah</label>
+            <div class="relative">
+              <select x-model="selectedModul" @change="refreshAllData()"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer">
+                <template x-for="m in CONFIG.MODULES" :key="m.code">
+                  <option :value="m.code" x-text="m.name"></option>
+                </template>
+              </select>
+            </div>
+          </div>
+
+          <!-- 2. Periode Waktu -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Periode Kunjungan</label>
+            <div class="relative">
+              <select x-model="dateFilter" @change="onDateFilterChange()"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer">
+                <option value="LATEST_DAY">⚡ Hari Terakhir Aktif (Auto)</option>
+                <option value="YESTERDAY">Kemarin / H-1 (Evaluasi)</option>
+                <option value="TODAY">Hari Ini Saja (Real-time)</option>
+                <option value="7_DAYS">7 Hari Terakhir</option>
+                <option value="THIS_MONTH">Bulan Ini (Semua)</option>
+                <option value="CUSTOM">📅 Pilih Rentang Tanggal...</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 3. Account Toko -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Account Toko</label>
+            <div class="relative">
+              <select x-model="selectedAccount"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer">
+                <template x-for="acc in CONFIG.ACCOUNTS" :key="acc">
+                  <option :value="acc" x-text="acc === 'ALL' ? 'Semua Account' : acc"></option>
+                </template>
+              </select>
+            </div>
+          </div>
+
+          <!-- 4. Pencarian MDS / Toko (Global Search) -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Cari MDS / Toko</label>
+            <div class="relative flex items-center">
+              <input type="text" x-model="searchInputText" @keydown.enter.prevent="executeSearch()" placeholder="Ketik nama MDS / Toko..."
+                class="w-full h-10 text-xs font-medium pl-8 pr-20 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all">
+              <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                <i data-lucide="search" class="w-3.5 h-3.5"></i>
+              </div>
+              <button type="button" x-show="searchInputText" @click="clearSearch()" class="absolute right-14 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1" title="Hapus teks">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              </button>
+              <button type="button" @click="executeSearch()" class="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 px-2.5 bg-brand-500 hover:bg-brand-600 active:scale-95 text-white font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 shadow-sm" title="Klik atau tekan Enter untuk cari">
+                <span>Cari</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- MULTI-MDS DISAMBIGUATION SUGGESTION BAR -->
+        <div x-show="matchingCrewSuggestions.length > 0 && (searchQuery || searchInputText).trim().length >= 2" x-cloak
+          class="p-2.5 px-3.5 rounded-xl bg-brand-50/90 dark:bg-brand-950/40 border border-brand-200/70 dark:border-brand-800/50 flex flex-wrap items-center gap-2 text-xs transition-all">
+          <div class="flex items-center gap-1.5 text-brand-700 dark:text-brand-300 font-semibold flex-shrink-0">
+            <i data-lucide="users" class="w-3.5 h-3.5"></i>
+            <span x-text="`Ditemukan ${matchingCrewSuggestions.length} MDS '${(searchQuery || searchInputText).trim()}':`"></span>
+          </div>
+          
+          <div class="flex flex-wrap items-center gap-1.5">
+            <template x-for="c in matchingCrewSuggestions" :key="c.namaCrew + c.kodeCrew">
+              <button type="button" @click="selectCrewSuggestion(c)"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shadow-sm cursor-pointer"
+                :class="(selectedCrew || '').toUpperCase() === c.namaCrew.toUpperCase() ? 'bg-brand-500 text-white shadow-brand-500/30 ring-2 ring-brand-400' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-brand-100 dark:hover:bg-brand-900/50 border border-slate-200 dark:border-slate-700'">
+                <span x-text="c.namaCrew"></span>
+                <span class="px-1.5 py-0.2 rounded text-[9.5px] font-extrabold"
+                  :class="(selectedCrew || '').toUpperCase() === c.namaCrew.toUpperCase() ? 'bg-white/25 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'"
+                  x-text="`${c.modul}${c.visitCount > 0 ? ' • ' + c.visitCount + ' Toko' : ' • 0 Toko'}`"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <!-- Custom Date Range Picker -->
+        <div x-show="dateFilter === 'CUSTOM'" x-cloak x-transition
+          class="p-3 sm:p-3.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 space-y-2.5">
+          <div class="flex items-center space-x-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <i data-lucide="calendar-range" class="w-4 h-4 text-brand-500 flex-shrink-0"></i>
+            <span>Tentukan Rentang Tanggal:</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] gap-2.5 items-end">
+            <div class="min-w-0">
+              <span class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Dari Tanggal</span>
+              <input type="date" x-model="customStartInput" :max="customEndInput" title="Dari Tanggal"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500">
+            </div>
+            <div class="min-w-0">
+              <span class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Sampai Tanggal</span>
+              <input type="date" x-model="customEndInput" :min="customStartInput" title="Sampai Tanggal"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500">
+            </div>
+            <div class="sm:col-span-2 lg:col-span-1">
+              <button @click="applyCustomDates()" title="Terapkan Tanggal"
+                class="w-full lg:w-auto h-10 px-4 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center space-x-1.5 flex-shrink-0 cursor-pointer">
+                <i data-lucide="check" class="w-4 h-4"></i>
+                <span>Terapkan Rentang</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Toolbar & Active Date Status -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between pt-2.5 border-t border-slate-200/70 dark:border-slate-800/80 gap-2.5">
+          
+          <!-- Left: Status Active Date Pill & Active Filter Pill -->
+          <div class="flex flex-wrap items-center gap-2 text-xs min-w-0">
+            <div class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20 font-semibold text-[11px] truncate max-w-full">
+              <i data-lucide="calendar" class="w-3.5 h-3.5 text-brand-500 flex-shrink-0"></i>
+              <span class="flex-shrink-0">Data:</span>
+              <span class="font-bold truncate" x-text="activeDateLabel || 'Memuat tanggal...'"></span>
+            </div>
+
+            <!-- Active Filter Pill -->
+            <div x-show="selectedCrew || searchQuery" x-cloak class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-semibold text-[11px] transition-all">
+              <i data-lucide="filter" class="w-3 h-3 text-amber-500 flex-shrink-0"></i>
+              <span>Filter:</span>
+              <span class="font-bold text-amber-800 dark:text-amber-200" x-text="selectedCrew ? `MDS: ${selectedCrew}` : `Cari: '${searchQuery}'`"></span>
+              <button type="button" @click="clearSearch()" class="ml-1 p-0.5 rounded hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center cursor-pointer" title="Hapus Filter">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Right: Action Buttons Group -->
+          <div class="grid grid-cols-3 sm:flex sm:items-center gap-2 w-full sm:w-auto">
+            
+            <!-- Audit Anomali Button -->
+            <button @click="openAnomalyModal()" title="Audit Anomali Absen vs Kunjungan"
+              class="h-9 flex items-center justify-center space-x-1.5 px-2.5 sm:px-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shadow-sm active:scale-95"
+              :class="auditAnomalies.totalAnomalies > 0 ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/20 animate-pulse' : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'">
+              <i data-lucide="shield-alert" class="w-3.5 h-3.5 flex-shrink-0"></i>
+              <span class="hidden sm:inline">Audit Anomali</span>
+              <span class="sm:hidden">Audit</span>
+              <span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold" :class="auditAnomalies.totalAnomalies > 0 ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700'" x-text="auditAnomalies.totalAnomalies"></span>
+            </button>
+
+            <!-- Share WA Button -->
+            <button @click="openWaReportModal()" title="Bagikan Format Laporan ke WhatsApp"
+              class="h-9 flex items-center justify-center space-x-1.5 px-2.5 sm:px-3.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-95 whitespace-nowrap">
+              <i data-lucide="share-2" class="w-3.5 h-3.5 flex-shrink-0"></i>
+              <span>Share WA</span>
+            </button>
+
+            <!-- Export CSV Button -->
+            <button @click="exportVisitsToCSV()" title="Export CSV Data Kunjungan"
+              class="h-9 flex items-center justify-center space-x-1.5 px-2.5 sm:px-3 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors whitespace-nowrap active:scale-95">
+              <i data-lucide="download" class="w-3.5 h-3.5 flex-shrink-0"></i>
+              <span>CSV</span>
+            </button>
+
+          </div>
+
+        </div>
+
+      </div>
       
       <!-- Top 4 KPI Cards -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -802,27 +894,132 @@
     </div>
 
     <!-- ============================================================================== -->
-    <!-- 5. TAB 2: ABSENSI TIM -->
+    <!-- 5. TAB 2: ABSENSI TIM (INDEPENDENT FILTER) -->
     <!-- ============================================================================== -->
     <div x-show="activeTab === 'absensi'" class="space-y-6 min-w-0">
       
+      <!-- TAB 2: DEDICATED FILTER & ACTION BAR -->
+      <div class="glass-card rounded-2xl p-3.5 sm:p-4 shadow-sm border border-slate-200/80 dark:border-slate-800/80 space-y-3 relative z-20">
+        
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          
+          <!-- 1. Modul Wilayah -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Modul Wilayah</label>
+            <div class="relative">
+              <select x-model="filterAbsensi.modul"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer">
+                <template x-for="m in CONFIG.MODULES" :key="m.code">
+                  <option :value="m.code" x-text="m.name"></option>
+                </template>
+              </select>
+            </div>
+          </div>
+
+          <!-- 2. Periode Absensi -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Periode Absensi</label>
+            <div class="relative">
+              <select x-model="filterAbsensi.dateFilter" @change="onAbsensiDateFilterChange()"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer">
+                <option value="LATEST_DAY">⚡ Hari Terakhir Aktif (Auto)</option>
+                <option value="YESTERDAY">Kemarin / H-1 (Evaluasi)</option>
+                <option value="TODAY">Hari Ini Saja (Real-time)</option>
+                <option value="7_DAYS">7 Hari Terakhir</option>
+                <option value="THIS_MONTH">Bulan Ini (Semua)</option>
+                <option value="CUSTOM">📅 Pilih Rentang Tanggal...</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 3. Cari MDS -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Cari Nama MDS</label>
+            <div class="relative flex items-center">
+              <input type="text" x-model="filterAbsensi.searchInputText" @keydown.enter.prevent="executeAbsensiSearch()" placeholder="Ketik nama MDS / kode..."
+                class="w-full h-10 text-xs font-medium pl-8 pr-20 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all">
+              <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                <i data-lucide="search" class="w-3.5 h-3.5"></i>
+              </div>
+              <button type="button" x-show="filterAbsensi.searchInputText" @click="clearAbsensiSearch()" class="absolute right-14 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1" title="Hapus teks">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              </button>
+              <button type="button" @click="executeAbsensiSearch()" class="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 px-2.5 bg-brand-500 hover:bg-brand-600 active:scale-95 text-white font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 shadow-sm" title="Cari">
+                <span>Cari</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Custom Date Range Picker for Absensi -->
+        <div x-show="filterAbsensi.dateFilter === 'CUSTOM'" x-cloak x-transition
+          class="p-3 sm:p-3.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 space-y-2.5">
+          <div class="flex items-center space-x-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <i data-lucide="calendar-range" class="w-4 h-4 text-brand-500 flex-shrink-0"></i>
+            <span>Tentukan Rentang Tanggal Absensi:</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] gap-2.5 items-end">
+            <div class="min-w-0">
+              <span class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Dari Tanggal</span>
+              <input type="date" x-model="filterAbsensi.customStartInput" :max="filterAbsensi.customEndInput"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500">
+            </div>
+            <div class="min-w-0">
+              <span class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Sampai Tanggal</span>
+              <input type="date" x-model="filterAbsensi.customEndInput" :min="filterAbsensi.customStartInput"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500">
+            </div>
+            <div class="sm:col-span-2 lg:col-span-1">
+              <button @click="applyAbsensiCustomDates()"
+                class="w-full lg:w-auto h-10 px-4 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-sm transition-all active:scale-95 flex items-center justify-center space-x-1.5 flex-shrink-0 cursor-pointer">
+                <i data-lucide="check" class="w-4 h-4"></i>
+                <span>Terapkan Rentang</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Toolbar for Absensi -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between pt-2.5 border-t border-slate-200/70 dark:border-slate-800/80 gap-2.5">
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <div class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20 font-semibold text-[11px]">
+              <i data-lucide="calendar" class="w-3.5 h-3.5 text-brand-500 flex-shrink-0"></i>
+              <span>Periode:</span>
+              <span class="font-bold" x-text="filterAbsensi.activeDateLabel || 'Data Terakhir'"></span>
+            </div>
+
+            <div x-show="filterAbsensi.searchQuery" x-cloak class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-semibold text-[11px]">
+              <i data-lucide="filter" class="w-3 h-3 text-amber-500"></i>
+              <span>Cari:</span>
+              <span class="font-bold" x-text="`'${filterAbsensi.searchQuery}'`"></span>
+              <button type="button" @click="clearAbsensiSearch()" class="ml-1 p-0.5 rounded hover:bg-amber-500/20 text-amber-700 cursor-pointer">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <button @click="exportAbsensiExcel()" title="Export Laporan Absensi ke Excel"
+              class="h-9 w-full sm:w-auto flex items-center justify-center space-x-1.5 px-3.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-600/20 transition-all active:scale-95 cursor-pointer">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4 flex-shrink-0"></i>
+              <span>Export Excel Absensi (.xlsx)</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
       <div class="glass-card rounded-2xl shadow-sm overflow-hidden border border-slate-200 dark:border-slate-800">
         <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h3 class="font-display font-bold text-base text-slate-900 dark:text-white">Rekap Absensi Harian Tim MDS</h3>
             <p class="text-xs font-semibold text-brand-600 dark:text-brand-400 flex items-center gap-1.5 mt-0.5">
               <i data-lucide="calendar" class="w-3.5 h-3.5 flex-shrink-0"></i>
-              <span x-text="activeDateLabel || 'Semua Periode Data'"></span>
+              <span x-text="filterAbsensi.activeDateLabel || 'Data Terakhir'"></span>
             </p>
           </div>
           <div class="flex items-center space-x-2">
-            <!-- Active Search Filter Pill in Absensi Header -->
-            <div x-show="selectedCrew || searchQuery" x-cloak class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold">
-              <span x-text="selectedCrew ? `MDS: ${selectedCrew}` : `Cari: '${searchQuery}'`"></span>
-              <button type="button" @click="clearSearch()" class="p-0.5 hover:bg-amber-500/20 rounded cursor-pointer" title="Hapus Filter">
-                <i data-lucide="x" class="w-3.5 h-3.5"></i>
-              </button>
-            </div>
             <span class="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800/60" x-text="`${groupedAbsensi.length} Personil Tercatat`"></span>
           </div>
         </div>
@@ -1067,30 +1264,300 @@
     </div>
 
     <!-- ============================================================================== -->
-    <!-- 6. TAB 3: TARGET JADWAL RUTE -->
+    <!-- 6. TAB 3: TARGET JADWAL RUTE (INDEPENDENT FILTER & ENHANCED FEATURES) -->
     <!-- ============================================================================== -->
     <div x-show="activeTab === 'jadwal'" class="space-y-6 min-w-0">
       
-      <div class="glass-card rounded-2xl shadow-sm overflow-hidden border border-slate-200 dark:border-slate-800">
-        <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+      <!-- TAB 3: DEDICATED FILTER & ACTION BAR -->
+      <div class="glass-card rounded-2xl p-3.5 sm:p-4 shadow-sm border border-slate-200/80 dark:border-slate-800/80 space-y-3.5 relative z-30">
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+          
+          <!-- 1. Modul Wilayah -->
           <div>
-            <h3 class="font-display font-bold text-base text-slate-900 dark:text-white">Master Jadwal & Target Toko</h3>
-            <p class="text-xs text-slate-500">Database jadwal rute per crew yang sudah bersih dan tersentralisasi</p>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Modul Wilayah</label>
+            <div class="relative">
+              <select x-model="filterJadwal.modul" @change="filterJadwal.selectedCrew = 'ALL'"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer">
+                <template x-for="m in CONFIG.MODULES" :key="m.code">
+                  <option :value="m.code" x-text="m.name"></option>
+                </template>
+              </select>
+            </div>
           </div>
-          <span class="text-xs font-semibold text-brand-500" x-text="`${filteredMasterToko.length} Jadwal Toko`"></span>
+
+          <!-- 2. Pilih MDS / Crew -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Pilih Personil MDS</label>
+            <div class="relative">
+              <select x-model="filterJadwal.selectedCrew"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer">
+                <option value="ALL">👥 Semua MDS / Crew</option>
+                <template x-for="c in jadwalCrewList" :key="c.name">
+                  <option :value="c.name" x-text="`${c.name} (${c.modul})`"></option>
+                </template>
+              </select>
+            </div>
+          </div>
+
+          <!-- 3. Pilih Nomor Rute -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Nomor Rute / Hari</label>
+            <div class="relative">
+              <select x-model="filterJadwal.rute"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer">
+                <option value="ALL">🧭 Semua Rute (1 - 31)</option>
+                <template x-for="r in Array.from({length: 31}, (_, i) => i + 1)" :key="r">
+                  <option :value="String(r)" x-text="`Rute ${r}`"></option>
+                </template>
+              </select>
+            </div>
+          </div>
+
+          <!-- 4. Account Toko -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Account Toko</label>
+            <div class="relative">
+              <select x-model="filterJadwal.account"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer">
+                <template x-for="acc in CONFIG.ACCOUNTS" :key="acc">
+                  <option :value="acc" x-text="acc === 'ALL' ? 'Semua Account' : acc"></option>
+                </template>
+              </select>
+            </div>
+          </div>
+
+          <!-- 5. Cari Toko / Kode Toko / MDS with Auto-Suggest -->
+          <div class="relative" @click.away="showJadwalSuggestions = false">
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Cari Toko / Kode Toko</label>
+            <div class="relative flex items-center">
+              <input type="text" x-model="filterJadwal.searchInputText" 
+                @input="onJadwalSearchInput()"
+                @focus="if ((filterJadwal.searchInputText || '').length >= 2) onJadwalSearchInput()"
+                @keydown.enter.prevent="executeJadwalSearch()" 
+                @keydown.escape="showJadwalSuggestions = false"
+                placeholder="Ketik nama / kode toko..."
+                class="w-full h-10 text-xs font-medium pl-8 pr-16 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all">
+              <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                <i data-lucide="search" class="w-3.5 h-3.5"></i>
+              </div>
+              <button type="button" x-show="filterJadwal.searchInputText" @click="clearJadwalSearch()" class="absolute right-12 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1" title="Hapus teks">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              </button>
+              <button type="button" @click="executeJadwalSearch()" class="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 px-2 bg-brand-500 hover:bg-brand-600 active:scale-95 text-white font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 shadow-sm cursor-pointer" title="Cari">
+                <span>Cari</span>
+              </button>
+            </div>
+
+            <!-- Auto-Suggest Dropdown (Floating Popover) -->
+            <div x-show="showJadwalSuggestions && jadwalStoreSuggestions.length > 0"
+                 x-transition:enter="transition ease-out duration-150"
+                 x-transition:enter-start="opacity-0 translate-y-1 scale-98"
+                 x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+                 x-transition:leave="transition ease-in duration-100"
+                 x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+                 x-transition:leave-end="opacity-0 translate-y-1 scale-98"
+                 class="absolute left-0 right-0 sm:right-auto sm:w-80 top-full mt-1.5 z-[250] max-h-72 overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl backdrop-blur-xl p-1.5 divide-y divide-slate-100 dark:divide-slate-800/80 custom-scrollbar">
+              <div class="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                <span>Rekomendasi Toko</span>
+                <span class="text-brand-500" x-text="`${jadwalStoreSuggestions.length} ditemukan`"></span>
+              </div>
+              <template x-for="item in jadwalStoreSuggestions" :key="item.kodeToko || item.namaToko">
+                <div @click="selectJadwalSuggestion(item)"
+                     class="p-2 rounded-xl hover:bg-brand-50/80 dark:hover:bg-slate-800/80 cursor-pointer transition-colors flex items-center justify-between gap-2 group">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-brand-600 dark:group-hover:text-brand-400 truncate" x-text="item.namaToko"></span>
+                      <span class="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase shrink-0"
+                        :class="item.account === 'INDOMARET' ? 'bg-blue-500/10 text-blue-600' : 'bg-rose-500/10 text-rose-600'"
+                        x-text="item.account || 'TOKO'"></span>
+                    </div>
+                    <div class="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 truncate">
+                      <span class="font-mono font-semibold text-indigo-600 dark:text-indigo-400 shrink-0" x-text="item.kodeToko"></span>
+                      <template x-if="item.namaCrew">
+                        <span class="truncate" x-text="`• MDS: ${item.namaCrew} (Rute ${item.rute || '-'})`"></span>
+                      </template>
+                    </div>
+                  </div>
+                  <i data-lucide="corner-down-left" class="w-3.5 h-3.5 text-slate-300 group-hover:text-brand-500 flex-shrink-0"></i>
+                </div>
+              </template>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Action Buttons: Terapkan Filter & Reset -->
+        <div class="flex items-center justify-between gap-3 pt-1 flex-wrap">
+          <div class="flex items-center gap-2.5">
+            <!-- 🔍 Tombol Terapkan Filter -->
+            <button type="button" @click="applyJadwalFilter()"
+              class="h-10 px-5 rounded-xl bg-gradient-to-r from-brand-600 via-indigo-600 to-brand-500 hover:from-brand-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-brand-500/25 hover:shadow-brand-500/40 transition-all active:scale-95 flex items-center gap-2 cursor-pointer ring-2 ring-transparent hover:ring-brand-400">
+              <i data-lucide="filter" class="w-4 h-4"></i>
+              <span>Terapkan Filter</span>
+            </button>
+            
+            <!-- 🔄 Tombol Reset Filter -->
+            <button type="button" @click="resetJadwalFilter()"
+              class="h-10 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs border border-slate-300 dark:border-slate-700 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="Reset semua filter ke default">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-slate-500"></i>
+              <span>Reset</span>
+            </button>
+          </div>
+
+          <!-- Pending indicator -->
+          <div x-show="hasPendingJadwalFilter" 
+               x-transition
+               class="text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border border-amber-400/40 dark:border-amber-600/40 px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-pulse">
+            <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-500"></i>
+            <span>Pilihan filter diubah. Klik <strong>"Terapkan Filter"</strong> untuk memperbarui data & peta.</span>
+          </div>
+        </div>
+
+        <!-- Action & Filter Summary Bar with CRUD Toolbar -->
+        <div class="pt-2.5 border-t border-slate-200/70 dark:border-slate-800/80 flex items-center justify-between gap-3 flex-wrap text-xs">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-slate-500 text-[11px] font-medium">Filter Aktif:</span>
+            <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20 flex items-center gap-1">
+              <i data-lucide="compass" class="w-3 h-3"></i>
+              <span x-text="filterJadwal.appliedRute === 'ALL' ? 'Semua Rute (1-31)' : `Rute ${filterJadwal.appliedRute}`"></span>
+            </span>
+            <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+              x-text="`Modul: ${filterJadwal.appliedModul === 'ALL' ? 'Semua' : filterJadwal.appliedModul}`"></span>
+            <template x-if="filterJadwal.appliedSelectedCrew !== 'ALL'">
+              <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                x-text="`MDS: ${filterJadwal.appliedSelectedCrew}`"></span>
+            </template>
+            <template x-if="filterJadwal.appliedAccount !== 'ALL'">
+              <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                x-text="`Acc: ${filterJadwal.appliedAccount}`"></span>
+            </template>
+            <span class="text-slate-400 text-[11px]" x-text="`• ${filteredMasterToko.length} Target Toko`"></span>
+          </div>
+          
+          <div class="flex items-center gap-2 flex-wrap ml-auto">
+            <!-- ➕ Tambah Toko Baru ke Master Database -->
+            <button @click="openCreateMasterStoreModal()" title="Tambah Toko Baru ke Master Database 49k"
+              class="h-8 px-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-sm shadow-brand-600/20 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer">
+              <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+              <span>+ Toko Master</span>
+            </button>
+
+            <!-- 🧹 Bersihkan Duplikat Rute -->
+            <button @click="openPurgeDuplicatesModal()" title="Scan & Bersihkan Jadwal Duplikat Otomatis"
+              class="h-8 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-sm shadow-amber-600/20 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+              <span>🧹 Bersihkan Duplikat</span>
+            </button>
+
+            <!-- Export Excel Button -->
+            <button @click="exportMasterJadwalExcel()" title="Export Target Jadwal Toko ke Excel"
+              class="h-8 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm shadow-emerald-600/20 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer">
+              <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+              <span>Export Excel (.xlsx)</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- TAB 3: CONDITIONAL ROUTE SEQUENCE MAP (ACTIVE ONLY WHEN SPECIFIC MDS & SPECIFIC ROUTE ARE SELECTED) -->
+      <div>
+        <!-- 1. Active Mode: Map View with Polyline & Chronological Numbered Pins -->
+        <div x-show="isJadwalRouteActive" 
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 -translate-y-2"
+             x-transition:enter-end="opacity-100 translate-y-0"
+             class="glass-card rounded-2xl p-4 shadow-sm border border-slate-200/80 dark:border-slate-800/80 space-y-3">
+          
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="w-7 h-7 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm">
+                  🗺️
+                </span>
+                <h3 class="font-display font-bold text-sm sm:text-base text-slate-900 dark:text-white">
+                  Peta Rute & Urutan Kunjungan
+                </h3>
+                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
+                  x-text="filterJadwal.appliedRute === 'ALL' ? 'SEMUA RUTE' : `RUTE ${filterJadwal.appliedRute}`"></span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5" x-text="`Jalur lintasan rute untuk MDS ${filterJadwal.appliedSelectedCrew} (${filterJadwal.appliedModul})`"></p>
+            </div>
+
+            <!-- Route Metrics Stats Pills -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5">
+                <span class="text-indigo-500">🎯</span>
+                <span x-text="`${jadwalMapStats.totalStores} Toko Ditargetkan`"></span>
+              </span>
+              <span class="px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
+                <span class="text-emerald-500">📍</span>
+                <span x-text="`${jadwalMapStats.validCount} Titik GPS`"></span>
+              </span>
+              <span class="px-2.5 py-1 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1.5">
+                <span class="text-amber-500">🛣️</span>
+                <span x-text="`~${jadwalMapStats.totalDistKm} km Est. Jalur`"></span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Leaflet Map Container -->
+          <div class="w-full h-80 sm:h-96 rounded-xl overflow-hidden border border-slate-200/80 dark:border-slate-800/80 shadow-inner relative z-10 bg-slate-100 dark:bg-slate-900">
+            <div id="jadwal-map" class="w-full h-full"></div>
+          </div>
+
+          <div class="flex items-center justify-between text-[11px] text-slate-400 px-1 pt-1">
+            <span>💡 Marker diberi nomor urut (#1, #2, #3...) sesuai urutan jadwal toko. Klik pin untuk info toko lengkap.</span>
+            <button type="button" @click="renderJadwalRouteMap()" class="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer">
+              🔄 Reset Posisi Peta
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Idle State Guide: Shown when single MDS & Route are not yet picked -->
+        <div x-show="!isJadwalRouteActive"
+             class="glass-card rounded-2xl p-4 sm:p-5 text-center border border-dashed border-slate-300 dark:border-slate-700/80 space-y-2 bg-slate-50/50 dark:bg-slate-900/20">
+          <div class="w-10 h-10 mx-auto rounded-2xl bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center text-lg">
+            🧭
+          </div>
+          <h4 class="font-bold text-slate-800 dark:text-slate-200 text-sm">Mode Peta Rute On-Demand (Ringan & Cepat)</h4>
+          <p class="text-xs text-slate-500 max-w-xl mx-auto leading-relaxed">
+            Untuk menjaga performa browser tetap super cepat dan hemat kuota, silakan pilih <strong>1 Personil MDS</strong> dan <strong>1 Nomor Rute Tertentu (1-31)</strong> lalu klik <strong>"Terapkan Filter"</strong> untuk mengaktifkan visualisasi peta, penomoran urut toko (#1, #2...), dan jalur garis rute (polyline).
+          </p>
+        </div>
+      </div>
+
+      <!-- MASTER JADWAL TABLE CARD -->
+      <div class="glass-card rounded-2xl shadow-sm overflow-hidden border border-slate-200 dark:border-slate-800">
+        <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="font-display font-bold text-base text-slate-900 dark:text-white">Master Jadwal & Target Toko</h3>
+              <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20"
+                x-text="filterJadwal.appliedRute === 'ALL' ? 'SEMUA RUTE' : `RUTE ${filterJadwal.appliedRute}`"></span>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">Database jadwal rute toko per personil MDS tersentralisasi (CRUD Live)</p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span class="text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 px-3 py-1.5 rounded-xl border border-brand-200 dark:border-brand-800/60" x-text="`${filteredMasterToko.length} Toko Terjadwal`"></span>
+          </div>
         </div>
 
         <div class="overflow-x-auto w-full max-w-full touch-scroll">
           <table class="w-full text-left border-collapse text-xs">
             <thead>
               <tr class="bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700">
+                <th class="py-3 px-4 w-12 text-center">No</th>
                 <th class="py-3 px-4">Modul</th>
                 <th class="py-3 px-4">MDS / Crew</th>
                 <th class="py-3 px-4">Kode Toko</th>
                 <th class="py-3 px-4">Nama Toko</th>
                 <th class="py-3 px-4">Account</th>
-                <th class="py-3 px-4 text-center">Rute</th>
+                <th class="py-3 px-4 text-center">Nomor Rute</th>
                 <th class="py-3 px-4 text-center">Status</th>
+                <th class="py-3 px-4 text-center w-28">Aksi CRUD</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
@@ -1098,6 +1565,7 @@
               <template x-if="isLoading">
                 <template x-for="i in [1,2,3,4,5]" :key="i">
                   <tr class="animate-pulse">
+                    <td class="py-3 px-4 text-center"><div class="h-4 w-6 mx-auto skeleton-box rounded"></div></td>
                     <td class="py-3 px-4"><div class="h-4 w-10 skeleton-box rounded"></div></td>
                     <td class="py-3 px-4"><div class="h-3.5 w-28 skeleton-box"></div></td>
                     <td class="py-3 px-4"><div class="h-3.5 w-16 skeleton-box"></div></td>
@@ -1105,22 +1573,63 @@
                     <td class="py-3 px-4"><div class="h-3.5 w-20 skeleton-box"></div></td>
                     <td class="py-3 px-4 text-center"><div class="h-4 w-12 mx-auto skeleton-box rounded"></div></td>
                     <td class="py-3 px-4 text-center"><div class="h-4 w-14 mx-auto skeleton-box rounded-full"></div></td>
+                    <td class="py-3 px-4 text-center"><div class="h-6 w-20 mx-auto skeleton-box rounded-lg"></div></td>
                   </tr>
                 </template>
               </template>
 
-              <!-- REAL JADWAL ROWS -->
+              <!-- REAL JADWAL ROWS (Render up to 200 items smoothly) -->
               <template x-if="!isLoading">
-                <template x-for="(m, idx) in filteredMasterToko.slice(0, 50)" :key="m.kodeToko + idx">
-                  <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                    <td class="py-3 px-4 font-bold text-brand-500" x-text="m.modul"></td>
-                    <td class="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100" x-text="m.namaCrew"></td>
-                    <td class="py-3 px-4 text-slate-500" x-text="m.kodeToko"></td>
+                <template x-for="(m, idx) in filteredMasterToko.slice(0, 200)" :key="m.kodeToko + '_' + idx">
+                  <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                    <td class="py-3 px-4 text-center font-mono text-slate-400" x-text="idx + 1"></td>
+                    <td class="py-3 px-4 font-bold text-brand-500" x-text="m.modul || m._officialModul || '-'"></td>
+                    <td class="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">
+                      <div x-text="m.namaCrew"></div>
+                      <div class="text-[10px] text-slate-400 font-mono" x-text="m.kodeCrew || ''"></div>
+                    </td>
+                    <td class="py-3 px-4 text-slate-500 font-mono font-medium" x-text="m.kodeToko"></td>
                     <td class="py-3 px-4 font-medium text-slate-800 dark:text-slate-200" x-text="m.namaToko"></td>
-                    <td class="py-3 px-4 text-slate-500" x-text="m.account"></td>
-                    <td class="py-3 px-4 text-center font-bold text-sky-500" x-text="`Rute ${m.rute || '1'}`"></td>
+                    <td class="py-3 px-4">
+                      <span class="px-2 py-0.5 rounded text-[10.5px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700" x-text="m.account || '-'"></span>
+                    </td>
                     <td class="py-3 px-4 text-center">
-                      <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-500" x-text="m.status"></span>
+                      <span class="px-2.5 py-1 rounded-lg text-xs font-extrabold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/60" x-text="`Rute ${m.rute || '1'}`"></span>
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                      <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" x-text="m.status || 'Active'"></span>
+                    </td>
+                    <!-- CRUD ACTION BUTTONS PER ROW -->
+                    <td class="py-3 px-4 text-center">
+                      <div class="flex items-center justify-center gap-1.5">
+                        <!-- Edit Button (Biru/Sky) -->
+                        <button type="button" @click="openEditJadwalModal(m)" title="Edit Toko & Rute"
+                          class="w-7 h-7 rounded-lg bg-sky-500/10 hover:bg-sky-600 text-sky-600 hover:text-white dark:bg-sky-500/20 dark:text-sky-400 dark:hover:text-white border border-sky-500/20 transition-all flex items-center justify-center cursor-pointer shadow-xs active:scale-90">
+                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                            <path d="M12 20h9"></path>
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                          </svg>
+                        </button>
+                        <!-- Transfer MDS Button (Indigo/Ungu) -->
+                        <button type="button" @click="openTransferJadwalModal(m)" title="Transfer Toko ke MDS Lain"
+                          class="w-7 h-7 rounded-lg bg-indigo-500/10 hover:bg-indigo-600 text-indigo-600 hover:text-white dark:bg-indigo-500/20 dark:text-indigo-400 dark:hover:text-white border border-indigo-500/20 transition-all flex items-center justify-center cursor-pointer shadow-xs active:scale-90">
+                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <polyline points="16 11 18 13 22 9"></polyline>
+                          </svg>
+                        </button>
+                        <!-- Delete Button (Merah/Rose) -->
+                        <button type="button" @click="openDeleteJadwalModal(m)" title="Hapus Toko dari Jadwal"
+                          class="w-7 h-7 rounded-lg bg-rose-500/10 hover:bg-rose-600 text-rose-600 hover:text-white dark:bg-rose-500/20 dark:text-rose-400 dark:hover:text-white border border-rose-500/20 transition-all flex items-center justify-center cursor-pointer shadow-xs active:scale-90">
+                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            <line x1="10" y1="11" x2="10" y2="17"></line>
+                            <line x1="14" y1="11" x2="14" y2="17"></line>
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 </template>
@@ -1128,14 +1637,460 @@
 
               <!-- Empty State -->
               <tr x-show="!isLoading && filteredMasterToko.length === 0">
-                <td colspan="7" class="py-8 text-center text-slate-400">
-                  <i data-lucide="calendar-x" class="w-8 h-8 mx-auto mb-2 text-slate-300 dark:text-slate-600"></i>
-                  Tidak ada data jadwal master yang ditemukan.
+                <td colspan="8" class="py-12 text-center text-slate-400">
+                  <i data-lucide="calendar-x" class="w-10 h-10 mx-auto mb-2.5 text-slate-300 dark:text-slate-600"></i>
+                  <p class="font-bold text-slate-700 dark:text-slate-300 text-sm">Tidak ada jadwal toko yang cocok.</p>
+                  <p class="text-xs text-slate-400 mt-0.5">Coba sesuaikan pilihan modul, personil MDS, atau nomor rute di atas.</p>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
+
+        <!-- Showing note if rows > 200 -->
+        <div x-show="!isLoading && filteredMasterToko.length > 200" class="p-3 text-center border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 bg-slate-50 dark:bg-slate-900/50">
+          Menampilkan 200 dari <span class="font-bold" x-text="filteredMasterToko.length"></span> jadwal toko. Gunakan fitur <button @click="exportMasterJadwalExcel()" class="font-bold text-emerald-600 underline cursor-pointer">Export Excel</button> untuk mengunduh seluruh data lengkap.
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ============================================================================== -->
+    <!-- 6. TAB 4: DATABASE TOKO NASIONAL (49K MASTER CATALOG) -->
+    <!-- ============================================================================== -->
+    <div x-show="activeTab === 'tokonasional'" class="space-y-6 min-w-0">
+      
+      <!-- TAB 4: FILTER & ACTION CONTROLS -->
+      <div class="glass-card rounded-2xl p-3.5 sm:p-4 shadow-sm border border-slate-200/80 dark:border-slate-800/80 space-y-3 relative z-20">
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          
+          <!-- 1. Search Query Input (Kode Toko / Nama Toko / DC / Kota / Kecamatan) with Auto-Suggest -->
+          <div class="sm:col-span-2 relative" @click.away="showTokoNasionalSuggestions = false">
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+              Cari Toko / Kode / Cabang DC / Kota / Kecamatan
+            </label>
+            <div class="relative flex items-center">
+              <input type="text" x-model="filterTokoNasional.searchInputText" 
+                @input="onTokoNasionalSearchInput()"
+                @focus="if ((filterTokoNasional.searchInputText || '').length >= 2) onTokoNasionalSearchInput()"
+                @keydown.enter.prevent="executeTokoNasionalSearch()"
+                @keydown.escape="showTokoNasionalSuggestions = false"
+                placeholder="Ketik kode toko, nama toko, DC, kecamatan, atau kota..."
+                class="w-full h-10 text-xs font-medium pl-8 pr-16 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all">
+              <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                <i data-lucide="search" class="w-3.5 h-3.5"></i>
+              </div>
+              <button type="button" x-show="filterTokoNasional.searchInputText" @click="clearTokoNasionalSearch()"
+                class="absolute right-12 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1" title="Hapus teks">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              </button>
+              <button type="button" @click="executeTokoNasionalSearch()"
+                class="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 px-2.5 bg-brand-500 hover:bg-brand-600 active:scale-95 text-white font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 shadow-sm cursor-pointer" title="Cari">
+                <span>Cari</span>
+              </button>
+            </div>
+
+            <!-- Auto-Suggest Dropdown for Tab 4 -->
+            <div x-show="showTokoNasionalSuggestions && tokoNasionalSuggestions.length > 0"
+                 x-transition:enter="transition ease-out duration-150"
+                 x-transition:enter-start="opacity-0 translate-y-1 scale-98"
+                 x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+                 x-transition:leave="transition ease-in duration-100"
+                 x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+                 x-transition:leave-end="opacity-0 translate-y-1 scale-98"
+                 class="absolute left-0 right-0 top-full mt-1.5 z-[250] max-h-72 overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl backdrop-blur-xl p-1.5 divide-y divide-slate-100 dark:divide-slate-800/80 custom-scrollbar">
+              <div class="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                <span>Rekomendasi Master Toko</span>
+                <span class="text-brand-500" x-text="`${tokoNasionalSuggestions.length} ditemukan`"></span>
+              </div>
+              <template x-for="item in tokoNasionalSuggestions" :key="item.kodeToko || item.namaToko">
+                <div @click="selectTokoNasionalSuggestion(item)"
+                     class="p-2 rounded-xl hover:bg-brand-50/80 dark:hover:bg-slate-800/80 cursor-pointer transition-colors flex items-center justify-between gap-2 group">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-brand-600 dark:group-hover:text-brand-400 truncate" x-text="item.namaToko"></span>
+                      <span class="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase shrink-0"
+                        :class="item.account === 'INDOMARET' ? 'bg-blue-500/10 text-blue-600' : 'bg-rose-500/10 text-rose-600'"
+                        x-text="item.account || 'TOKO'"></span>
+                    </div>
+                    <div class="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 truncate">
+                      <span class="font-mono font-semibold text-indigo-600 dark:text-indigo-400 shrink-0" x-text="item.kodeToko"></span>
+                      <template x-if="item.alamat">
+                        <span class="truncate" x-text="`• ${item.alamat}`"></span>
+                      </template>
+                    </div>
+                  </div>
+                  <i data-lucide="corner-down-left" class="w-3.5 h-3.5 text-slate-300 group-hover:text-brand-500 flex-shrink-0"></i>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- 2. Filter Account -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+              Account / Format Jaringan
+            </label>
+            <div class="relative">
+              <select x-model="filterTokoNasional.account" @change="filterTokoNasional.page = 1"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer">
+                <option value="ALL">🌐 Semua Account Jaringan</option>
+                <option value="ALFAMART">🔴 ALFAMART</option>
+                <option value="INDOMARET">🔵 INDOMARET</option>
+                <option value="ALFAMIDI">🟠 ALFAMIDI</option>
+                <option value="FAMILY MART">🟢 FAMILY MART</option>
+                <option value="LAWSON">🔵 LAWSON</option>
+                <option value="CIRCLE K">🔴 CIRCLE K</option>
+                <option value="MINIMARKET">🏪 MINIMARKET LAINNYA</option>
+              </select>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Action Bar: Sync & Add Store -->
+        <div class="pt-2.5 border-t border-slate-200/70 dark:border-slate-800/80 flex items-center justify-between gap-3 flex-wrap text-xs">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-slate-500 text-[11px] font-medium">Status Database:</span>
+            <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+              <i data-lucide="database" class="w-3 h-3"></i>
+              <span x-text="`${stores49k.length.toLocaleString('id-ID')} Toko Tersedia (IndexedDB)`"></span>
+            </span>
+            <template x-if="filterTokoNasional.searchQuery || filterTokoNasional.account !== 'ALL'">
+              <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20"
+                x-text="`Ditemukan: ${totalTokoNasionalCount.toLocaleString('id-ID')} Toko`"></span>
+            </template>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap ml-auto">
+            <!-- ➕ Tambah Toko Baru ke Master Database -->
+            <button @click="openCreateMasterStoreModal()" title="Tambah Toko Baru ke Master Database Toko"
+              class="h-8 px-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-sm shadow-brand-600/20 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer">
+              <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+              <span>+ Tambah Toko Master</span>
+            </button>
+
+            <!-- 🔄 Sync Button from Google Sheets -->
+            <button @click="syncStores49k(true)" :disabled="isStores49kLoading" title="Sinkronisasi Ulang Data Master dari Google Sheets"
+              class="h-8 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-xs font-bold shadow-xs transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="isStores49kLoading ? 'animate-spin text-brand-500' : ''"></i>
+              <span x-text="isStores49kLoading ? 'Mengunduh...' : 'Sinkronisasi Toko'"></span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- TAB 4: CONDITIONAL STORE LOCATION & 10 NEAREST STORES MAP (ACTIVE ONLY WHEN A STORE IS SELECTED) -->
+      <div>
+        <!-- 1. Active Mode: Selected Store Pin (Gold Star) + 10 Nearest Store Pins with Distance Vectors -->
+        <div id="tokonasional-map-container" x-show="selectedStoreForMap" 
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 -translate-y-2"
+             x-transition:enter-end="opacity-100 translate-y-0"
+             class="glass-card rounded-2xl p-4 shadow-sm border border-slate-200/80 dark:border-slate-800/80 space-y-3">
+          
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="w-7 h-7 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-sm">
+                  ⭐
+                </span>
+                <h3 class="font-display font-bold text-sm sm:text-base text-slate-900 dark:text-white"
+                  x-text="`Peta Lokasi & 10 Toko Terdekat: ${selectedStoreForMap ? selectedStoreForMap.namaToko : ''}`">
+                </h3>
+                <span class="px-2 py-0.5 rounded font-mono text-[10px] font-extrabold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                  x-text="selectedStoreForMap ? selectedStoreForMap.kodeToko : ''"></span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5" x-text="selectedStoreForMap ? [selectedStoreForMap.account, selectedStoreForMap.branchName, selectedStoreForMap.kecamatan, selectedStoreForMap.kabKota].filter(Boolean).join(' • ') : ''"></p>
+            </div>
+
+            <div class="flex items-center gap-2 flex-wrap ml-auto">
+              <!-- Jadwalkan Toko Utama -->
+              <button type="button" @click="openAssignStoreToMdsModal(selectedStoreForMap)"
+                class="h-8 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm shadow-emerald-600/20 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer">
+                <span>🎯 Jadwalkan Toko Utama ke MDS</span>
+              </button>
+              <!-- Close / Clear Map Button -->
+              <button type="button" @click="clearStoreForMap()"
+                class="h-8 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-500/10 hover:text-rose-500 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-bold text-xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer" title="Tutup Peta">
+                <span>✕ Tutup Peta</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 2 Columns: Left Map, Right 10 Nearest Stores List -->
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            
+            <!-- Left: Leaflet Map (7 cols) -->
+            <div class="lg:col-span-7 h-80 sm:h-96 rounded-xl overflow-hidden border border-slate-200/80 dark:border-slate-800/80 shadow-inner relative z-10 bg-slate-100 dark:bg-slate-900">
+              <div id="tokonasional-map" class="w-full h-full"></div>
+            </div>
+
+            <!-- Right: 10 Nearest Stores Scroll List (5 cols) -->
+            <div class="lg:col-span-5 flex flex-col h-80 sm:h-96 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/30 p-2.5 overflow-hidden">
+              <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-200/70 dark:border-slate-800 text-xs">
+                <span class="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <span>📍 10 Toko Terdekat</span>
+                  <span class="px-1.5 py-0.2 rounded text-[10px] font-black bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">Radius Terdekat</span>
+                </span>
+                <span class="text-[10px] text-slate-400" x-text="`${nearest10Stores.length} Toko Ditemukan`"></span>
+              </div>
+
+              <!-- List Container -->
+              <div class="flex-1 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                <template x-for="(nst, nIdx) in nearest10Stores" :key="nst.kodeToko || nIdx">
+                  <div class="p-2 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700/60 shadow-xs flex items-center justify-between gap-2 text-xs hover:border-amber-400 transition-all">
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-1.5 mb-0.5">
+                        <span class="w-4 h-4 rounded-full bg-indigo-600 text-white font-extrabold text-[9px] flex items-center justify-center flex-shrink-0" x-text="nIdx + 1"></span>
+                        <span class="font-bold text-slate-800 dark:text-slate-100 truncate" x-text="nst.namaToko"></span>
+                      </div>
+                      <div class="flex items-center gap-1.5 text-[10.5px] text-slate-500 dark:text-slate-400">
+                        <span class="font-mono text-slate-600 dark:text-slate-300 font-semibold" x-text="nst.kodeToko"></span>
+                        <span>•</span>
+                        <span class="font-bold text-amber-600 dark:text-amber-400" x-text="nst.distanceText"></span>
+                      </div>
+                    </div>
+
+                    <!-- 1-Click Jadwalkan Button -->
+                    <button type="button" @click="openAssignStoreToMdsModal(nst)" title="Jadwalkan Toko ini ke MDS"
+                      class="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-600 text-emerald-600 hover:text-white dark:bg-emerald-500/20 dark:text-emerald-400 dark:hover:text-white border border-emerald-500/20 font-bold text-[10.5px] flex-shrink-0 flex items-center gap-1 cursor-pointer transition-all active:scale-95">
+                      <span>🎯 Jadwalkan</span>
+                    </button>
+                  </div>
+                </template>
+
+                <template x-if="nearest10Stores.length === 0">
+                  <div class="py-12 text-center text-slate-400 text-xs">
+                    <p>Tidak ada toko dengan koordinat GPS dalam radius terdekat.</p>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="flex items-center justify-between text-[11px] text-slate-400 px-1 pt-1">
+            <span>⭐ Pin Emas = Toko Utama yang dipilih. Pin Biru/Kuning #1-#10 = Toko terdekat dalam radius.</span>
+          </div>
+        </div>
+
+        <!-- 2. Idle State Guide: Shown when no store is selected yet -->
+        <div x-show="!selectedStoreForMap"
+             class="glass-card rounded-2xl p-4 sm:p-5 text-center border border-dashed border-slate-300 dark:border-slate-700/80 space-y-2 bg-slate-50/50 dark:bg-slate-900/20">
+          <div class="w-10 h-10 mx-auto rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center text-lg">
+            📍
+          </div>
+          <h4 class="font-bold text-slate-800 dark:text-slate-200 text-sm">Peta Radar Radius 10 Toko Terdekat (Hemat Memori & Ringan)</h4>
+          <p class="text-xs text-slate-500 max-w-xl mx-auto leading-relaxed">
+            Klik tombol <strong>📍 Peta & Radius</strong> pada baris toko mana pun pada tabel di bawah untuk membuka titik lokasi toko utama dan menganalisis 10 toko terdekat dalam satu kawasan rute secara instan.
+          </p>
+        </div>
+      </div>
+
+      <!-- MASTER TOKO NASIONAL TABLE CARD -->
+      <div class="glass-card rounded-2xl shadow-sm overflow-hidden border border-slate-200 dark:border-slate-800">
+        
+        <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="font-display font-bold text-base text-slate-900 dark:text-white">Database Master Toko Nasional</h3>
+              <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20">
+                OFFICIAL CATALOG
+              </span>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">Katalog toko terlengkap se-Indonesia dengan koordinat GPS, DC, & tombol instan 1-Klik Penjadwalan ke MDS</p>
+          </div>
+          
+          <div class="flex items-center space-x-2 text-xs text-slate-500">
+            <span>Halaman <strong class="text-slate-900 dark:text-white" x-text="filterTokoNasional.page"></strong> dari <strong class="text-slate-900 dark:text-white" x-text="totalTokoNasionalPages"></strong></span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto w-full max-w-full touch-scroll">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700">
+                <th class="py-3 px-4 w-12 text-center">No</th>
+                <th class="py-3 px-4">Kode Toko</th>
+                <th class="py-3 px-4">Nama Toko</th>
+                <th class="py-3 px-4">Account</th>
+                <th class="py-3 px-4">DC / Branch</th>
+                <th class="py-3 px-4">Kecamatan & Kota</th>
+                <th class="py-3 px-4">GPS / Maps</th>
+                <th class="py-3 px-4 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200/60 dark:divide-slate-800/60">
+              
+              <!-- 49k Stores Row Template -->
+              <template x-for="(st, idx) in filteredTokoNasional" :key="st.kodeToko || idx">
+                <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group">
+                  
+                  <!-- 1. No -->
+                  <td class="py-2.5 px-4 text-center text-slate-400 font-mono text-[11px]" x-text="(filterTokoNasional.page - 1) * filterTokoNasional.pageSize + idx + 1"></td>
+
+                  <!-- 2. Kode Toko -->
+                  <td class="py-2.5 px-4">
+                    <span class="font-mono font-bold text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700" x-text="st.kodeToko || '-'"></span>
+                  </td>
+
+                  <!-- 3. Nama Toko -->
+                  <td class="py-2.5 px-4 font-bold text-slate-800 dark:text-slate-200 max-w-[240px] truncate" :title="st.namaToko" x-text="st.namaToko || '-'"></td>
+
+                  <!-- 4. Account -->
+                  <td class="py-2.5 px-4 whitespace-nowrap">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-black border uppercase tracking-wider"
+                      :class="{
+                        'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30': (st.account || '').includes('ALFAMART'),
+                        'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30': (st.account || '').includes('INDOMARET'),
+                        'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30': (st.account || '').includes('ALFAMIDI'),
+                        'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30': (st.account || '').includes('FAMILY'),
+                        'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30': (st.account || '').includes('LAWSON'),
+                        'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30': (st.account || '').includes('CIRCLE')
+                      }"
+                      x-text="st.account || 'MINIMARKET'">
+                    </span>
+                  </td>
+
+                  <!-- 5. DC / Branch -->
+                  <td class="py-2.5 px-4 text-slate-600 dark:text-slate-400 max-w-[180px] truncate">
+                    <span x-text="st.branchName || st.branchCode || '-'"></span>
+                  </td>
+
+                  <!-- 6. Kecamatan & Kota -->
+                  <td class="py-2.5 px-4 text-slate-600 dark:text-slate-400 max-w-[200px] truncate">
+                    <span x-text="[st.kecamatan, st.kabKota].filter(Boolean).join(', ') || '-'"></span>
+                  </td>
+
+                  <!-- 7. Koordinat GPS -->
+                  <td class="py-2.5 px-4 whitespace-nowrap">
+                    <template x-if="st.lat && st.lon">
+                      <a :href="`https://www.google.com/maps/search/?api=1&query=${st.lat},${st.lon}`" target="_blank"
+                        class="inline-flex items-center gap-1 font-mono text-[11px] text-sky-600 dark:text-sky-400 hover:underline">
+                        <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                          <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path>
+                          <circle cx="12" cy="10" r="3"></circle>
+                        </svg>
+                        <span x-text="`${parseFloat(st.lat).toFixed(4)}, ${parseFloat(st.lon).toFixed(4)}`"></span>
+                      </a>
+                    </template>
+                    <template x-if="!st.lat || !st.lon">
+                      <span class="text-slate-400 text-[11px]">-</span>
+                    </template>
+                  </td>
+
+                  <!-- 8. Aksi CRUD & Jadwalkan -->
+                  <td class="py-2.5 px-4 text-center whitespace-nowrap">
+                    <div class="flex items-center justify-center space-x-1.5">
+                      
+                      <!-- 📍 Peta & 10 Toko Terdekat (Amber) -->
+                      <button type="button" @click="selectStoreForMap(st)" title="Buka Titik Lokasi & 10 Toko Terdekat di Peta"
+                        class="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-600 text-amber-600 hover:text-white dark:bg-amber-500/20 dark:text-amber-400 dark:hover:text-white border border-amber-500/20 font-bold text-[11px] transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-xs">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                          <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path>
+                          <circle cx="12" cy="10" r="3"></circle>
+                        </svg>
+                        <span>Peta</span>
+                      </button>
+
+                      <!-- 🎯 Jadwalkan ke MDS (Emerald) -->
+                      <button type="button" @click="openAssignStoreToMdsModal(st)" title="Jadwalkan Toko ini ke Rute MDS"
+                        class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shadow-xs transition-all flex items-center gap-1 cursor-pointer active:scale-95">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <circle cx="12" cy="12" r="6"></circle>
+                          <circle cx="12" cy="12" r="2"></circle>
+                        </svg>
+                        <span>Jadwalkan</span>
+                      </button>
+
+                      <!-- ✏️ Edit Master Store (Sky) -->
+                      <button type="button" @click="openEditMasterStoreModal(st)" title="Edit Toko di Master 49k"
+                        class="w-7 h-7 rounded-lg bg-sky-500/10 hover:bg-sky-600 text-sky-600 hover:text-white dark:bg-sky-500/20 dark:text-sky-400 dark:hover:text-white border border-sky-500/20 transition-all flex items-center justify-center cursor-pointer active:scale-90">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                          <path d="M12 20h9"></path>
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                        </svg>
+                      </button>
+
+                      <!-- 🗑️ Hapus / Flag Tutup (Rose) -->
+                      <button type="button" @click="openDeleteMasterStoreModal(st)" title="Hapus / Tutup Toko di Master 49k"
+                        class="w-7 h-7 rounded-lg bg-rose-500/10 hover:bg-rose-600 text-rose-600 hover:text-white dark:bg-rose-500/20 dark:text-rose-400 dark:hover:text-white border border-rose-500/20 transition-all flex items-center justify-center cursor-pointer active:scale-90">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                          <polyline points="3 6 5 6 21 6"></polyline>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                      </button>
+
+                    </div>
+                  </td>
+
+                </tr>
+              </template>
+
+              <!-- Empty State -->
+              <tr x-show="!isStores49kLoading && filteredTokoNasional.length === 0">
+                <td colspan="8" class="py-12 text-center text-slate-400">
+                  <i data-lucide="store" class="w-10 h-10 mx-auto mb-2.5 text-slate-300 dark:text-slate-600 opacity-60"></i>
+                  <p class="font-bold text-slate-700 dark:text-slate-300 text-sm">Tidak ada toko master yang cocok.</p>
+                  <p class="text-xs text-slate-400 mt-0.5">Coba gunakan kata kunci pencarian yang berbeda atau lakukan sinkronisasi.</p>
+                </td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+
+        <!-- PAGINATION BAR -->
+        <div class="p-3.5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 flex-wrap text-xs bg-slate-50/50 dark:bg-slate-900/30">
+          
+          <div class="text-slate-500 font-medium">
+            Menampilkan <strong class="text-slate-900 dark:text-slate-100" x-text="totalTokoNasionalCount > 0 ? ((filterTokoNasional.page - 1) * filterTokoNasional.pageSize + 1).toLocaleString('id-ID') : 0"></strong>
+            - <strong class="text-slate-900 dark:text-slate-100" x-text="Math.min(filterTokoNasional.page * filterTokoNasional.pageSize, totalTokoNasionalCount).toLocaleString('id-ID')"></strong>
+            dari <strong class="text-slate-900 dark:text-slate-100" x-text="totalTokoNasionalCount.toLocaleString('id-ID')"></strong> master toko
+          </div>
+
+          <div class="flex items-center gap-1.5 ml-auto">
+            <!-- First Page -->
+            <button @click="setTokoNasionalPage(1)" :disabled="filterTokoNasional.page <= 1"
+              class="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none cursor-pointer">
+              ⏮️
+            </button>
+
+            <!-- Prev Page -->
+            <button @click="prevTokoNasionalPage()" :disabled="filterTokoNasional.page <= 1"
+              class="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none cursor-pointer">
+              ◀ Prev
+            </button>
+
+            <!-- Numbered Pages -->
+            <template x-for="p in tokoNasionalPaginationWindow" :key="p">
+              <button @click="setTokoNasionalPage(p)"
+                class="w-8 h-8 rounded-lg font-bold transition-all text-xs flex items-center justify-center cursor-pointer"
+                :class="filterTokoNasional.page === p ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-400 font-black' : 'border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'"
+                x-text="p">
+              </button>
+            </template>
+
+            <!-- Next Page -->
+            <button @click="nextTokoNasionalPage()" :disabled="filterTokoNasional.page >= totalTokoNasionalPages"
+              class="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none cursor-pointer">
+              Next ▶
+            </button>
+
+            <!-- Last Page -->
+            <button @click="setTokoNasionalPage(totalTokoNasionalPages)" :disabled="filterTokoNasional.page >= totalTokoNasionalPages"
+              class="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none cursor-pointer">
+              ⏭️
+            </button>
+          </div>
+
+        </div>
+
       </div>
 
     </div>
@@ -1695,6 +2650,461 @@
     </div>
   </div>
 
+  <!-- ============================================================================== -->
+  <!-- 7. UNIVERSAL CRUD & SPREADSHEET SYNC MODAL -->
+  <!-- ============================================================================== -->
+  <div x-show="crudModal.isOpen" x-cloak
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0 backdrop-blur-none"
+    x-transition:enter-end="opacity-100 backdrop-blur-md"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100 backdrop-blur-md"
+    x-transition:leave-end="opacity-0 backdrop-blur-none"
+    class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
+
+    <div class="glass-card rounded-3xl p-5 sm:p-6 max-w-lg w-full shadow-2xl flex flex-col border border-slate-200 dark:border-slate-800 my-auto text-left"
+      @click.stop>
+
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-md shadow-brand-500/20"
+            :class="{
+              'bg-brand-500': crudModal.mode === 'edit' || crudModal.mode === 'create_master',
+              'bg-indigo-600': crudModal.mode === 'transfer',
+              'bg-rose-600': crudModal.mode === 'delete',
+              'bg-amber-600': crudModal.mode === 'purge_duplicates'
+            }">
+            <template x-if="crudModal.mode === 'edit'">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </template>
+            <template x-if="crudModal.mode === 'transfer'">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><polyline points="16 11 18 13 22 9"></polyline></svg>
+            </template>
+            <template x-if="crudModal.mode === 'delete'">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </template>
+            <template x-if="crudModal.mode === 'create_master'">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+            </template>
+            <template x-if="crudModal.mode === 'purge_duplicates'">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+            </template>
+          </div>
+          <div>
+            <h3 class="font-display font-extrabold text-sm sm:text-base text-slate-900 dark:text-white" x-text="crudModal.title"></h3>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400">Sinkronisasi langsung ke Google Spreadsheet</p>
+          </div>
+        </div>
+        <button type="button" @click="closeCrudModal()" :disabled="crudModal.isSubmitting"
+          class="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- SUCCESS AUDIT VIEW -->
+      <div x-show="crudModal.isSuccess" class="py-6 text-center space-y-4">
+        <div class="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 flex items-center justify-center animate-bounce">
+          <i data-lucide="check-circle" class="w-8 h-8"></i>
+        </div>
+        <div class="space-y-1">
+          <h4 class="font-bold text-base text-slate-900 dark:text-white">Operasi Berhasil!</h4>
+          <p class="text-xs text-slate-600 dark:text-slate-300" x-text="crudModal.statusMsg"></p>
+        </div>
+
+        <template x-if="crudModal.auditResult && crudModal.auditResult.audit && crudModal.auditResult.audit.details">
+          <div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-left text-[11px] space-y-1 max-h-36 overflow-y-auto border border-slate-200 dark:border-slate-700">
+            <span class="font-bold text-slate-500 block uppercase tracking-wider text-[10px]">Detail Baris Spreadsheet:</span>
+            <template x-for="(d, i) in crudModal.auditResult.audit.details" :key="i">
+              <div class="text-emerald-600 dark:text-emerald-400 flex items-start gap-1">
+                <span>•</span>
+                <span x-text="d"></span>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <button type="button" @click="closeCrudModal()"
+          class="w-full py-2.5 px-4 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold shadow-lg transition-all active:scale-95">
+          Selesai
+        </button>
+      </div>
+
+      <!-- FORM VIEW -->
+      <form x-show="!crudModal.isSuccess" @submit.prevent="executeCrudSubmit()" class="space-y-3.5 pt-3.5">
+
+        <!-- Processing / Live Sync Banner -->
+        <div x-show="crudModal.isSubmitting" class="p-3 rounded-2xl bg-brand-500/10 border border-brand-500/30 text-brand-600 dark:text-brand-400 text-xs flex items-center gap-3 animate-pulse">
+          <div class="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin flex-shrink-0"></div>
+          <div>
+            <div class="font-bold">Sedang Memproses ke Google Sheet...</div>
+            <div class="text-[11px] opacity-80" x-text="crudModal.statusMsg"></div>
+          </div>
+        </div>
+
+        <!-- Error Alert -->
+        <div x-show="crudModal.errorMsg" class="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-start gap-2">
+          <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+          <span x-text="crudModal.errorMsg"></span>
+        </div>
+
+        <!-- 1. MODE: EDIT JADWAL & TOKO -->
+        <template x-if="crudModal.mode === 'edit'">
+          <div class="space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Kode Toko</label>
+                <input type="text" x-model="crudModal.formData.kodeToko" required
+                  class="w-full h-9 text-xs font-mono font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Account</label>
+                <select x-model="crudModal.formData.account"
+                  class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                  <template x-for="acc in CONFIG.ACCOUNTS.filter(a => a !== 'ALL')" :key="acc">
+                    <option :value="acc" x-text="acc"></option>
+                  </template>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Nama Toko</label>
+              <input type="text" x-model="crudModal.formData.namaToko" required
+                class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Nomor Rute (1-31)</label>
+                <select x-model="crudModal.formData.rute"
+                  class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                  <template x-for="r in Array.from({length: 31}, (_, i) => i + 1)" :key="r">
+                    <option :value="String(r)" x-text="`Rute ${r}`"></option>
+                  </template>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Modul</label>
+                <select x-model="crudModal.formData.modul"
+                  class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                  <template x-for="m in CONFIG.MODULES.filter(x => x.code !== 'ALL' && x.code.length > 2)" :key="m.code">
+                    <option :value="m.code" x-text="m.name"></option>
+                  </template>
+                </select>
+              </div>
+            </div>
+
+            <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 text-[11px] text-slate-500">
+              Personil: <strong class="text-slate-800 dark:text-slate-200" x-text="crudModal.formData.namaCrew"></strong>
+            </div>
+          </div>
+        </template>
+
+        <!-- 2. MODE: TRANSFER TOKO KE MDS LAIN -->
+        <template x-if="crudModal.mode === 'transfer'">
+          <div class="space-y-3">
+            <div class="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-700 dark:text-indigo-300 space-y-1">
+              <div class="font-bold text-slate-900 dark:text-white" x-text="`${crudModal.formData.namaToko} (${crudModal.formData.kodeToko})`"></div>
+              <div>MDS Saat Ini: <strong x-text="`${crudModal.formData.oldNamaCrew} (${crudModal.formData.modul})`"></strong></div>
+              <div>Rute Saat Ini: <strong x-text="`Rute ${crudModal.formData.rute}`"></strong></div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Pilih Personil MDS Baru (Tujuan)</label>
+              <select x-model="crudModal.formData.newCrewName" @change="onNewCrewSelected($event.target.value)" required
+                class="w-full h-10 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                <option value="">-- Pilih MDS Baru --</option>
+                <template x-for="c in jadwalCrewList.filter(x => x.name !== crudModal.formData.oldNamaCrew)" :key="c.name">
+                  <option :value="c.name" x-text="`${c.name} (${c.modul})`"></option>
+                </template>
+              </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Nomor Rute Baru</label>
+                <select x-model="crudModal.formData.newRute"
+                  class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                  <template x-for="r in Array.from({length: 31}, (_, i) => i + 1)" :key="r">
+                    <option :value="String(r)" x-text="`Rute ${r}`"></option>
+                  </template>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Modul Tujuan</label>
+                <input type="text" x-model="crudModal.formData.newModul" readonly
+                  class="w-full h-9 text-xs font-bold px-3 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-not-allowed">
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 3. MODE: HAPUS TOKO DARI JADWAL -->
+        <template x-if="crudModal.mode === 'delete'">
+          <div class="space-y-3">
+            <div class="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs space-y-2 text-rose-800 dark:text-rose-300">
+              <div class="flex items-center gap-2 font-bold text-sm">
+                <i data-lucide="alert-octagon" class="w-4 h-4 text-rose-500"></i>
+                <span>Konfirmasi Hapus Penugasan Toko</span>
+              </div>
+              <p>Anda akan menghapus toko berikut dari jadwal personil:</p>
+              <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 font-semibold space-y-1 text-slate-800 dark:text-slate-200 border border-rose-500/20">
+                <div class="font-bold text-sm" x-text="crudModal.formData.namaToko"></div>
+                <div class="text-[11px] text-slate-500" x-text="`Kode: ${crudModal.formData.kodeToko} • Account: ${crudModal.formData.account}`"></div>
+                <div class="text-[11px] text-slate-500" x-text="`MDS: ${crudModal.formData.namaCrew} • Rute: ${crudModal.formData.rute} (${crudModal.formData.modul})`"></div>
+              </div>
+              <p class="text-[11px] opacity-80">Data baris akan dihapus dari Pipeline Master_Toko dan Spreadsheet Modul terkait.</p>
+            </div>
+          </div>
+        </template>
+
+        <!-- 4. MODE: TAMBAH TOKO BARU KE MASTER 49K -->
+        <template x-if="crudModal.mode === 'create_master'">
+          <div class="space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Kode Toko</label>
+                <input type="text" x-model="crudModal.formData.kodeToko" placeholder="Contoh: T1234" required
+                  class="w-full h-9 text-xs font-mono font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Account</label>
+                <select x-model="crudModal.formData.account"
+                  class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                  <template x-for="acc in CONFIG.ACCOUNTS.filter(a => a !== 'ALL')" :key="acc">
+                    <option :value="acc" x-text="acc"></option>
+                  </template>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Nama Toko</label>
+              <input type="text" x-model="crudModal.formData.namaToko" placeholder="Nama Toko / Cabang" required
+                class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+            </div>
+
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">Kecamatan</label>
+                <input type="text" x-model="crudModal.formData.kecamatan"
+                  class="w-full h-8 text-xs px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">Kab/Kota</label>
+                <input type="text" x-model="crudModal.formData.kota"
+                  class="w-full h-8 text-xs px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">Provinsi</label>
+                <input type="text" x-model="crudModal.formData.provinsi"
+                  class="w-full h-8 text-xs px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">Latitude</label>
+                <input type="text" x-model="crudModal.formData.lat" placeholder="-6.2088"
+                  class="w-full h-8 text-xs font-mono px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">Longitude</label>
+                <input type="text" x-model="crudModal.formData.lon" placeholder="106.8456"
+                  class="w-full h-8 text-xs font-mono px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 5. MODE: PURGE DUPLICATES -->
+        <template x-if="crudModal.mode === 'purge_duplicates'">
+          <div class="space-y-3">
+            <div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-2 text-amber-900 dark:text-amber-200">
+              <div class="flex items-center gap-2 font-bold text-sm">
+                <i data-lucide="sparkles" class="w-4 h-4 text-amber-500"></i>
+                <span>Pembersih Duplikat Jadwal Otomatis</span>
+              </div>
+              <p>Sistem akan memindai seluruh baris pada Spreadsheet Pipeline Master_Toko:</p>
+              <ul class="list-disc list-inside text-[11px] space-y-1 opacity-90">
+                <li>Mendeteksi toko yang terinput ganda untuk personil & rute yang sama.</li>
+                <li>Menghapus baris duplikat kedua/ketiga (hanya menyisakan 1 baris bersih).</li>
+                <li>Mencegah double-tasking di aplikasi AppSheet personil MDS.</li>
+              </ul>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Target Wilayah Pembersihan</label>
+              <select x-model="crudModal.formData.modul"
+                class="w-full h-10 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                <option value="ALL">🌐 Seluruh Modul Nasional (DK, LK, LP)</option>
+                <template x-for="m in CONFIG.MODULES.filter(x => x.code !== 'ALL')" :key="m.code">
+                  <option :value="m.code" x-text="m.name"></option>
+                </template>
+              </select>
+            </div>
+          </div>
+        </template>
+
+        <!-- 6. MODE: JADWALKAN TOKO KE MDS (ASSIGN SCHEDULE) -->
+        <template x-if="crudModal.mode === 'assign_schedule'">
+          <div class="space-y-3">
+            <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
+              <div class="font-bold text-sm text-slate-900 dark:text-white" x-text="crudModal.formData.namaToko"></div>
+              <div class="text-[11px] text-slate-600 dark:text-slate-400" x-text="`Kode: ${crudModal.formData.kodeToko} • Account: ${crudModal.formData.account}`"></div>
+              <div class="text-[11px] text-slate-500" x-text="[crudModal.formData.dcName, crudModal.formData.kecamatan, crudModal.formData.kota].filter(Boolean).join(' • ')"></div>
+            </div>
+
+            <!-- Pilih Modul Tujuan -->
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Pilih Modul Wilayah</label>
+              <select x-model="crudModal.formData.modul" @change="crudModal.formData.namaCrew = ''; crudModal.formData.kodeCrew = ''"
+                class="w-full h-10 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                <template x-for="m in CONFIG.MODULES.filter(x => x.code !== 'ALL' && x.code.length > 2)" :key="m.code">
+                  <option :value="m.code" x-text="m.name"></option>
+                </template>
+              </select>
+            </div>
+
+            <!-- Pilih Personil MDS di Modul Tersebut -->
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Pilih Personil MDS</label>
+              <select x-model="crudModal.formData.namaCrew" @change="onNewCrewSelected($event.target.value)" required
+                class="w-full h-10 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                <option value="">-- Pilih MDS --</option>
+                <template x-for="c in getCrewsByModul(crudModal.formData.modul)" :key="c.namaCrew">
+                  <option :value="c.namaCrew" x-text="c.namaCrew"></option>
+                </template>
+              </select>
+            </div>
+
+            <!-- Pilih Nomor Rute (1 - 31) -->
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Pilih Nomor Rute (1 - 31)</label>
+              <select x-model="crudModal.formData.rute" required
+                class="w-full h-10 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                <template x-for="r in Array.from({length: 31}, (_, i) => i + 1)" :key="r">
+                  <option :value="String(r)" x-text="`Rute ${r}`"></option>
+                </template>
+              </select>
+            </div>
+
+          </div>
+        </template>
+
+        <!-- 7. MODE: EDIT MASTER STORE (49K) -->
+        <template x-if="crudModal.mode === 'edit_master'">
+          <div class="space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Kode Toko</label>
+                <input type="text" x-model="crudModal.formData.kodeToko" readonly
+                  class="w-full h-9 text-xs font-mono font-semibold px-3 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-not-allowed">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Account</label>
+                <select x-model="crudModal.formData.account"
+                  class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                  <template x-for="acc in CONFIG.ACCOUNTS.filter(a => a !== 'ALL')" :key="acc">
+                    <option :value="acc" x-text="acc"></option>
+                  </template>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Nama Toko</label>
+              <input type="text" x-model="crudModal.formData.namaToko" required
+                class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Nama DC / Branch</label>
+              <input type="text" x-model="crudModal.formData.dcName"
+                class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">Kecamatan</label>
+                <input type="text" x-model="crudModal.formData.kecamatan"
+                  class="w-full h-8 text-xs px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">Kab/Kota</label>
+                <input type="text" x-model="crudModal.formData.kota"
+                  class="w-full h-8 text-xs px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">Latitude</label>
+                <input type="text" x-model="crudModal.formData.lat" placeholder="-6.2088"
+                  class="w-full h-8 text-xs font-mono px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">Longitude</label>
+                <input type="text" x-model="crudModal.formData.lon" placeholder="106.8456"
+                  class="w-full h-8 text-xs font-mono px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 8. MODE: HAPUS TOKO DARI MASTER 49K -->
+        <template x-if="crudModal.mode === 'delete_master'">
+          <div class="space-y-3">
+            <div class="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs space-y-2 text-rose-800 dark:text-rose-300">
+              <div class="flex items-center gap-2 font-bold text-sm">
+                <i data-lucide="alert-octagon" class="w-4 h-4 text-rose-500"></i>
+                <span>Konfirmasi Hapus Toko Master</span>
+              </div>
+              <p>Toko berikut akan dihapus dari Database Master Nasional 49k (Spreadsheet master_toko):</p>
+              <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 font-semibold space-y-1 text-slate-800 dark:text-slate-200 border border-rose-500/20">
+                <div class="font-bold text-sm" x-text="crudModal.formData.namaToko"></div>
+                <div class="text-[11px] text-slate-500" x-text="`Kode: ${crudModal.formData.kodeToko} • Account: ${crudModal.formData.account}`"></div>
+              </div>
+              <p class="text-[11px] opacity-80">Gunakan opsi ini hanya jika toko sudah tutup permanen atau salah input kode.</p>
+            </div>
+          </div>
+        </template>
+
+        <!-- Modal Action Footer -->
+        <div class="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
+          <button type="button" @click="closeCrudModal()" :disabled="crudModal.isSubmitting"
+            class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+            Batal
+          </button>
+          
+          <button type="submit" :disabled="crudModal.isSubmitting"
+            class="px-5 py-2 rounded-xl text-xs font-bold text-white shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+            :class="{
+              'bg-brand-600 hover:bg-brand-500': crudModal.mode === 'edit' || crudModal.mode === 'create_master' || crudModal.mode === 'edit_master',
+              'bg-emerald-600 hover:bg-emerald-500': crudModal.mode === 'assign_schedule',
+              'bg-indigo-600 hover:bg-indigo-500': crudModal.mode === 'transfer',
+              'bg-rose-600 hover:bg-rose-500': crudModal.mode === 'delete' || crudModal.mode === 'delete_master',
+              'bg-amber-600 hover:bg-amber-500': crudModal.mode === 'purge_duplicates'
+            }">
+            <template x-if="crudModal.isSubmitting">
+              <div class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            </template>
+            <span x-text="crudModal.isSubmitting ? 'Memproses...' : (
+              crudModal.mode === 'edit' || crudModal.mode === 'edit_master' ? 'Simpan Perubahan' :
+              crudModal.mode === 'assign_schedule' ? 'Jadwalkan ke MDS' :
+              crudModal.mode === 'transfer' ? 'Eksekusi Transfer' :
+              crudModal.mode === 'delete' || crudModal.mode === 'delete_master' ? 'Ya, Hapus Toko' :
+              crudModal.mode === 'create_master' ? 'Tambah ke Master' : 'Mulai Bersihkan'
+            )"></span>
+          </button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+
   <!-- FLOATING QUICK SCROLL TO TOP & ACTIVE FILTER WIDGET -->
   <div class="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2 pointer-events-auto"
     x-data="{ showScrollTop: false }"
@@ -1783,12 +3193,12 @@
   </div>
 
   <!-- Modular Scripts with Cache-Buster -->
-  <script src="./js/config.js?v=20260907_17"></script>
-  <script src="./js/db.js?v=20260907_17"></script>
-  <script src="./js/api.js?v=20260907_17"></script>
-  <script src="./js/charts.js?v=20260907_17"></script>
-  <script src="./js/map.js?v=20260907_17"></script>
-  <script src="./js/app.js?v=20260907_17"></script>
+  <script src="./js/config.js?v=20260908_10"></script>
+  <script src="./js/db.js?v=20260908_10"></script>
+  <script src="./js/api.js?v=20260908_10"></script>
+  <script src="./js/charts.js?v=20260908_10"></script>
+  <script src="./js/map.js?v=20260908_10"></script>
+  <script src="./js/app.js?v=20260908_10"></script>
 
   <!-- Failsafe preloader auto-dismiss -->
   <script>

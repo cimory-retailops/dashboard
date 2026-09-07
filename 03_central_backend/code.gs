@@ -1445,3 +1445,628 @@ function handleResolveImage_(params) {
 
   return { status: "error", message: "Foto tidak ditemukan di Google Drive: " + fileName };
 }
+
+// ==============================================================================
+// MULTI-SPREADSHEET CRUD & EXACT ROW LOCATOR ENGINE (POST HANDLER)
+// ==============================================================================
+
+function doPost(e) {
+  try {
+    var payload;
+    if (e.postData && e.postData.contents) {
+      payload = JSON.parse(e.postData.contents);
+    } else if (e.parameter && e.parameter.data) {
+      payload = JSON.parse(e.parameter.data);
+    } else if (e.parameter && e.parameter.action) {
+      payload = e.parameter;
+    } else {
+      throw new Error("Payload kosong atau format JSON tidak valid");
+    }
+
+    var action = payload.action || "ping";
+    var result = { status: "success", action: action, timestamp: new Date().toISOString() };
+
+    if (action === "update_store_route_info") {
+      result.data = handleUpdateStoreRouteInfo_(payload);
+    } else if (action === "transfer_store_crew") {
+      result.data = handleTransferStoreCrew_(payload);
+    } else if (action === "delete_scheduled_store") {
+      result.data = handleDeleteScheduledStore_(payload);
+    } else if (action === "purge_duplicate_routes") {
+      result.data = handlePurgeDuplicateRoutes_(payload);
+    } else if (action === "assign_scheduled_store") {
+      result.data = handleAssignScheduledStore_(payload);
+    } else if (action === "create_or_update_master_store") {
+      result.data = handleCreateOrUpdateMasterStore_(payload);
+    } else if (action === "delete_master_store") {
+      result.data = handleDeleteMasterStore_(payload);
+    } else if (action === "ping") {
+      result.message = "Central CRUD API is ready and operational!";
+    } else {
+      throw new Error("Action CRUD '" + action + "' tidak dikenali.");
+    }
+
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error",
+      message: err.toString(),
+      stack: err.stack
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+/**
+ * EXACT ROW LOCATOR HELPER
+ * Menemukan index kolom dan nomor baris (1-indexed) yang cocok secara presisi
+ */
+function findStoreRowIndices_(sheet, criteria) {
+  if (!sheet) return [];
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+
+  var headers = data[0].map(function(h) { 
+    return String(h || "").toLowerCase().replace(/[^a-z0-9]/g, ""); 
+  });
+
+  var modIdx = headers.findIndex(function(h) { return h.includes("modul"); });
+  var accIdx = headers.findIndex(function(h) { return h.includes("account") || h.includes("tipe"); });
+  var codeIdx = headers.findIndex(function(h) { return h.includes("kodetoko") || h.includes("storecode") || h === "kode" || h === "code"; });
+  var nameIdx = headers.findIndex(function(h) { return h.includes("namatoko") || h.includes("storename") || h === "nama"; });
+  var crewCodeIdx = headers.findIndex(function(h) { return h.includes("kodecrew") || h.includes("idcrew"); });
+  var crewNameIdx = headers.findIndex(function(h) { return h.includes("namacrew") || (h.includes("crew") && !h.includes("kode")); });
+  var ruteIdx = headers.findIndex(function(h) { return h.includes("rute") || h.includes("route"); });
+
+  var cMod = modIdx >= 0 ? modIdx : 0;
+  var cAcc = accIdx >= 0 ? accIdx : 1;
+  var cCode = codeIdx >= 0 ? codeIdx : 2;
+  var cName = nameIdx >= 0 ? nameIdx : 3;
+  var cCrewCode = crewCodeIdx >= 0 ? crewCodeIdx : 4;
+  var cCrewName = crewNameIdx >= 0 ? crewNameIdx : 5;
+  var cRute = ruteIdx >= 0 ? ruteIdx : 6;
+
+  var targetCode = (criteria.kodeToko || criteria.oldKodeToko || "").toString().trim().toUpperCase();
+  var targetRute = (criteria.rute || criteria.oldRute || "").toString().trim().replace(/[^0-9]/g, "");
+  var targetCrew = (criteria.namaCrew || criteria.oldNamaCrew || criteria.kodeCrew || "").toString().trim().toUpperCase();
+  var targetModul = normalizeModulKey_(criteria.modul || criteria.oldModul || "");
+
+  var matches = [];
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var rCode = String(row[cCode] || "").trim().toUpperCase();
+    if (!rCode || rCode !== targetCode) continue;
+
+    var rRute = String(row[cRute] || "").trim().replace(/[^0-9]/g, "");
+    if (targetRute && rRute && rRute !== targetRute) continue;
+
+    var rMod = normalizeModulKey_(String(row[cMod] || ""));
+    if (targetModul && rMod && rMod !== targetModul && rMod.substring(0,2) !== targetModul.substring(0,2)) continue;
+
+    var rCrewName = String(row[cCrewName] || "").trim().toUpperCase();
+    var rCrewCode = String(row[cCrewCode] || "").trim().toUpperCase();
+    if (targetCrew && (rCrewName || rCrewCode)) {
+      if (rCrewName.indexOf(targetCrew) === -1 && targetCrew.indexOf(rCrewName) === -1 && rCrewCode !== targetCrew) {
+        // Toleransi pencocokan jika nama/kode crew cocok sebagian
+      }
+    }
+
+    matches.push({
+      rowNumber: i + 1, // 1-indexed for Sheet range
+      colIndices: {
+        modul: cMod,
+        account: cAcc,
+        kodeToko: cCode,
+        namaToko: cName,
+        kodeCrew: cCrewCode,
+        namaCrew: cCrewName,
+        rute: cRute
+      },
+      rowData: row
+    });
+  }
+
+  return matches;
+}
+
+/**
+ * REVERSE ROW DELETION HELPER (Bottom-to-Top Safe Deletion)
+ */
+function deleteRowsReverse_(sheet, rowNumbers) {
+  if (!sheet || !rowNumbers || rowNumbers.length === 0) return 0;
+  // Sort baris dari urutan terbesar ke terkecil
+  var sorted = rowNumbers.slice().sort(function(a, b) { return b - a; });
+  var count = 0;
+  for (var i = 0; i < sorted.length; i++) {
+    var rNum = sorted[i];
+    if (rNum >= 2 && rNum <= sheet.getLastRow()) {
+      sheet.deleteRow(rNum);
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * 1. UPDATE KODE TOKO / NAMA TOKO / RUTE / ACCOUNT (Cascade Update)
+ */
+function handleUpdateStoreRouteInfo_(payload) {
+  var oldData = payload.oldData || payload;
+  var newData = payload.newData || payload;
+
+  var oldModul = normalizeModulKey_(oldData.modul || "");
+  var newModul = normalizeModulKey_(newData.modul || oldModul);
+  var oldRute = String(oldData.rute || "").trim().replace(/[^0-9]/g, "");
+  var newRute = String(newData.rute || oldRute).trim().replace(/[^0-9]/g, "");
+  var oldKode = String(oldData.kodeToko || "").trim().toUpperCase();
+  var newKode = String(newData.kodeToko || oldKode).trim().toUpperCase();
+  var newNama = String(newData.namaToko || oldData.namaToko || "").trim();
+  var newAcc = String(newData.account || oldData.account || "ALFAMART").trim().toUpperCase();
+
+  var audit = {
+    pipelineUpdated: 0,
+    modulSheetUpdated: 0,
+    absenSheetUpdated: 0,
+    extSheetUpdated: 0,
+    details: []
+  };
+
+  // A. Update di Pipeline 1 Pintu (Spreadsheet Sentral)
+  var centralSs = SpreadsheetApp.getActiveSpreadsheet();
+  var centralSheet = centralSs.getSheetByName("Master_Toko");
+  if (centralSheet) {
+    var pMatches = findStoreRowIndices_(centralSheet, oldData);
+    for (var p = 0; p < pMatches.length; p++) {
+      var m = pMatches[p];
+      var cols = m.colIndices;
+      if (newModul) centralSheet.getRange(m.rowNumber, cols.modul + 1).setValue(newModul);
+      if (newAcc) centralSheet.getRange(m.rowNumber, cols.account + 1).setValue(newAcc);
+      if (newKode) centralSheet.getRange(m.rowNumber, cols.kodeToko + 1).setValue(newKode);
+      if (newNama) centralSheet.getRange(m.rowNumber, cols.namaToko + 1).setValue(newNama);
+      if (newRute) centralSheet.getRange(m.rowNumber, cols.rute + 1).setValue(newRute);
+      audit.pipelineUpdated++;
+      audit.details.push("Pipeline Master_Toko Baris " + m.rowNumber + " diupdate");
+    }
+  }
+
+  // B. Update di Modul Spreadsheet Cabang
+  var targetModulKey = oldModul || newModul;
+  if (modulIDs[targetModulKey]) {
+    try {
+      var mSs = SpreadsheetApp.openById(modulIDs[targetModulKey]);
+      var mSheet = getSheetByNames_(mSs, ["Master_Toko", "master_toko", "Master Toko", "DATA TOKO", "Sheet1"]);
+      if (mSheet) {
+        var mMatches = findStoreRowIndices_(mSheet, oldData);
+        for (var mi = 0; mi < mMatches.length; mi++) {
+          var mm = mMatches[mi];
+          var mCols = mm.colIndices;
+          if (newModul) mSheet.getRange(mm.rowNumber, mCols.modul + 1).setValue(newModul);
+          if (newAcc) mSheet.getRange(mm.rowNumber, mCols.account + 1).setValue(newAcc);
+          if (newKode) mSheet.getRange(mm.rowNumber, mCols.kodeToko + 1).setValue(newKode);
+          if (newNama) mSheet.getRange(mm.rowNumber, mCols.namaToko + 1).setValue(newNama);
+          if (newRute) mSheet.getRange(mm.rowNumber, mCols.rute + 1).setValue(newRute);
+          audit.modulSheetUpdated++;
+          audit.details.push("Modul " + targetModulKey + " Baris " + mm.rowNumber + " diupdate");
+        }
+      }
+    } catch (e) {
+      audit.details.push("Gagal update modul " + targetModulKey + ": " + e.message);
+    }
+  }
+
+  // C. Update di Toko_Absen Regional
+  var prefix = targetModulKey.substring(0, 2);
+  if (absenIDs[prefix]) {
+    try {
+      var aSs = SpreadsheetApp.openById(absenIDs[prefix]);
+      var aSheet = getSheetByNames_(aSs, ["Toko_Absen", "toko_absen", "Toko Absen", "Master_Toko", "Sheet1"]);
+      if (aSheet) {
+        var aMatches = findStoreRowIndices_(aSheet, oldData);
+        for (var ai = 0; ai < aMatches.length; ai++) {
+          var am = aMatches[ai];
+          var aCols = am.colIndices;
+          if (newAcc) aSheet.getRange(am.rowNumber, aCols.account + 1).setValue(newAcc);
+          if (newKode) aSheet.getRange(am.rowNumber, aCols.kodeToko + 1).setValue(newKode);
+          if (newNama) aSheet.getRange(am.rowNumber, aCols.namaToko + 1).setValue(newNama);
+          if (newRute) aSheet.getRange(am.rowNumber, aCols.rute + 1).setValue(newRute);
+          audit.absenSheetUpdated++;
+        }
+      }
+    } catch (e) {}
+  }
+
+  return {
+    message: "Berhasil update toko " + (newNama || oldData.namaToko) + " (" + newKode + ") ke Rute " + newRute,
+    audit: audit
+  };
+}
+
+/**
+ * 2. TRANSFER TOKO ANTAR PERSONIL MDS
+ */
+function handleTransferStoreCrew_(payload) {
+  var store = payload.store || payload;
+  var oldCrewName = String(payload.oldCrewName || store.namaCrew || "").trim();
+  var oldCrewCode = String(payload.oldCrewCode || store.kodeCrew || "").trim();
+  var newCrewName = String(payload.newCrewName || "").trim();
+  var newCrewCode = String(payload.newCrewCode || "").trim();
+  var oldModul = normalizeModulKey_(payload.oldModul || store.modul || "");
+  var newModul = normalizeModulKey_(payload.newModul || oldModul);
+  var oldRute = String(payload.oldRute || store.rute || "").trim().replace(/[^0-9]/g, "");
+  var newRute = String(payload.newRute || oldRute).trim().replace(/[^0-9]/g, "");
+  var kodeToko = String(store.kodeToko || "").trim().toUpperCase();
+  var namaToko = String(store.namaToko || "").trim();
+  var account = String(store.account || "ALFAMART").trim().toUpperCase();
+
+  if (!newCrewName) throw new Error("Nama Personil MDS Baru wajib diisi");
+
+  var audit = {
+    pipelineTransferred: false,
+    oldModulRemoved: false,
+    newModulAdded: false,
+    details: []
+  };
+
+  // A. Update di Pipeline Sentral Master_Toko
+  var centralSs = SpreadsheetApp.getActiveSpreadsheet();
+  var centralSheet = centralSs.getSheetByName("Master_Toko");
+  if (centralSheet) {
+    var pMatches = findStoreRowIndices_(centralSheet, {
+      modul: oldModul,
+      kodeToko: kodeToko,
+      rute: oldRute,
+      namaCrew: oldCrewName
+    });
+
+    if (pMatches.length > 0) {
+      for (var p = 0; p < pMatches.length; p++) {
+        var m = pMatches[p];
+        var cols = m.colIndices;
+        centralSheet.getRange(m.rowNumber, cols.modul + 1).setValue(newModul);
+        centralSheet.getRange(m.rowNumber, cols.kodeCrew + 1).setValue(newCrewCode);
+        centralSheet.getRange(m.rowNumber, cols.namaCrew + 1).setValue(newCrewName);
+        centralSheet.getRange(m.rowNumber, cols.rute + 1).setValue(newRute);
+        audit.pipelineTransferred = true;
+        audit.details.push("Pipeline Baris " + m.rowNumber + " dipindahkan ke " + newCrewName);
+      }
+    } else {
+      // Jika baris belum ada di Pipeline, tambahkan baris baru
+      centralSheet.appendRow([newModul, account, kodeToko, namaToko, newCrewCode, newCrewName, newRute, "TRANSFER", "", "", "", "", "TRANSFER", "AKTIF", "TERSEBAR"]);
+      audit.pipelineTransferred = true;
+    }
+  }
+
+  // B. Jika Beda Modul: Hapus dari Modul Lama & Tambahkan ke Modul Baru
+  if (oldModul && modulIDs[oldModul]) {
+    try {
+      var oldSs = SpreadsheetApp.openById(modulIDs[oldModul]);
+      var oldSheet = getSheetByNames_(oldSs, ["Master_Toko", "master_toko", "Master Toko", "DATA TOKO", "Sheet1"]);
+      if (oldSheet) {
+        if (oldModul !== newModul) {
+          // Beda modul -> hapus dari modul lama
+          var oldMatches = findStoreRowIndices_(oldSheet, { kodeToko: kodeToko, rute: oldRute, namaCrew: oldCrewName });
+          var delCount = deleteRowsReverse_(oldSheet, oldMatches.map(function(x) { return x.rowNumber; }));
+          audit.oldModulRemoved = delCount > 0;
+        } else {
+          // Modul sama -> cukup update nama crew & rute di modul tersebut
+          var sameMatches = findStoreRowIndices_(oldSheet, { kodeToko: kodeToko, rute: oldRute, namaCrew: oldCrewName });
+          for (var s = 0; s < sameMatches.length; s++) {
+            var sm = sameMatches[s];
+            oldSheet.getRange(sm.rowNumber, sm.colIndices.kodeCrew + 1).setValue(newCrewCode);
+            oldSheet.getRange(sm.rowNumber, sm.colIndices.namaCrew + 1).setValue(newCrewName);
+            oldSheet.getRange(sm.rowNumber, sm.colIndices.rute + 1).setValue(newRute);
+          }
+          audit.oldModulRemoved = true;
+        }
+      }
+    } catch (e) {}
+  }
+
+  if (oldModul !== newModul && newModul && modulIDs[newModul]) {
+    try {
+      var newSs = SpreadsheetApp.openById(modulIDs[newModul]);
+      var newSheet = getSheetByNames_(newSs, ["Master_Toko", "master_toko", "Master Toko", "DATA TOKO", "Sheet1"]);
+      if (newSheet) {
+        var newRow = [account, kodeToko, namaToko, newCrewCode, newCrewName, newRute, "MINIMARKET", "", "", "", "", "", "", "AKTIF"];
+        newSheet.appendRow(newRow);
+        audit.newModulAdded = true;
+      }
+    } catch (e) {}
+  }
+
+  return {
+    message: "Toko " + namaToko + " berhasil ditransfer dari " + (oldCrewName || 'Crew Lama') + " ke " + newCrewName + " (Rute " + newRute + ")",
+    audit: audit
+  };
+}
+
+/**
+ * 3. HAPUS TOKO DARI JADWAL (Cascade Delete)
+ */
+function handleDeleteScheduledStore_(payload) {
+  var criteria = payload.store || payload;
+  var targetModul = normalizeModulKey_(criteria.modul || "");
+  var targetKode = String(criteria.kodeToko || "").trim().toUpperCase();
+  var targetRute = String(criteria.rute || "").trim().replace(/[^0-9]/g, "");
+
+  if (!targetKode) throw new Error("Kode Toko yang ingin dihapus wajib disertakan");
+
+  var audit = {
+    pipelineDeleted: 0,
+    modulSheetDeleted: 0,
+    absenSheetDeleted: 0,
+    details: []
+  };
+
+  // A. Hapus dari Pipeline Sentral Master_Toko
+  var centralSs = SpreadsheetApp.getActiveSpreadsheet();
+  var centralSheet = centralSs.getSheetByName("Master_Toko");
+  if (centralSheet) {
+    var pMatches = findStoreRowIndices_(centralSheet, criteria);
+    var pNums = pMatches.map(function(m) { return m.rowNumber; });
+    audit.pipelineDeleted = deleteRowsReverse_(centralSheet, pNums);
+    audit.details.push("Dihapus " + audit.pipelineDeleted + " baris dari Pipeline Master_Toko (Baris: " + pNums.join(", ") + ")");
+  }
+
+  // B. Hapus dari Modul Spreadsheet
+  if (targetModul && modulIDs[targetModul]) {
+    try {
+      var mSs = SpreadsheetApp.openById(modulIDs[targetModul]);
+      var mSheet = getSheetByNames_(mSs, ["Master_Toko", "master_toko", "Master Toko", "DATA TOKO", "Sheet1"]);
+      if (mSheet) {
+        var mMatches = findStoreRowIndices_(mSheet, criteria);
+        var mNums = mMatches.map(function(m) { return m.rowNumber; });
+        audit.modulSheetDeleted = deleteRowsReverse_(mSheet, mNums);
+        audit.details.push("Dihapus " + audit.modulSheetDeleted + " baris dari Modul " + targetModul);
+      }
+    } catch (e) {
+      audit.details.push("Gagal hapus di modul " + targetModul + ": " + e.message);
+    }
+  }
+
+  // C. Hapus dari Toko_Absen Regional
+  var prefix = targetModul.substring(0, 2);
+  if (absenIDs[prefix]) {
+    try {
+      var aSs = SpreadsheetApp.openById(absenIDs[prefix]);
+      var aSheet = getSheetByNames_(aSs, ["Toko_Absen", "toko_absen", "Toko Absen", "Master_Toko", "Sheet1"]);
+      if (aSheet) {
+        var aMatches = findStoreRowIndices_(aSheet, criteria);
+        var aNums = aMatches.map(function(m) { return m.rowNumber; });
+        audit.absenSheetDeleted = deleteRowsReverse_(aSheet, aNums);
+      }
+    } catch (e) {}
+  }
+
+  return {
+    message: "Toko " + (criteria.namaToko || targetKode) + " berhasil dihapus dari jadwal Rute " + targetRute,
+    audit: audit
+  };
+}
+
+/**
+ * 4. SCAN & PURGE DUPLICATE ROUTES (Anti-Dobel Schedule Purger)
+ */
+function handlePurgeDuplicateRoutes_(payload) {
+  var modulFilter = (payload.modul || "ALL").toUpperCase().trim();
+  var centralSs = SpreadsheetApp.getActiveSpreadsheet();
+  var centralSheet = centralSs.getSheetByName("Master_Toko");
+  if (!centralSheet) throw new Error("Sheet Master_Toko tidak ditemukan");
+
+  var data = centralSheet.getDataRange().getValues();
+  if (data.length < 2) return { message: "Sheet kosong", duplicatesPurged: 0 };
+
+  var headers = data[0].map(function(h) { 
+    return String(h || "").toLowerCase().replace(/[^a-z0-9]/g, ""); 
+  });
+
+  var modIdx = headers.findIndex(function(h) { return h.includes("modul"); });
+  var accIdx = headers.findIndex(function(h) { return h.includes("account") || h.includes("tipe"); });
+  var codeIdx = headers.findIndex(function(h) { return h.includes("kodetoko") || h.includes("storecode") || h === "kode"; });
+  var crewCodeIdx = headers.findIndex(function(h) { return h.includes("kodecrew") || h.includes("idcrew"); });
+  var crewNameIdx = headers.findIndex(function(h) { return h.includes("namacrew") || h.includes("crew"); });
+  var ruteIdx = headers.findIndex(function(h) { return h.includes("rute") || h.includes("route"); });
+
+  var cMod = modIdx >= 0 ? modIdx : 0;
+  var cAcc = accIdx >= 0 ? accIdx : 1;
+  var cCode = codeIdx >= 0 ? codeIdx : 2;
+  var cCrewCode = crewCodeIdx >= 0 ? crewCodeIdx : 4;
+  var cCrewName = crewNameIdx >= 0 ? crewNameIdx : 5;
+  var cRute = ruteIdx >= 0 ? ruteIdx : 6;
+
+  var seenKeys = {};
+  var duplicateRowNumbers = [];
+  var duplicateSummary = [];
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var mod = normalizeModulKey_(String(row[cMod] || ""));
+    var code = String(row[cCode] || "").trim().toUpperCase();
+    var rute = String(row[cRute] || "").trim().replace(/[^0-9]/g, "");
+    var crew = String(row[cCrewName] || row[cCrewCode] || "").trim().toUpperCase();
+    var acc = String(row[cAcc] || "").trim().toUpperCase();
+
+    if (!code || !rute) continue;
+
+    if (modulFilter !== "ALL") {
+      if (modulFilter.length === 2 && mod.substring(0, 2) !== modulFilter) continue;
+      if (modulFilter.length > 2 && mod !== modulFilter) continue;
+    }
+
+    // Composite Key: MODUL_CREW_RUTE_KODE_ACC
+    var compKey = mod + "_" + crew + "_" + rute + "_" + code + "_" + acc;
+
+    if (seenKeys[compKey]) {
+      // Baris ini adalah DUPLIKAT! Tandai untuk dihapus
+      duplicateRowNumbers.push(i + 1); // 1-indexed
+      duplicateSummary.push({
+        row: i + 1,
+        modul: mod,
+        crew: crew,
+        rute: rute,
+        kodeToko: code,
+        firstSeenAtRow: seenKeys[compKey]
+      });
+    } else {
+      seenKeys[compKey] = i + 1;
+    }
+  }
+
+  // Hapus semua baris duplikat dari bawah ke atas
+  var totalPurged = deleteRowsReverse_(centralSheet, duplicateRowNumbers);
+
+  return {
+    message: "Berhasil membersihkan " + totalPurged + " baris duplikat di Master_Toko Sentral",
+    totalDuplicatesFound: duplicateRowNumbers.length,
+    totalPurged: totalPurged,
+    duplicates: duplicateSummary
+  };
+}
+
+/**
+ * 4B. JADWALKAN TOKO DARI MASTER NASIONAL KE PERSONIL MDS
+ */
+function handleAssignScheduledStore_(payload) {
+  var store = payload.store || payload;
+  var targetModul = normalizeModulKey_(payload.modul || store.modul || "");
+  var targetCrewName = String(payload.namaCrew || payload.crewName || "").trim();
+  var targetCrewCode = String(payload.kodeCrew || payload.crewCode || "").trim();
+  var targetRute = String(payload.rute || "1").trim().replace(/[^0-9]/g, "") || "1";
+  var kodeToko = String(store.kodeToko || "").trim().toUpperCase();
+  var namaToko = String(store.namaToko || "").trim();
+  var account = String(store.account || "ALFAMART").trim().toUpperCase();
+
+  if (!kodeToko || !targetCrewName || !targetModul) {
+    throw new Error("Kode Toko, Modul, dan Nama Personil MDS wajib diisi");
+  }
+
+  var audit = {
+    pipelineAdded: false,
+    modulSheetAdded: false,
+    absenSheetAdded: false,
+    details: []
+  };
+
+  // 1. Tambah ke Pipeline Master_Toko Sentral
+  var centralSs = SpreadsheetApp.getActiveSpreadsheet();
+  var centralSheet = centralSs.getSheetByName("Master_Toko");
+  if (centralSheet) {
+    var pRow = [targetModul, account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "SCHEDULED", "", "", "", "", "SCHEDULED", "AKTIF", "TERSEBAR"];
+    centralSheet.appendRow(pRow);
+    audit.pipelineAdded = true;
+    audit.details.push("Ditambahkan ke Pipeline Master_Toko Sentral (Modul " + targetModul + ", " + targetCrewName + ", Rute " + targetRute + ")");
+  }
+
+  // 2. Tambah ke Modul Sheet Cabang
+  if (targetModul && modulIDs[targetModul]) {
+    try {
+      var mSs = SpreadsheetApp.openById(modulIDs[targetModul]);
+      var mSheet = getSheetByNames_(mSs, ["Master_Toko", "master_toko", "Master Toko", "DATA TOKO", "Sheet1"]);
+      if (mSheet) {
+        var mRow = [account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "MINIMARKET", "", "", "", "", "", "", "AKTIF"];
+        mSheet.appendRow(mRow);
+        audit.modulSheetAdded = true;
+        audit.details.push("Ditambahkan ke Modul " + targetModul);
+      }
+    } catch (e) {
+      audit.details.push("Gagal append di modul: " + e.message);
+    }
+  }
+
+  // 3. Tambah ke Toko_Absen Regional
+  var prefix = targetModul.substring(0, 2);
+  if (absenIDs[prefix]) {
+    try {
+      var aSs = SpreadsheetApp.openById(absenIDs[prefix]);
+      var aSheet = getSheetByNames_(aSs, ["Toko_Absen", "toko_absen", "Toko Absen", "Master_Toko", "Sheet1"]);
+      if (aSheet) {
+        var aRow = [account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "MINIMARKET", "", "", "", "", "", "", "AKTIF"];
+        aSheet.appendRow(aRow);
+        audit.absenSheetAdded = true;
+      }
+    } catch (e) {}
+  }
+
+  return {
+    message: "Toko " + namaToko + " (" + kodeToko + ") berhasil dijadwalkan ke " + targetCrewName + " (Modul " + targetModul + ", Rute " + targetRute + ")",
+    audit: audit
+  };
+}
+
+/**
+ * 5. CREATE OR UPDATE TOKO DI MASTER 49K SPREADSHEET
+ */
+function handleCreateOrUpdateMasterStore_(payload) {
+  var store = payload.store || payload;
+  var kodeToko = String(store.kodeToko || "").trim().toUpperCase();
+  var namaToko = String(store.namaToko || "").trim();
+  var account = String(store.account || "ALFAMART").trim().toUpperCase();
+  var dcName = String(store.dcName || "").trim();
+  var kecamatan = String(store.kecamatan || "").trim();
+  var kota = String(store.kota || "").trim();
+  var provinsi = String(store.provinsi || "").trim();
+  var lat = store.lat || "";
+  var lon = store.lon || "";
+
+  if (!kodeToko || !namaToko) throw new Error("Kode Toko dan Nama Toko wajib diisi");
+
+  var masterSs = SpreadsheetApp.openById(MASTER_49K_ID);
+  var sheet = masterSs.getSheetByName("master_toko") || masterSs.getSheets()[0];
+  var data = sheet.getDataRange().getValues();
+
+  var foundRow = -1;
+  for (var i = 1; i < data.length; i++) {
+    var k = String(data[i][0] || "").trim().toUpperCase();
+    if (k === kodeToko) {
+      foundRow = i + 1;
+      break;
+    }
+  }
+
+  if (foundRow > 0) {
+    // Update existing store
+    sheet.getRange(foundRow, 4).setValue(namaToko); // StoreName
+    if (account) sheet.getRange(foundRow, 10).setValue(account);
+    if (dcName) sheet.getRange(foundRow, 3).setValue(dcName);
+    if (kecamatan) sheet.getRange(foundRow, 5).setValue(kecamatan);
+    if (kota) sheet.getRange(foundRow, 6).setValue(kota);
+    if (lat) sheet.getRange(foundRow, 8).setValue(lat);
+    if (lon) sheet.getRange(foundRow, 9).setValue(lon);
+    return { message: "Toko " + namaToko + " (" + kodeToko + ") berhasil diperbarui di Master Database Nasional 49k (Baris " + foundRow + ")", isNew: false };
+  } else {
+    // Append new store
+    var newRow = [kodeToko, "", dcName, namaToko, kecamatan, kota, "", lat, lon, account, provinsi];
+    sheet.appendRow(newRow);
+    return { message: "Toko " + namaToko + " (" + kodeToko + ") berhasil ditambahkan sebagai toko baru ke Master Database Nasional 49k!", isNew: true };
+  }
+}
+
+/**
+ * 6. DELETE / FLAG TUTUP TOKO DI MASTER 49K SPREADSHEET
+ */
+function handleDeleteMasterStore_(payload) {
+  var kodeToko = String(payload.kodeToko || "").trim().toUpperCase();
+  if (!kodeToko) throw new Error("Kode Toko wajib diisi");
+
+  var masterSs = SpreadsheetApp.openById(MASTER_49K_ID);
+  var sheet = masterSs.getSheetByName("master_toko") || masterSs.getSheets()[0];
+  var data = sheet.getDataRange().getValues();
+
+  var foundRow = -1;
+  for (var i = 1; i < data.length; i++) {
+    var k = String(data[i][0] || "").trim().toUpperCase();
+    if (k === kodeToko) {
+      foundRow = i + 1;
+      break;
+    }
+  }
+
+  if (foundRow > 0) {
+    sheet.deleteRow(foundRow);
+    return { message: "Toko " + kodeToko + " berhasil dihapus permanen dari Master Database Nasional 49k (Baris " + foundRow + ")" };
+  } else {
+    throw new Error("Toko dengan kode " + kodeToko + " tidak ditemukan di Master Database 49k");
+  }
+}
