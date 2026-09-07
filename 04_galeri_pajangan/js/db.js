@@ -38,18 +38,32 @@ const GalleryDB = {
     try {
       const db = await this.openDB();
       if (!db) return false;
+
+      // Ensure data is safely serializable (Unwraps Alpine.js Proxy / Reactive objects)
+      let cleanValue;
+      try {
+        cleanValue = JSON.parse(JSON.stringify(value));
+      } catch (err) {
+        cleanValue = value;
+      }
+
       return new Promise((resolve) => {
-        const tx = db.transaction([this.STORE_NAME], 'readwrite');
-        const store = tx.objectStore(this.STORE_NAME);
-        const item = {
-          key: key,
-          value: value,
-          timestamp: Date.now(),
-          ttl: ttlMs
-        };
-        const req = store.put(item);
-        req.onsuccess = () => resolve(true);
-        req.onerror = () => resolve(false);
+        try {
+          const tx = db.transaction([this.STORE_NAME], 'readwrite');
+          const store = tx.objectStore(this.STORE_NAME);
+          const item = {
+            key: key,
+            value: cleanValue,
+            timestamp: Date.now(),
+            ttl: ttlMs
+          };
+          const req = store.put(item);
+          req.onsuccess = () => resolve(true);
+          req.onerror = () => resolve(false);
+        } catch (txErr) {
+          console.warn('IDB put error:', txErr);
+          resolve(false);
+        }
       });
     } catch (e) {
       console.warn('IndexedDB set error:', e);

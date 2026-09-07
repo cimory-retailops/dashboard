@@ -20,8 +20,8 @@ function galleryApp() {
     selectedAccount: 'ALL',
     selectedPhotoType: 'ALL', // 'ALL' | 'BEFORE' | 'AFTER' | 'RAK_SEWA'
     selectedReviewStatus: 'ALL', // 'ALL' | 'UNREVIEWED' | 'REVIEWED' | 'COMPLIANT' | 'NON_COMPLIANT'
-    groupBy: localStorage.getItem('gallery_group_by') || 'CREW', // 'CREW' | 'MODUL' | 'TOKO' | 'FLAT'
-    collapsedSections: {}, // Record of section key -> boolean (true if collapsed)
+    groupBy: localStorage.getItem('gallery_group_by') || 'TYPE', // 'TYPE' | 'ACCOUNT' | 'CREW' | 'MODUL' | 'FLAT'
+    expandedSections: {}, // Record of section key -> boolean (true if expanded, default collapsed for speed)
 
     dateFilter: 'LATEST_DAY', // 'LATEST_DAY' | 'TODAY' | 'YESTERDAY' | '7_DAYS' | 'THIS_MONTH' | 'CUSTOM'
     activeDateLabel: '',
@@ -443,25 +443,27 @@ function galleryApp() {
     },
 
     isSectionCollapsed(key) {
-      return Boolean(this.collapsedSections[key]);
+      // By default sections are collapsed (true) for speed & lightweight DOM, unless explicitly opened
+      if (this.groupBy === 'FLAT') return false;
+      return !Boolean(this.expandedSections[key]);
     },
 
     toggleSection(key) {
-      this.collapsedSections[key] = !this.collapsedSections[key];
+      this.expandedSections[key] = !this.expandedSections[key];
       this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     collapseAllSections() {
-      const state = {};
-      this.groupedPhotoSections.forEach(s => {
-        state[s.key] = true;
-      });
-      this.collapsedSections = state;
+      this.expandedSections = {};
       this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     expandAllSections() {
-      this.collapsedSections = {};
+      const state = {};
+      this.groupedPhotoSections.forEach(s => {
+        state[s.key] = true;
+      });
+      this.expandedSections = state;
       this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
@@ -549,7 +551,17 @@ function galleryApp() {
         let subtitle = '';
         let badge = '';
 
-        if (this.groupBy === 'CREW') {
+        if (this.groupBy === 'TYPE') {
+          groupKey = p.type;
+          title = p.type === 'BEFORE' ? '📸 Grup Foto BEFORE (Sebelum Dirapikan)' : '✨ Grup Foto AFTER (Hasil Display)';
+          subtitle = p.type === 'BEFORE' ? 'Evaluasi kesesuaian display awal toko terhadap planogram' : 'Dokumentasi visual rak toko setelah selesai dirapikan';
+          badge = p.type;
+        } else if (this.groupBy === 'ACCOUNT') {
+          groupKey = (p.account || 'LAINNYA').toUpperCase();
+          title = `Akun ${p.account || 'Lokal / Lainnya'}`;
+          subtitle = `Jaringan Toko Retail • ${p.date}`;
+          badge = p.account || 'ACCOUNT';
+        } else if (this.groupBy === 'CREW') {
           groupKey = `${p.modul}_${p.namaCrew}`.toUpperCase();
           title = p.namaCrew || 'MDS Tanpa Nama';
           subtitle = `MDS Modul ${p.modul} • ${p.date}`;
@@ -726,12 +738,22 @@ function galleryApp() {
           item.hdUrl = directUrl;
         }
 
-        // Persist to IndexedDB cache
-        GalleryDB.set('gallery_resolved_images', this.resolvedImagesMap);
+        // Persist to IndexedDB cache debounced
+        this.saveResolvedImagesDebounced();
       } else {
         if (item) item.resolvedSrc = SVG_FALLBACK;
       }
       this.resolvingSet.delete(path);
+    },
+
+    saveResolvedImagesDebounced() {
+      if (this._saveTimer) clearTimeout(this._saveTimer);
+      this._saveTimer = setTimeout(() => {
+        try {
+          const raw = JSON.parse(JSON.stringify(this.resolvedImagesMap || {}));
+          GalleryDB.set('gallery_resolved_images', raw);
+        } catch (e) {}
+      }, 400);
     },
 
     /**
