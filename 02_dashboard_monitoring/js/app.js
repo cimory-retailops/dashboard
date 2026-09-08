@@ -86,6 +86,15 @@ function dashboardApp() {
     tokoNasionalSuggestions: [],
     showTokoNasionalSuggestions: false,
 
+    // 5. Centralized Reporting Tab State (Tab 5: Pusat Laporan & Broadcast WA)
+    reportTab: {
+      selectedRegion: 'JABODETABEK',
+      reportType: 'ROUTE_ONLY', // 'ROUTE_ONLY' | 'FULL_OPS' | 'INFOGRAPHIC' | 'ANOMALY' | 'REMINDER'
+      textCopiedSuccess: false,
+      imageCopiedSuccess: false,
+      imageDownloadedSuccess: false
+    },
+
     // Raw Data Stores
     visits: [],
     absensi: [],
@@ -1544,6 +1553,83 @@ function dashboardApp() {
     },
 
     /**
+     * Get unique crew list for a specific modul
+     */
+    getCrewsByModul(modul = '') {
+      const cleanTargetModul = (modul || '').toString().trim().toUpperCase().replace(/[\s-_]/g, '');
+      const crewMap = new Map();
+
+      // 1. From masterUser
+      if (Array.isArray(this.masterUser)) {
+        this.masterUser.forEach(u => {
+          const uMod = (u.modul || u.mod || u.module || '').toString().trim().toUpperCase().replace(/[\s-_]/g, '');
+          const uName = (u.namaCrew || u.name || u.nama || '').toString().trim();
+          const uCode = (u.kodeCrew || u.code || u.id || '').toString().trim();
+          
+          if (!uName) return;
+          if (cleanTargetModul && cleanTargetModul !== 'ALL') {
+            if (uMod !== cleanTargetModul && !uMod.startsWith(cleanTargetModul)) return;
+          }
+
+          if (!crewMap.has(uName.toUpperCase())) {
+            crewMap.set(uName.toUpperCase(), {
+              namaCrew: uName,
+              kodeCrew: uCode,
+              modul: u.modul || modul
+            });
+          }
+        });
+      }
+
+      // 2. From masterToko
+      if (Array.isArray(this.masterToko)) {
+        this.masterToko.forEach(m => {
+          const mMod = (m.modul || m._officialModul || '').toString().trim().toUpperCase().replace(/[\s-_]/g, '');
+          const mName = (m.namaCrew || '').toString().trim();
+          const mCode = (m.kodeCrew || '').toString().trim();
+
+          if (!mName) return;
+          if (cleanTargetModul && cleanTargetModul !== 'ALL') {
+            if (mMod !== cleanTargetModul && !mMod.startsWith(cleanTargetModul)) return;
+          }
+
+          if (!crewMap.has(mName.toUpperCase())) {
+            crewMap.set(mName.toUpperCase(), {
+              namaCrew: mName,
+              kodeCrew: mCode,
+              modul: m.modul || modul
+            });
+          }
+        });
+      }
+
+      // 3. Fallback from jadwalCrewList
+      if (crewMap.size === 0 && Array.isArray(this.jadwalCrewList)) {
+        this.jadwalCrewList.forEach(c => {
+          const cMod = (c.modul || '').toString().trim().toUpperCase().replace(/[\s-_]/g, '');
+          const cName = (c.name || '').toString().trim();
+          const cCode = (c.id || c.code || '').toString().trim();
+
+          if (!cName) return;
+          if (cleanTargetModul && cleanTargetModul !== 'ALL') {
+            if (cMod !== cleanTargetModul && !cMod.startsWith(cleanTargetModul)) return;
+          }
+
+          if (!crewMap.has(cName.toUpperCase())) {
+            crewMap.set(cName.toUpperCase(), {
+              namaCrew: cName,
+              kodeCrew: cCode,
+              modul: c.modul || modul
+            });
+          }
+        });
+      }
+
+      // Sort alphabetically
+      return Array.from(crewMap.values()).sort((a, b) => a.namaCrew.localeCompare(b.namaCrew));
+    },
+
+    /**
      * Modal Openers for Tab 4 Database Toko Nasional
      */
     openAssignStoreToMdsModal(store) {
@@ -2583,10 +2669,15 @@ function dashboardApp() {
     },
 
     /**
-     * Anomaly Modal Controls
+     * Anomaly Tab / View Controls (Centralized in Tab 5)
      */
-    openAnomalyModal() {
-      this.anomalyModal.isOpen = true;
+    openAnomalyModal(subTab = null) {
+      this.activeTab = 'laporan';
+      this.setReportTabType('ANOMALY');
+      if (subTab) {
+        this.anomalyModal.activeTab = subTab;
+      }
+      this.anomalyModal.isOpen = false;
       this.anomalyModal.copiedSuccess = false;
       this.$nextTick(() => {
         if (window.lucide) lucide.createIcons();
@@ -2599,6 +2690,13 @@ function dashboardApp() {
 
     setAnomalyTab(tabName) {
       this.anomalyModal.activeTab = tabName;
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+
+    sendWaReminder(crew, type) {
+      return this.sendCrewWaReminder(crew, type);
     },
 
     /**
@@ -2948,20 +3046,213 @@ function dashboardApp() {
     },
 
     /**
-     * Direct Share Text to WhatsApp in 1 Tap
+     * Set active region for Tab 5 Reporting
      */
-    shareTextToWhatsApp() {
-      const text = this.waFullReportText;
+    setReportTabRegion(reg) {
+      this.reportTab.selectedRegion = reg;
+      this.waReportModal.selectedRegion = reg;
+    },
+
+    /**
+     * Set active template format for Tab 5 Reporting
+     */
+    setReportTabType(type) {
+      this.reportTab.reportType = type;
+      this.waReportModal.reportType = type;
+    },
+
+    /**
+     * Reactive Formatted Text for Tab 5 based on selected template
+     */
+    get activeReportText() {
+      const type = this.reportTab.reportType || 'ROUTE_ONLY';
+      if (type === 'ANOMALY') {
+        return this.anomalyReportText;
+      }
+      if (type === 'REMINDER') {
+        return this.reminderReportText;
+      }
+      return this.waFullReportText;
+    },
+
+    /**
+     * Computed pending MDS list (< 100% target realization) for Follow-Up & Reminder
+     */
+    get reminderPendingCrewList() {
+      const list = this.waReportList || [];
+      return list.filter(c => c.status === 'ON_PROGRESS' || c.status === 'BELUM_JALAN' || c.status === 'BELUM_INPUT');
+    },
+
+    /**
+     * Formatted WhatsApp Reminder / Follow-Up Broadcast
+     */
+    get reminderReportText() {
+      const list = this.reminderPendingCrewList;
+      const regStr = this.activeWaRegionName;
+      const dateStr = this.activeDateLabel || 'Hari Ini';
+      
+      let text = `🔔 *PENGINGAT & FOLLOW-UP TARGET RUTE MDS*\n`;
+      text += `🏢 *Grup Wilayah:* ${regStr}\n`;
+      text += `📅 *Tanggal:* ${dateStr}\n`;
+      text += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+      if (list.length === 0) {
+        text += `🎉 *SELAMAT!* Seluruh personil MDS pada grup wilayah ini telah *MENUNTASKAN 100%* target rute kunjungan toko hari ini. Pertahankan performa terbaik! 🚀\n\n`;
+      } else {
+        text += `⚠️ Diberitahukan kepada rekan-rekan MDS di bawah ini untuk segera menyelesaikan kunjungan toko rute terjadwal:\n\n`;
+        
+        const onProgress = list.filter(c => c.status === 'ON_PROGRESS');
+        const belumJalan = list.filter(c => c.status === 'BELUM_JALAN');
+        const belumInput = list.filter(c => c.status === 'BELUM_INPUT');
+
+        if (onProgress.length > 0) {
+          text += `🟡 *Sedang Berjalan / Belum Tuntas (${onProgress.length} MDS):*\n`;
+          onProgress.forEach((c, i) => {
+            const sisa = Math.max(0, (c.targetCount || 0) - (c.visitedCount || 0));
+            text += `${i + 1}. *${c.namaCrew}* (${c.modul}): ${c.visitedCount}/${c.targetCount} Toko (Sisa ${sisa} Toko)\n`;
+          });
+          text += `\n`;
+        }
+
+        if (belumJalan.length > 0) {
+          text += `🔴 *Belum Ada Kunjungan / 0 Toko (${belumJalan.length} MDS):*\n`;
+          belumJalan.forEach((c, i) => {
+            text += `${i + 1}. *${c.namaCrew}* (${c.modul}) - Target: ${c.targetCount} Toko\n`;
+          });
+          text += `\n`;
+        }
+
+        if (belumInput.length > 0) {
+          text += `⚪ *Belum Ada Jadwal Terinput (${belumInput.length} MDS):*\n`;
+          belumInput.forEach((c, i) => {
+            text += `${i + 1}. *${c.namaCrew}* (${c.modul})\n`;
+          });
+          text += `\n`;
+        }
+
+        text += `Mohon segera perbarui absensi check-in / check-out toko dan unggah dokumentasi foto sebelum batas jam operasional berakhir.\n\n`;
+      }
+
+      text += `━━━━━━━━━━━━━━━━━━━━━\n`;
+      text += `Semangat & tetap utamakan keselamatan kerja. Terimakasih!`;
+      return text;
+    },
+
+    /**
+     * Copy Active Tab 5 Report Text to Clipboard
+     */
+    copyReportTabText() {
+      const text = this.activeReportText;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          this.reportTab.textCopiedSuccess = true;
+          setTimeout(() => { this.reportTab.textCopiedSuccess = false; }, 3500);
+        });
+      }
+    },
+
+    /**
+     * Direct Share Active Tab 5 Report Text to WhatsApp
+     */
+    shareReportTabWhatsApp() {
+      const text = this.activeReportText;
       const encoded = encodeURIComponent(text);
       if (navigator.share) {
         navigator.share({
-          title: 'Rekap Realisasi Rute MDS',
+          title: `Laporan Realisasi MDS - ${this.activeWaRegionName}`,
           text: text
         }).catch(() => {
           window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
         });
       } else {
         window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+      }
+    },
+
+    /**
+     * Direct Send Personal WhatsApp Follow-Up to Specific Crew
+     */
+    sendDirectCrewReminder(crew) {
+      if (!crew) return;
+      const cleanPhone = (crew.telepon || crew.phone || '').replace(/[^0-9]/g, '');
+      const sisa = Math.max(0, (crew.targetCount || 0) - (crew.visitedCount || 0));
+      let msg = `Halo rekan ${crew.namaCrew},\n\n`;
+      msg += `Mengingatkan untuk target kunjungan rute hari ini di ${crew.modul}:\n`;
+      msg += `🎯 Realisasi saat ini: ${crew.visitedCount}/${crew.targetCount} toko (Sisa ${sisa} toko lagi).\n\n`;
+      msg += `Mohon segera diselesaikan dan upload foto display sebelum jam operasional selesai. Tetap semangat & jaga keselamatan!`;
+      
+      const encoded = encodeURIComponent(msg);
+      if (cleanPhone) {
+        window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`, '_blank');
+      } else {
+        window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+      }
+    },
+
+    /**
+     * Export Infographic Image (Copy to Clipboard or Download PNG)
+     */
+    async exportReportInfographic(mode = 'copy') {
+      const cardEl = document.getElementById('report-tab-infographic-card') || document.getElementById('wa-infographic-card');
+      if (!cardEl) {
+        alert('Komponen kartu infografis tidak ditemukan di halaman.');
+        return;
+      }
+      if (!window.html2canvas) {
+        alert('Library html2canvas sedang dimuat, silakan coba sesaat lagi.');
+        return;
+      }
+
+      this.reportTab.imageCopiedSuccess = false;
+      this.reportTab.imageDownloadedSuccess = false;
+
+      try {
+        const canvas = await html2canvas(cardEl, {
+          scale: 2,
+          backgroundColor: '#ffffff',
+          useCORS: true,
+          logging: false,
+          scrollX: 0,
+          scrollY: 0,
+          width: cardEl.offsetWidth || 620,
+          windowWidth: 1024
+        });
+
+        if (mode === 'download') {
+          const imgUrl = canvas.toDataURL('image/png');
+          const link = document.createElement('a');
+          link.download = `Infografis_MDS_${this.reportTab.selectedRegion}_${new Date().toISOString().slice(0,10)}.png`;
+          link.href = imgUrl;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          this.reportTab.imageDownloadedSuccess = true;
+          setTimeout(() => { this.reportTab.imageDownloadedSuccess = false; }, 3500);
+        } else {
+          canvas.toBlob(async (blob) => {
+            if (blob && navigator.clipboard && navigator.clipboard.write) {
+              try {
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                this.reportTab.imageCopiedSuccess = true;
+                setTimeout(() => { this.reportTab.imageCopiedSuccess = false; }, 3500);
+              } catch (clipErr) {
+                // Fallback download if clipboard restricted
+                const imgUrl = canvas.toDataURL('image/png');
+                const link = document.createElement('a');
+                link.download = `Infografis_MDS_${this.reportTab.selectedRegion}_${new Date().toISOString().slice(0,10)}.png`;
+                link.href = imgUrl;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                this.reportTab.imageDownloadedSuccess = true;
+                setTimeout(() => { this.reportTab.imageDownloadedSuccess = false; }, 3500);
+              }
+            }
+          }, 'image/png');
+        }
+      } catch (err) {
+        console.error('Error export infographic:', err);
+        alert('Gagal membuat gambar: ' + err.message);
       }
     },
 
@@ -3558,10 +3849,21 @@ function dashboardApp() {
 
     onNewCrewSelected(crewName) {
       if (!crewName) return;
-      const crewObj = (this.jadwalCrewList || []).find(c => c.name === crewName);
-      if (crewObj) {
-        this.crudModal.formData.newCrewCode = crewObj.id || crewObj.code || '';
-        this.crudModal.formData.newModul = crewObj.modul || this.crudModal.formData.modul;
+      const crewList = this.getCrewsByModul(this.crudModal.formData.modul || 'ALL');
+      const found = crewList.find(c => c.namaCrew === crewName || c.namaCrew.toUpperCase() === crewName.toUpperCase());
+      if (found) {
+        this.crudModal.formData.newCrewCode = found.kodeCrew || '';
+        this.crudModal.formData.kodeCrew = found.kodeCrew || '';
+        if (found.modul) {
+          this.crudModal.formData.newModul = found.modul;
+        }
+      } else {
+        const crewObj = (this.jadwalCrewList || []).find(c => c.name === crewName);
+        if (crewObj) {
+          this.crudModal.formData.newCrewCode = crewObj.id || crewObj.code || '';
+          this.crudModal.formData.kodeCrew = crewObj.id || crewObj.code || '';
+          this.crudModal.formData.newModul = crewObj.modul || this.crudModal.formData.modul;
+        }
       }
     },
 

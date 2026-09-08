@@ -824,12 +824,33 @@ const ApiService = {
   },
 
   /**
-   * 9. Post Action to Central GAS Backend
+   * 9. Post / Execute CRUD Action to Central GAS Backend (CORS-Proof with JSONP & Direct POST Fallback)
    */
   async postAction(action, payload = {}) {
     const fullPayload = { action, ...payload };
     const url = CONFIG.API_URL;
     
+    // 1. Primary Attempt: High-Speed CORS-Free JSONP (Bypasses all browser CORS restrictions on GitHub Pages)
+    try {
+      const jsonpUrl = this.buildUrl(action, { data: JSON.stringify(fullPayload) });
+      if (jsonpUrl.length < 5000) {
+        const jsonpRes = await this.fetchJsonp(jsonpUrl, 30000);
+        if (jsonpRes) {
+          if (jsonpRes.status === 'error') {
+            throw new Error(jsonpRes.message || 'Operasi gagal dieksekusi di Spreadsheet');
+          }
+          return jsonpRes;
+        }
+      }
+    } catch (jsonpErr) {
+      // If it's a known business logic error from Apps Script, throw it directly
+      if (jsonpErr.message && !jsonpErr.message.includes('JSONP Script loading failed') && !jsonpErr.message.includes('timeout')) {
+        throw jsonpErr;
+      }
+      console.warn('JSONP CRUD attempt fell back to Direct POST:', jsonpErr);
+    }
+
+    // 2. Direct POST Fallback
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -845,7 +866,7 @@ const ApiService = {
       }
       return data;
     } catch (err) {
-      console.warn('Direct POST failed, attempting parameter fallback:', err);
+      console.warn('Direct POST failed, attempting URLSearchParams fallback:', err);
       const formBody = new URLSearchParams({
         action: action,
         data: JSON.stringify(fullPayload)

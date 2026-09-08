@@ -268,6 +268,74 @@
           </div>
         </div>
 
+        <!-- EXECUTIVE HIGHLIGHT BANNER: KEBUTUHAN MDS FULL COVER -->
+        <div class="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-indigo-500/30 shadow-lg relative overflow-hidden">
+          <div class="absolute -right-8 -bottom-8 w-44 h-44 bg-brand-500/15 rounded-full blur-2xl pointer-events-none"></div>
+          
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
+            
+            <!-- Left Header & Scope Details -->
+            <div class="space-y-1.5 min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-md text-[10px] font-black tracking-wider uppercase bg-emerald-500 text-slate-950 shadow-xs">
+                  🎯 ANALISA KEBUTUHAN FULL COVERAGE (100% TOKO)
+                </span>
+                <span class="text-xs text-indigo-300 font-bold flex items-center gap-1">
+                  <span>Wilayah:</span>
+                  <b class="text-white" x-text="selectedScope === 'JAWA' ? 'Pulau Jawa' : (selectedScope === 'LUAR_PULAU' ? 'Luar Pulau (Nasional Non-Jawa)' : 'Seluruh Indonesia (Nasional)')"></b>
+                </span>
+              </div>
+              
+              <h3 class="font-display font-extrabold text-base sm:text-lg text-white flex flex-wrap items-center gap-2">
+                <span>Kebutuhan Manpower MDS Full Cover:</span>
+                <span class="text-emerald-400 font-black px-2 py-0.5 bg-emerald-500/20 border border-emerald-400/30 rounded-lg"
+                      x-text="`${Math.ceil(simulationResult.summary.regularStoresCount / (params.storesPerDay * params.regularDays || 420))} Personil MDS`"></span>
+              </h3>
+              
+              <p class="text-xs text-slate-300 leading-relaxed max-w-2xl">
+                Berdasarkan target standar <b class="text-white">420 toko reguler / MDS / bulan</b> (21 hari kerja @ 20 toko) + 4 hari DC. 
+                <template x-if="selectedScope === 'JAWA'">
+                  <span class="text-emerald-300 font-medium">✨ Seluruh 32.400 toko di Jawa dapat di-cover oleh <b>56 MDS existing via skema Perdin</b> tanpa penambahan karyawan tetap baru.</span>
+                </template>
+                <template x-if="selectedScope === 'LUAR_PULAU'">
+                  <span class="text-amber-300 font-medium">📍 Luar Pulau memiliki 15.700 toko dengan 19 MDS existing, membutuhkan <b>tambahan +19 MDS rekrut baru</b> untuk cover 100%.</span>
+                </template>
+                <template x-if="selectedScope === 'NASIONAL'">
+                  <span class="text-indigo-300 font-medium">🇮🇩 Skala Nasional (48.100 toko) membutuhkan total <b>115 MDS</b> (Existing: 75 MDS, Usulan Rekrut: +40 MDS).</span>
+                </template>
+              </p>
+            </div>
+
+            <!-- Right 3-Pillar KPI Counters -->
+            <div class="grid grid-cols-3 gap-2 sm:gap-3 flex-shrink-0">
+              
+              <!-- Pillar 1: MDS Existing -->
+              <div class="p-2.5 sm:p-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/15 text-center min-w-[95px] sm:min-w-[110px]">
+                <div class="text-[10px] text-slate-300 uppercase font-bold">MDS Existing</div>
+                <div class="text-lg sm:text-xl font-extrabold text-indigo-300 mt-0.5" x-text="`${simulationResult.summary.activeCrewAssigned} Org`"></div>
+                <div class="text-[9.5px] text-indigo-200 truncate" x-text="`${simulationResult.summary.activeCoveredStores.toLocaleString()} Toko`"></div>
+              </div>
+
+              <!-- Pillar 2: Total Butuh Full Cover -->
+              <div class="p-2.5 sm:p-3 rounded-xl bg-emerald-500/20 backdrop-blur-md border border-emerald-400/40 text-center ring-2 ring-emerald-400/30 min-w-[95px] sm:min-w-[110px]">
+                <div class="text-[10px] text-emerald-300 uppercase font-extrabold">Total Butuh</div>
+                <div class="text-lg sm:text-xl font-black text-emerald-400 mt-0.5" x-text="`${Math.ceil(simulationResult.summary.regularStoresCount / (params.storesPerDay * params.regularDays || 420))} Org`"></div>
+                <div class="text-[9.5px] text-emerald-200 truncate" x-text="`${simulationResult.summary.regularStoresCount.toLocaleString()} Toko`"></div>
+              </div>
+
+              <!-- Pillar 3: Gap / Usulan Rekrut Baru -->
+              <div class="p-2.5 sm:p-3 rounded-xl bg-amber-500/20 backdrop-blur-md border border-amber-400/40 text-center min-w-[95px] sm:min-w-[110px]">
+                <div class="text-[10px] text-amber-300 uppercase font-bold">Gap Rekrut</div>
+                <div class="text-lg sm:text-xl font-extrabold text-amber-400 mt-0.5"
+                     x-text="`+${Math.max(0, Math.ceil(simulationResult.summary.regularStoresCount / (params.storesPerDay * params.regularDays || 420)) - simulationResult.summary.activeCrewAssigned)} Org`"></div>
+                <div class="text-[9.5px] text-amber-200 truncate" x-text="selectedScope === 'JAWA' ? '0 via Perdin' : 'Rekrut Baru'"></div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+
         <!-- 6 Executive KPI Metrics Grid -->
         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           
@@ -874,12 +942,12 @@
             <tbody class="divide-y divide-slate-200 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
               <template x-for="(st, idx) in currentTableStores" :key="st.id || idx">
                 <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
-                  :class="st.isPerdin ? 'bg-amber-500/5' : (st.type === 'DC' ? 'bg-emerald-500/5' : '')">
+                  :class="st.isPerdin ? 'bg-amber-500/5' : ((st.isDc || st.type === 'DC') ? 'bg-emerald-500/5' : '')">
                   
                   <!-- Stop Number -->
                   <td class="py-2.5 px-3 font-extrabold">
                     <span class="w-6 h-6 rounded-full inline-flex items-center justify-center text-[10.5px] font-black"
-                      :class="st.isPerdin ? 'bg-amber-500 text-white' : (st.type === 'DC' ? 'bg-emerald-600 text-white' : 'bg-brand-600 text-white')"
+                      :class="st.isPerdin ? 'bg-amber-500 text-white' : ((st.isDc || st.type === 'DC') ? 'bg-emerald-600 text-white' : 'bg-brand-600 text-white')"
                       x-text="st.stopIndex || (idx + 1)"></span>
                   </td>
 
@@ -891,8 +959,8 @@
                   <!-- Status Kunjungan Badge -->
                   <td class="py-2.5 px-3">
                     <span class="px-2 py-0.5 rounded text-[10px] font-extrabold flex items-center gap-1 w-max"
-                      :class="st.isPerdin ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30' : (st.type === 'DC' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20')">
-                      <span x-text="st.isPerdin ? '🏨 PERDIN' : (st.type === 'DC' ? '🏭 DC' : '🚗 NON PERDIN')"></span>
+                      :class="st.isPerdin ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30' : ((st.isDc || st.type === 'DC') ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30' : (st.tipeKunjungan === 'TOKO SEKITAR DC' ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20'))">
+                      <span x-text="st.isPerdin ? '🏨 PERDIN' : ((st.isDc || st.type === 'DC') ? '🏭 DC' : (st.tipeKunjungan === 'TOKO SEKITAR DC' ? '🚗 SEKITAR DC' : '🚗 NON PERDIN'))"></span>
                     </span>
                   </td>
 
@@ -1230,11 +1298,11 @@
   </footer>
 
   <!-- Scripts -->
-  <script src="./js/config.js?v=20260907_27"></script>
-  <script src="./js/geo_data.js?v=20260907_27"></script>
-  <script src="./js/store_data.js?v=20260907_27"></script>
-  <script src="./js/engine.js?v=20260907_27"></script>
-  <script src="./js/app.js?v=20260907_27"></script>
+  <script src="./js/config.js?v=20260908_34"></script>
+  <script src="./js/geo_data.js?v=20260908_34"></script>
+  <script src="./js/store_data.js?v=20260908_34"></script>
+  <script src="./js/engine.js?v=20260908_34"></script>
+  <script src="./js/app.js?v=20260908_34"></script>
 
 </body>
 </html>

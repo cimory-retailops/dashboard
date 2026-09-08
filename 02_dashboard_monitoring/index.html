@@ -285,6 +285,14 @@
         <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-bold" x-text="stores49k.length ? stores49k.length.toLocaleString('id-ID') : '0'"></span>
       </button>
 
+      <button @click="activeTab = 'laporan'; $nextTick(() => { if (window.lucide) lucide.createIcons(); })"
+        class="flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
+        :class="activeTab === 'laporan' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'">
+        <i data-lucide="share-2" class="w-4 h-4"></i>
+        <span>Pusat Laporan</span>
+        <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/80 text-white font-bold">WA</span>
+      </button>
+
     </div>
   </header>
 
@@ -449,13 +457,6 @@
               <span class="hidden sm:inline">Audit Anomali</span>
               <span class="sm:hidden">Audit</span>
               <span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold" :class="auditAnomalies.totalAnomalies > 0 ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700'" x-text="auditAnomalies.totalAnomalies"></span>
-            </button>
-
-            <!-- Share WA Button -->
-            <button @click="openWaReportModal()" title="Bagikan Format Laporan ke WhatsApp"
-              class="h-9 flex items-center justify-center space-x-1.5 px-2.5 sm:px-3.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-95 whitespace-nowrap">
-              <i data-lucide="share-2" class="w-3.5 h-3.5 flex-shrink-0"></i>
-              <span>Share WA</span>
             </button>
 
             <!-- Export CSV Button -->
@@ -631,10 +632,6 @@
                 <p class="text-[11px] text-slate-400">Realisasi vs Target Rute MDS</p>
               </div>
             </div>
-            <button @click="openWaReportModal()" class="text-[11px] font-bold text-emerald-500 hover:text-emerald-400 flex items-center space-x-1">
-              <i data-lucide="share-2" class="w-3 h-3"></i>
-              <span>Share WA</span>
-            </button>
           </div>
 
           <!-- Skeleton Placeholders when Loading -->
@@ -2095,6 +2092,690 @@
 
     </div>
 
+    <!-- ============================================================================== -->
+    <!-- 7. TAB 5: PUSAT LAPORAN & BROADCAST WHATSAPP (CENTRALIZED REPORTING HUB) -->
+    <!-- ============================================================================== -->
+    <div x-show="activeTab === 'laporan'" class="space-y-6 min-w-0">
+      
+      <!-- TOP CONTROL CARD: REGION, TEMPLATE FORMAT & ACTIONS -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 dark:border-slate-800/80 space-y-4 relative z-20">
+        
+        <!-- Header & Description -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/80 dark:border-slate-800/80">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold text-lg flex-shrink-0">
+              <i data-lucide="share-2" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="font-display font-bold text-base sm:text-lg text-slate-900 dark:text-white">Pusat Laporan & Broadcast WA</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Generator laporan resmi WhatsApp, rekap rute operasional, kartu infografis visual, dan pengingat MDS tersentralisasi.</p>
+            </div>
+          </div>
+
+          <!-- Active Region Badge -->
+          <div class="flex items-center gap-2">
+            <span class="px-3 py-1 rounded-xl text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
+              <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+              <span x-text="activeWaRegionName"></span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Controls Grid: Region & Template Format -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          
+          <!-- 1. Region Group Selection -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+              1. Pilih Grup Wilayah / Cabang:
+            </label>
+            <div class="relative">
+              <select x-model="reportTab.selectedRegion" @change="setReportTabRegion(reportTab.selectedRegion)"
+                class="w-full h-11 text-xs sm:text-sm font-bold px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all cursor-pointer">
+                <option value="JABODETABEK">🏙️ Jabodetabek & Banten (DK1-6)</option>
+                <option value="JABAR">🏔️ Jawa Barat (LK1, LK2)</option>
+                <option value="JATENG">🏛️ Jateng & DIY (LK3)</option>
+                <option value="JATIM_BALI">🏖️ Jatim, Bali & Nusra (LK4, LK5)</option>
+                <option value="LUAR_JAWA">🌴 Sumatera, Kalimantan & Sulawesi (LP1-4)</option>
+                <option value="ALL">🌐 Seluruh Nasional (Semua Wilayah)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 2. Report Template Switcher -->
+          <div class="md:col-span-2">
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+              2. Pilih Model / Format Laporan:
+            </label>
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+              
+              <!-- Format 1: Realisasi Rute -->
+              <button type="button" @click="setReportTabType('ROUTE_ONLY')"
+                class="h-11 px-2.5 rounded-xl text-xs font-bold transition-all text-center border flex items-center justify-center gap-1.5 cursor-pointer"
+                :class="reportTab.reportType === 'ROUTE_ONLY' ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30 border-emerald-400 font-extrabold' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'">
+                <span>📊 Realisasi Rute</span>
+              </button>
+
+              <!-- Format 2: Full Ops + Disiplin -->
+              <button type="button" @click="setReportTabType('FULL_OPS')"
+                class="h-11 px-2.5 rounded-xl text-xs font-bold transition-all text-center border flex items-center justify-center gap-1.5 cursor-pointer"
+                :class="reportTab.reportType === 'FULL_OPS' ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30 border-emerald-400 font-extrabold' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'">
+                <span>📋 Rute + Disiplin</span>
+              </button>
+
+              <!-- Format 3: Audit Anomali & Disiplin -->
+              <button type="button" @click="setReportTabType('ANOMALY')"
+                class="h-11 px-2.5 rounded-xl text-xs font-bold transition-all text-center border flex items-center justify-center gap-1.5 cursor-pointer"
+                :class="reportTab.reportType === 'ANOMALY' ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30 border-rose-500 font-extrabold' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'">
+                <span>🚨 Audit Anomali</span>
+                <span class="px-1.5 py-0.2 rounded-full text-[9px]" :class="reportTab.reportType === 'ANOMALY' ? 'bg-white/20 text-white' : 'bg-rose-500/20 text-rose-500'" x-text="auditAnomalies.totalAnomalies"></span>
+              </button>
+
+              <!-- Format 4: Follow Up & Pengingat -->
+              <button type="button" @click="setReportTabType('REMINDER')"
+                class="h-11 px-2.5 rounded-xl text-xs font-bold transition-all text-center border flex items-center justify-center gap-1.5 cursor-pointer"
+                :class="reportTab.reportType === 'REMINDER' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30 border-amber-400 font-extrabold' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'">
+                <span>🔔 Pengingat MDS</span>
+                <span class="px-1.5 py-0.2 rounded-full text-[9px]" :class="reportTab.reportType === 'REMINDER' ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-500'" x-text="reminderPendingCrewList.length"></span>
+              </button>
+
+              <!-- Format 5: Infografis HD -->
+              <button type="button" @click="setReportTabType('INFOGRAPHIC')"
+                class="h-11 px-2.5 rounded-xl text-xs font-bold transition-all text-center border flex items-center justify-center gap-1.5 cursor-pointer"
+                :class="reportTab.reportType === 'INFOGRAPHIC' ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30 border-emerald-400 font-extrabold' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'">
+                <span>🖼️ Infografis HD</span>
+              </button>
+
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Metric KPI Strip for Selected Region -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 pt-2 border-t border-slate-200/70 dark:border-slate-800/80 text-center">
+          <div class="p-2 rounded-xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+            <span class="text-[10px] font-bold text-slate-400 uppercase">Target Toko</span>
+            <span class="text-sm font-extrabold text-slate-800 dark:text-slate-100 block" x-text="waReportSummary.totalTarget"></span>
+          </div>
+          <div class="p-2 rounded-xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+            <span class="text-[10px] font-bold text-slate-400 uppercase">Kunjungan Toko</span>
+            <span class="text-sm font-extrabold text-slate-800 dark:text-slate-100 block" x-text="waReportSummary.totalVisits"></span>
+          </div>
+          <div class="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <span class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Realisasi %</span>
+            <span class="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 block" x-text="`${waReportSummary.rate}%`"></span>
+          </div>
+          <div class="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <span class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Rute 100%</span>
+            <span class="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 block" x-text="`${waReportSummary.tuntasCount} MDS`"></span>
+          </div>
+          <div class="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <span class="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase">On Progress</span>
+            <span class="text-sm font-extrabold text-amber-600 dark:text-amber-400 block" x-text="`${waReportSummary.onProgressCount} MDS`"></span>
+          </div>
+          <div class="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20">
+            <span class="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase">0 Visit / Alpha</span>
+            <span class="text-sm font-extrabold text-rose-600 dark:text-rose-400 block" x-text="`${waReportSummary.belumJalanCount} MDS`"></span>
+          </div>
+        </div>
+
+        <!-- Action Buttons Bar -->
+        <div class="pt-2 flex items-center justify-between gap-3 flex-wrap">
+          
+          <div class="flex items-center gap-2.5 flex-wrap">
+            
+            <!-- When text report type -->
+            <template x-if="reportTab.reportType !== 'INFOGRAPHIC'">
+              <div class="flex items-center gap-2 flex-wrap">
+                <!-- 📋 Salin Teks -->
+                <button type="button" @click="copyReportTabText()"
+                  class="h-10 px-4 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 flex items-center gap-2 cursor-pointer"
+                  :class="reportTab.textCopiedSuccess ? 'bg-emerald-600 text-white ring-2 ring-emerald-300 shadow-emerald-600/30' : (reportTab.reportType === 'ANOMALY' ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30' : 'bg-brand-600 hover:bg-brand-500 text-white shadow-brand-600/30')">
+                  <i :data-lucide="reportTab.textCopiedSuccess ? 'check' : 'copy'" class="w-4 h-4"></i>
+                  <span x-text="reportTab.textCopiedSuccess ? '✓ Berhasil Disalin ke Clipboard!' : 'Salin Format Teks WA'"></span>
+                </button>
+
+                <!-- 📲 Kirim Langsung ke WhatsApp -->
+                <button type="button" @click="shareReportTabWhatsApp()"
+                  class="h-10 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-600/30 transition-all active:scale-95 flex items-center gap-2 cursor-pointer">
+                  <i data-lucide="share-2" class="w-4 h-4"></i>
+                  <span>Kirim ke WhatsApp</span>
+                </button>
+              </div>
+            </template>
+
+            <!-- When infographic format -->
+            <template x-if="reportTab.reportType === 'INFOGRAPHIC'">
+              <div class="flex items-center gap-2 flex-wrap">
+                <!-- 📋 Salin Gambar ke Clipboard -->
+                <button type="button" @click="exportReportInfographic('copy')"
+                  class="h-10 px-4 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 flex items-center gap-2 cursor-pointer"
+                  :class="reportTab.imageCopiedSuccess ? 'bg-emerald-600 text-white ring-2 ring-emerald-300 shadow-emerald-600/30' : 'bg-brand-600 hover:bg-brand-500 text-white shadow-brand-600/30'">
+                  <i :data-lucide="reportTab.imageCopiedSuccess ? 'check' : 'copy'" class="w-4 h-4"></i>
+                  <span x-text="reportTab.imageCopiedSuccess ? '✓ Gambar Disalin ke Clipboard!' : 'Salin Gambar Infografis'"></span>
+                </button>
+
+                <!-- ⬇️ Download Gambar HD PNG -->
+                <button type="button" @click="exportReportInfographic('download')"
+                  class="h-10 px-4 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/30 transition-all active:scale-95 flex items-center gap-2 cursor-pointer">
+                  <i :data-lucide="reportTab.imageDownloadedSuccess ? 'check' : 'download'" class="w-4 h-4"></i>
+                  <span x-text="reportTab.imageDownloadedSuccess ? '✓ Gambar Terunduh!' : 'Download Gambar HD (.png)'"></span>
+                </button>
+              </div>
+            </template>
+
+          </div>
+
+          <div class="text-[11px] text-slate-400 ml-auto flex items-center gap-1.5">
+            <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400"></i>
+            <span>Format dioptimalkan untuk tampilan WhatsApp Mobile & Desktop.</span>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- MAIN REPORT BODY CONTAINER -->
+      
+      <!-- ========================================================================= -->
+      <!-- VIEW 1: ANOMALY AUDIT VIEW (When reportType === 'ANOMALY') -->
+      <!-- ========================================================================= -->
+      <div x-show="reportTab.reportType === 'ANOMALY'" class="space-y-6">
+        
+        <!-- 4 Quick Stats & Reconciliation Badges -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          <div class="p-3 rounded-2xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 shadow-sm">
+            <span class="text-[10px] font-semibold text-slate-400 block uppercase">Total Populasi</span>
+            <span class="text-xl font-bold text-slate-800 dark:text-slate-200" x-text="`${auditAnomalies.totalRoster} MDS`">0</span>
+          </div>
+          <div class="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 shadow-sm">
+            <span class="text-[10px] font-semibold text-emerald-500 block uppercase">Absen Masuk</span>
+            <div class="flex items-baseline justify-center space-x-1">
+              <span class="text-xl font-bold text-emerald-500" x-text="auditAnomalies.totalAbsenMasuk">0</span>
+              <span class="text-[11px] text-emerald-400/80" x-text="`(${auditAnomalies.totalTepatWaktu} tepat)`"></span>
+            </div>
+          </div>
+          <div class="p-3 rounded-2xl bg-sky-500/10 border border-sky-500/20 shadow-sm">
+            <span class="text-[10px] font-semibold text-sky-400 block uppercase">Aktif Kunjungan</span>
+            <div class="flex items-baseline justify-center space-x-1">
+              <span class="text-xl font-bold text-sky-400" x-text="auditAnomalies.totalActiveVisit">0</span>
+              <span class="text-[11px] text-sky-300/80" x-text="`(${auditAnomalies.totalNormalVisit} sinkron)`"></span>
+            </div>
+          </div>
+          <div class="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 shadow-sm">
+            <span class="text-[10px] font-semibold text-rose-500 block uppercase">Perlu Evaluasi</span>
+            <span class="text-xl font-bold text-rose-500" x-text="`${auditAnomalies.totalAnomalies} MDS`">0</span>
+          </div>
+        </div>
+
+        <!-- 2-Column Split: Interactive Subcategory List & Live WA Broadcast Text -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          <!-- Column 1: Subcategory Tabs & Crew List (7 cols) -->
+          <div class="lg:col-span-7 glass-card rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 dark:border-slate-800/80 flex flex-col space-y-4">
+            
+            <!-- Category Tabs (Horizontal Scrollable) -->
+            <div class="flex space-x-2 pb-2 border-b border-slate-200 dark:border-slate-800 overflow-x-auto no-scrollbar touch-scroll">
+              <button @click="anomalyModal.activeTab = 'absen_no_visit'"
+                class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
+                :class="anomalyModal.activeTab === 'absen_no_visit' ? 'bg-rose-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
+                <span>🔴 Absen 0 Visit</span>
+                <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.absenNoVisit.length"></span>
+              </button>
+
+              <button @click="anomalyModal.activeTab = 'visit_no_absen'"
+                class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
+                :class="anomalyModal.activeTab === 'visit_no_absen' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
+                <span>🟡 Belum Absen</span>
+                <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.visitNoAbsen.length"></span>
+              </button>
+
+              <button @click="anomalyModal.activeTab = 'terlambat'"
+                class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
+                :class="anomalyModal.activeTab === 'terlambat' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
+                <span>⏰ Terlambat</span>
+                <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.terlambatList.length"></span>
+              </button>
+
+              <button @click="anomalyModal.activeTab = 'lupa_pulang'"
+                class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
+                :class="anomalyModal.activeTab === 'lupa_pulang' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
+                <span>🏠 Belum Pulang</span>
+                <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.lupaPulangList.length"></span>
+              </button>
+
+              <button @click="anomalyModal.activeTab = 'izin_sakit'"
+                class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
+                :class="anomalyModal.activeTab === 'izin_sakit' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
+                <span>🏥 Izin/Sakit/DC</span>
+                <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.totalIzinSakit"></span>
+              </button>
+
+              <button @click="anomalyModal.activeTab = 'gps_issue'"
+                class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
+                :class="anomalyModal.activeTab === 'gps_issue' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
+                <span>📍 GPS Issue</span>
+                <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.gpsIssueList.length"></span>
+              </button>
+
+              <button @click="anomalyModal.activeTab = 'alpha'"
+                class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
+                :class="anomalyModal.activeTab === 'alpha' ? 'bg-slate-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
+                <span>❓ Alpha</span>
+                <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.alphaList.length"></span>
+              </button>
+            </div>
+
+            <!-- Tab 1: Absen tapi 0 Kunjungan -->
+            <div x-show="anomalyModal.activeTab === 'absen_no_visit'" class="flex-1 overflow-y-auto max-h-[500px] space-y-2 touch-scroll custom-scrollbar">
+              <template x-for="(crew, idx) in auditAnomalies.absenNoVisit" :key="crew.namaCrew + idx">
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
+                  <div class="flex items-center space-x-3 min-w-0">
+                    <div class="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-500 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
+                    <div class="min-w-0">
+                      <div class="flex items-center space-x-2">
+                        <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
+                      </div>
+                      <div class="text-[11px] text-slate-400 flex items-center space-x-2 mt-0.5">
+                        <span>Absen Masuk: <b class="text-amber-400" x-text="crew.waktuMasuk"></b></span>
+                        <span>•</span>
+                        <span class="text-rose-400 font-semibold">0 Kunjungan</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button @click="sendWaReminder(crew, 'ABSEN_NO_VISIT')"
+                    class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center space-x-1 flex-shrink-0 transition-all shadow-sm cursor-pointer">
+                    <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                    <span>Follow Up WA</span>
+                  </button>
+                </div>
+              </template>
+              <template x-if="auditAnomalies.absenNoVisit.length === 0">
+                <div class="text-center py-8 text-slate-400 text-xs">
+                  ✅ Semua MDS yang absen masuk sudah melakukan kunjungan toko.
+                </div>
+              </template>
+            </div>
+
+            <!-- Tab 2: Kunjungan tapi Belum Absen -->
+            <div x-show="anomalyModal.activeTab === 'visit_no_absen'" class="flex-1 overflow-y-auto max-h-[500px] space-y-2 touch-scroll custom-scrollbar">
+              <template x-for="(crew, idx) in auditAnomalies.visitNoAbsen" :key="crew.namaCrew + idx">
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
+                  <div class="flex items-center space-x-3 min-w-0">
+                    <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
+                    <div class="min-w-0">
+                      <div class="flex items-center space-x-2">
+                        <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
+                      </div>
+                      <div class="text-[11px] text-slate-400 flex items-center space-x-2 mt-0.5">
+                        <span class="text-emerald-400 font-semibold" x-text="`${crew.visitCount} Kunjungan Selesai`"></span>
+                        <span>•</span>
+                        <span class="text-amber-400 font-semibold">⚠️ Belum Absen Masuk</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button @click="sendWaReminder(crew, 'VISIT_NO_ABSEN')"
+                    class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center space-x-1 flex-shrink-0 transition-all shadow-sm cursor-pointer">
+                    <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                    <span>Ingatkan Absen</span>
+                  </button>
+                </div>
+              </template>
+              <template x-if="auditAnomalies.visitNoAbsen.length === 0">
+                <div class="text-center py-8 text-slate-400 text-xs">
+                  ✅ Semua MDS yang submit kunjungan sudah tercatat absensi masuk.
+                </div>
+              </template>
+            </div>
+
+            <!-- Tab 3: Terlambat Masuk -->
+            <div x-show="anomalyModal.activeTab === 'terlambat'" class="flex-1 overflow-y-auto max-h-[500px] space-y-2 touch-scroll custom-scrollbar">
+              <template x-for="(crew, idx) in auditAnomalies.terlambatList" :key="crew.namaCrew + idx">
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
+                  <div class="flex items-center space-x-3 min-w-0">
+                    <div class="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
+                    <div class="min-w-0">
+                      <div class="flex items-center space-x-2">
+                        <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
+                      </div>
+                      <div class="text-[11px] text-slate-400 flex items-center space-x-2 mt-0.5">
+                        <span>Masuk: <b class="text-indigo-400" x-text="crew.waktuMasuk"></b></span>
+                        <span>•</span>
+                        <span class="text-rose-400 font-semibold" x-text="`Terlambat ${crew.lateMinutes} menit`"></span>
+                      </div>
+                    </div>
+                  </div>
+                  <button @click="sendWaReminder(crew, 'TERLAMBAT')"
+                    class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center space-x-1 flex-shrink-0 transition-all shadow-sm cursor-pointer">
+                    <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                    <span>Konfirmasi WA</span>
+                  </button>
+                </div>
+              </template>
+              <template x-if="auditAnomalies.terlambatList.length === 0">
+                <div class="text-center py-8 text-slate-400 text-xs">
+                  ✅ Disiplin tinggi! Seluruh MDS absen masuk tepat waktu sebelum pukul 08:00.
+                </div>
+              </template>
+            </div>
+
+            <!-- Tab 4: Belum Absen Pulang -->
+            <div x-show="anomalyModal.activeTab === 'lupa_pulang'" class="flex-1 overflow-y-auto max-h-[500px] space-y-2 touch-scroll custom-scrollbar">
+              <template x-for="(crew, idx) in auditAnomalies.lupaPulangList" :key="crew.namaCrew + idx">
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
+                  <div class="flex items-center space-x-3 min-w-0">
+                    <div class="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
+                    <div class="min-w-0">
+                      <div class="flex items-center space-x-2">
+                        <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
+                      </div>
+                      <div class="text-[11px] text-slate-400 flex items-center space-x-2 mt-0.5">
+                        <span class="text-slate-300" x-text="`${crew.visitCount} Toko Selesai`"></span>
+                        <span>•</span>
+                        <span class="text-purple-400 font-semibold">Belum Tap Pulang</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button @click="sendWaReminder(crew, 'LUPA_PULANG')"
+                    class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center space-x-1 flex-shrink-0 transition-all shadow-sm cursor-pointer">
+                    <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                    <span>Ingatkan Pulang</span>
+                  </button>
+                </div>
+              </template>
+              <template x-if="auditAnomalies.lupaPulangList.length === 0">
+                <div class="text-center py-8 text-slate-400 text-xs">
+                  ✅ Seluruh MDS sudah menyelesaikan absensi pulang.
+                </div>
+              </template>
+            </div>
+
+            <!-- Tab 5: Izin / Sakit / Cuti / DC -->
+            <div x-show="anomalyModal.activeTab === 'izin_sakit'" class="flex-1 overflow-y-auto max-h-[500px] space-y-2 touch-scroll custom-scrollbar">
+              <template x-for="(crew, idx) in [...auditAnomalies.sakitList, ...auditAnomalies.izinList, ...auditAnomalies.cutiList, ...auditAnomalies.visitDcList]" :key="crew.namaCrew + idx">
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
+                  <div class="flex items-center space-x-3 min-w-0">
+                    <div class="w-8 h-8 rounded-lg bg-teal-500/10 text-teal-400 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
+                    <div class="min-w-0">
+                      <div class="flex items-center space-x-2">
+                        <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-500/10 text-teal-400 border border-teal-500/20 uppercase" x-text="crew.isDc ? 'VISIT DC' : crew.status"></span>
+                      </div>
+                      <div class="text-[11px] text-slate-400 mt-0.5 truncate" x-text="crew.catatan || (crew.isDc ? 'Penugasan Kunjungan DC' : 'Keterangan tercatat di sistem')"></div>
+                    </div>
+                  </div>
+                  <span class="text-xs font-semibold text-slate-400" x-text="crew.waktu || '-'"></span>
+                </div>
+              </template>
+              <template x-if="auditAnomalies.totalIzinSakit === 0">
+                <div class="text-center py-8 text-slate-400 text-xs">
+                  ✅ Tidak ada personil yang mengajukan Izin, Sakit, Cuti, atau Visit DC hari ini.
+                </div>
+              </template>
+            </div>
+
+            <!-- Tab 6: GPS / Lokasi -->
+            <div x-show="anomalyModal.activeTab === 'gps_issue'" class="flex-1 overflow-y-auto max-h-[500px] space-y-2 touch-scroll custom-scrollbar">
+              <template x-for="(crew, idx) in auditAnomalies.gpsIssueList" :key="crew.namaCrew + idx">
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
+                  <div class="flex items-center space-x-3 min-w-0">
+                    <div class="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
+                    <div class="min-w-0">
+                      <div class="flex items-center space-x-2">
+                        <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
+                      </div>
+                      <div class="text-[11px] text-rose-400 mt-0.5 font-medium" x-text="crew.reason"></div>
+                    </div>
+                  </div>
+                  <button @click="sendWaReminder(crew, 'GPS_ISSUE')"
+                    class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center space-x-1 flex-shrink-0 transition-all shadow-sm cursor-pointer">
+                    <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                    <span>Cek GPS</span>
+                  </button>
+                </div>
+              </template>
+              <template x-if="auditAnomalies.gpsIssueList.length === 0">
+                <div class="text-center py-8 text-slate-400 text-xs">
+                  ✅ Semua absensi tercatat dengan koordinat GPS yang valid dan akurat.
+                </div>
+              </template>
+            </div>
+
+            <!-- Tab 7: Alpha -->
+            <div x-show="anomalyModal.activeTab === 'alpha'" class="flex-1 overflow-y-auto max-h-[500px] space-y-2 touch-scroll custom-scrollbar">
+              <template x-for="(crew, idx) in auditAnomalies.alphaList" :key="crew.namaCrew + idx">
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
+                  <div class="flex items-center space-x-3 min-w-0">
+                    <div class="w-8 h-8 rounded-lg bg-slate-500/10 text-slate-400 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
+                    <div class="min-w-0">
+                      <div class="flex items-center space-x-2">
+                        <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
+                      </div>
+                      <div class="text-[11px] text-slate-400 mt-0.5">Belum ada aktivitas absensi maupun kunjungan toko hari ini.</div>
+                    </div>
+                  </div>
+                  <button @click="sendWaReminder(crew, 'ALPHA')"
+                    class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center space-x-1 flex-shrink-0 transition-all shadow-sm cursor-pointer">
+                    <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                    <span>Hubungi WA</span>
+                  </button>
+                </div>
+              </template>
+              <template x-if="auditAnomalies.alphaList.length === 0">
+                <div class="text-center py-8 text-slate-400 text-xs">
+                  ✅ Tidak ada tim yang berstatus Alpha. Semua personil tercatat aktif.
+                </div>
+              </template>
+            </div>
+
+          </div>
+
+          <!-- Column 2: Live Formatted WhatsApp Anomaly Broadcast Text (5 cols) -->
+          <div class="lg:col-span-5 glass-card rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 dark:border-slate-800/80 space-y-3">
+            
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+                <h4 class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-200">Format Broadcast WhatsApp Anomali</h4>
+              </div>
+              <span class="text-[10px] text-slate-400 font-mono" x-text="`${activeReportText.length} karakter`"></span>
+            </div>
+
+            <!-- Code Box -->
+            <div class="relative group">
+              <div class="p-4 rounded-2xl bg-slate-950 text-slate-100 border border-slate-800 font-mono text-xs whitespace-pre-wrap leading-relaxed select-all selection:bg-rose-500/30 max-h-[500px] overflow-y-auto custom-scrollbar shadow-inner"
+                   x-text="activeReportText"></div>
+              
+              <button type="button" @click="copyReportTabText()"
+                class="absolute top-3 right-3 px-3 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 transition-all opacity-80 hover:opacity-100 active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-md">
+                <i :data-lucide="reportTab.textCopiedSuccess ? 'check' : 'copy'" class="w-3.5 h-3.5"></i>
+                <span x-text="reportTab.textCopiedSuccess ? 'Tersalin' : 'Salin'"></span>
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ========================================================================= -->
+      <!-- VIEW 2: STANDARD REPORTS & REMINDERS (When reportType === 'ROUTE_ONLY' | 'FULL_OPS' | 'REMINDER') -->
+      <!-- ========================================================================= -->
+      <div x-show="reportTab.reportType === 'ROUTE_ONLY' || reportTab.reportType === 'FULL_OPS' || reportTab.reportType === 'REMINDER'" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Live Formatted WhatsApp Text Monospace Box -->
+        <div :class="reportTab.reportType === 'REMINDER' ? 'lg:col-span-7' : 'lg:col-span-12'"
+             class="glass-card rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 dark:border-slate-800/80 space-y-3">
+          
+          <div class="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+              <h4 class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-200">Pratinjau Format Pesan WhatsApp (Live Preview)</h4>
+            </div>
+            <span class="text-[10px] text-slate-400 font-mono" x-text="`${activeReportText.length} karakter`"></span>
+          </div>
+
+          <!-- Code Box -->
+          <div class="relative group">
+            <div class="p-4 sm:p-5 rounded-2xl bg-slate-950 text-slate-100 border border-slate-800 font-mono text-xs sm:text-[13px] whitespace-pre-wrap leading-relaxed select-all selection:bg-emerald-500/30 max-h-[600px] overflow-y-auto custom-scrollbar shadow-inner"
+                 x-text="activeReportText"></div>
+            
+            <button type="button" @click="copyReportTabText()"
+              class="absolute top-3 right-3 px-3 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 transition-all opacity-80 hover:opacity-100 active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-md">
+              <i :data-lucide="reportTab.textCopiedSuccess ? 'check' : 'copy'" class="w-3.5 h-3.5"></i>
+              <span x-text="reportTab.textCopiedSuccess ? 'Tersalin' : 'Salin'"></span>
+            </button>
+          </div>
+
+        </div>
+
+        <!-- Interactive MDS Reminder Follow-Up Table (Shown when REMINDER selected) -->
+        <div x-show="reportTab.reportType === 'REMINDER'" class="lg:col-span-5 space-y-3">
+          <div class="glass-card rounded-2xl p-4 shadow-sm border border-slate-200/80 dark:border-slate-800/80 space-y-3">
+            
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h4 class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <span>Direct Follow-Up Chat</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                  x-text="`${reminderPendingCrewList.length} Personil`"></span>
+              </h4>
+            </div>
+
+            <!-- List of pending MDS -->
+            <div class="space-y-2 max-h-[550px] overflow-y-auto custom-scrollbar p-0.5">
+              <template x-for="(crew, idx) in reminderPendingCrewList" :key="crew.namaCrew + '_' + idx">
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2.5 transition-all hover:border-amber-400/50">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-bold text-xs text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
+                      <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300" x-text="crew.modul"></span>
+                    </div>
+                    <div class="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      <span>🎯 <strong class="text-slate-700 dark:text-slate-300" x-text="`${crew.visitedCount}/${crew.targetCount}`"></strong> toko</span>
+                      <span class="text-rose-500 font-semibold" x-text="`• Sisa ${Math.max(0, crew.targetCount - crew.visitedCount)} toko`"></span>
+                    </div>
+                  </div>
+
+                  <!-- 1-Tap Personal WA Chat Button -->
+                  <button type="button" @click="sendDirectCrewReminder(crew)"
+                    class="h-8 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs transition-all flex items-center gap-1.5 shadow-sm cursor-pointer flex-shrink-0"
+                    title="Kirim pesan pengingat WA langsung ke nomor MDS">
+                    <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                    <span>Chat WA</span>
+                  </button>
+                </div>
+              </template>
+
+              <div x-show="reminderPendingCrewList.length === 0" class="py-8 text-center text-slate-400 text-xs">
+                🎉 Seluruh MDS di wilayah ini sudah 100% tuntas!
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 2. Visual HD Infographic Card Container (Shown when INFOGRAPHIC selected) -->
+      <div x-show="reportTab.reportType === 'INFOGRAPHIC'" class="flex justify-center">
+        <div class="glass-card rounded-2xl p-4 sm:p-6 shadow-xl border border-slate-200 dark:border-slate-800 max-w-2xl w-full overflow-hidden">
+          
+          <!-- HD INFOGRAPHIC CARD CANVAS CONTAINER -->
+          <div id="report-tab-infographic-card" class="bg-white text-slate-900 p-6 rounded-2xl shadow-lg border border-slate-200 space-y-4">
+            
+            <!-- Card Header -->
+            <div class="flex items-center justify-between pb-4 border-b-2 border-brand-500">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center font-black text-lg">
+                  MDS
+                </div>
+                <div>
+                  <h3 class="font-extrabold text-base tracking-tight text-slate-900">REKAP OPERASIONAL & REALISASI RUTE</h3>
+                  <p class="text-xs font-semibold text-brand-600" x-text="`Wilayah: ${activeWaRegionName}`"></p>
+                </div>
+              </div>
+              <div class="text-right">
+                <span class="text-[10px] font-bold text-slate-400 uppercase block">Tanggal Pelaporan</span>
+                <span class="text-xs font-extrabold text-slate-800" x-text="activeDateLabel || 'Hari Ini'"></span>
+              </div>
+            </div>
+
+            <!-- KPI Metric Badges -->
+            <div class="grid grid-cols-4 gap-2 text-center py-2">
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <span class="text-[10px] font-bold text-slate-500 uppercase block">Target Toko</span>
+                <span class="text-lg font-black text-slate-800" x-text="waReportSummary.totalTarget"></span>
+              </div>
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <span class="text-[10px] font-bold text-slate-500 uppercase block">Kunjungan</span>
+                <span class="text-lg font-black text-slate-800" x-text="waReportSummary.totalVisits"></span>
+              </div>
+              <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                <span class="text-[10px] font-bold text-emerald-700 uppercase block">Realisasi</span>
+                <span class="text-lg font-black text-emerald-700" x-text="`${waReportSummary.rate}%`"></span>
+              </div>
+              <div class="p-3 rounded-xl bg-indigo-50 border border-indigo-200">
+                <span class="text-[10px] font-bold text-indigo-700 uppercase block">Rute Tuntas</span>
+                <span class="text-lg font-black text-indigo-700" x-text="`${waReportSummary.tuntasCount} MDS`"></span>
+              </div>
+            </div>
+
+            <!-- Operational Summary Breakdown Table -->
+            <div class="overflow-hidden rounded-xl border border-slate-200 text-xs">
+              <table class="w-full text-left border-collapse">
+                <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                  <tr>
+                    <th class="py-2 px-3">Status Kunjungan</th>
+                    <th class="py-2 px-3 text-center">Jumlah MDS</th>
+                    <th class="py-2 px-3 text-center">Keterangan</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 font-medium">
+                  <tr>
+                    <td class="py-2 px-3 flex items-center gap-1.5"><span class="text-emerald-600">🟢</span> <strong>Tuntas 100%</strong></td>
+                    <td class="py-2 px-3 text-center font-bold text-emerald-700" x-text="waReportSummary.tuntasCount"></td>
+                    <td class="py-2 px-3 text-center text-slate-500">Target selesai penuh</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2 px-3 flex items-center gap-1.5"><span class="text-amber-500">🟡</span> <strong>Progres Berjalan</strong></td>
+                    <td class="py-2 px-3 text-center font-bold text-amber-700" x-text="waReportSummary.onProgressCount"></td>
+                    <td class="py-2 px-3 text-center text-slate-500">Sebagian toko terekam</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2 px-3 flex items-center gap-1.5"><span class="text-rose-500">🔴</span> <strong>0 Visit / Belum Jalan</strong></td>
+                    <td class="py-2 px-3 text-center font-bold text-rose-700" x-text="waReportSummary.belumJalanCount"></td>
+                    <td class="py-2 px-3 text-center text-slate-500">Belum ada kunjungan</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2 px-3 flex items-center gap-1.5"><span class="text-blue-500">🔵</span> <strong>Kunjungan Non-Rute</strong></td>
+                    <td class="py-2 px-3 text-center font-bold text-blue-700" x-text="waReportSummary.nonRuteCount"></td>
+                    <td class="py-2 px-3 text-center text-slate-500">Kunjungan di luar jadwal</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Card Footer -->
+            <div class="pt-3 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-400">
+              <span>Retail Operations Analytics &bull; Centralized Monitoring</span>
+              <span class="font-bold text-slate-600">Terverifikasi Sistem Live</span>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
   </main>
 
   <!-- ============================================================================== -->
@@ -2213,438 +2894,6 @@
     </div>
   </div>
 
-  <!-- WHATSAPP PLAIN TEXT REPORT MODAL -->
-  <div x-show="waReportModal.isOpen" x-cloak class="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm">
-    <div class="glass-card rounded-2xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl relative border border-slate-700 flex flex-col max-h-[92vh]" @click.outside="closeWaReportModal()">
-      
-      <!-- Modal Top Bar -->
-      <div class="flex items-center justify-between pb-3.5 border-b border-slate-200 dark:border-slate-700">
-        <div class="flex items-center space-x-2.5">
-          <div class="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center flex-shrink-0">
-            <i data-lucide="message-square" class="w-5 h-5"></i>
-          </div>
-          <div>
-            <h4 class="font-display font-bold text-base text-slate-900 dark:text-white">Laporan Realisasi Rute WhatsApp</h4>
-            <p class="text-xs text-slate-500 dark:text-slate-400">Format broadcast performa & pencapaian target rute kunjungan toko</p>
-          </div>
-        </div>
-
-        <!-- Close Button -->
-        <button @click="closeWaReportModal()" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-white transition-colors">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
-      </div>
-
-      <!-- Region & Report Type Selector -->
-      <div class="py-3 border-b border-slate-200 dark:border-slate-800 space-y-3">
-        <div>
-          <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-            Pilih Grup Wilayah Cabang:
-          </label>
-          <div class="relative">
-            <select x-model="waReportModal.selectedRegion"
-              class="w-full text-xs sm:text-sm font-bold pl-3.5 pr-9 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-emerald-500 appearance-none cursor-pointer transition-all">
-              <option value="JABODETABEK">🏙️ Jabodetabek & Banten (DK1-6)</option>
-              <option value="JABAR">🏔️ Jawa Barat (LK1, LK2)</option>
-              <option value="JATENG">🏛️ Jateng & DIY (LK3)</option>
-              <option value="JATIM_BALI">🏖️ Jatim, Bali & Nusra (LK4, LK5)</option>
-              <option value="LUAR_JAWA">🌴 Sumatera, Kalimantan & Sulawesi (LP1-4)</option>
-              <option value="ALL">🌐 Nasional (Semua Wilayah)</option>
-            </select>
-            <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-              <i data-lucide="chevron-down" class="w-4 h-4"></i>
-            </div>
-          </div>
-        </div>
-
-        <!-- Report Format Switcher Tabs -->
-        <div>
-          <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-            Model Format Laporan:
-          </label>
-          <div class="grid grid-cols-2 gap-2">
-            <button @click="waReportModal.reportType = 'ROUTE_ONLY'"
-              class="px-3 py-2 rounded-xl text-xs font-bold transition-all text-center border"
-              :class="waReportModal.reportType === 'ROUTE_ONLY' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-sm' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400'">
-              📊 Realisasi Rute Toko (Utama)
-            </button>
-            <button @click="waReportModal.reportType = 'FULL_OPS'"
-              class="px-3 py-2 rounded-xl text-xs font-bold transition-all text-center border"
-              :class="waReportModal.reportType === 'FULL_OPS' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-sm' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400'">
-              📋 Rute + Catatan Disiplin
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Main Action Buttons -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 py-3">
-        <!-- 1-Tap Copy Full Formatted Text -->
-        <button @click="copyWaText()"
-          class="flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-md active:scale-95"
-          :class="waReportModal.textCopiedSuccess ? 'bg-emerald-600 text-white shadow-emerald-600/30 ring-2 ring-emerald-300' : 'bg-brand-600 hover:bg-brand-500 text-white shadow-brand-600/30'">
-          <i :data-lucide="waReportModal.textCopiedSuccess ? 'check' : 'copy'" class="w-4 h-4"></i>
-          <span x-text="waReportModal.textCopiedSuccess ? '✓ Berhasil Disalin ke Clipboard!' : 'Salin Format Teks'"></span>
-        </button>
-
-        <!-- 1-Tap Direct Open / Share to WhatsApp -->
-        <button @click="shareTextToWhatsApp()"
-          class="flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-600/30 transition-all active:scale-95">
-          <i data-lucide="share-2" class="w-4 h-4"></i>
-          <span>Kirim ke WhatsApp</span>
-        </button>
-      </div>
-
-      <!-- Formatted Text Preview Box -->
-      <div class="flex-1 overflow-y-auto py-2 touch-scroll">
-        <div class="relative">
-          <div x-show="!waReportModal.isGenerating"
-               class="p-3.5 sm:p-4 rounded-xl bg-slate-900/90 text-slate-200 border border-slate-800 font-mono text-xs sm:text-[13px] whitespace-pre-wrap leading-relaxed select-all selection:bg-emerald-500/30 cursor-text"
-               x-text="waFullReportText"></div>
-          <div x-show="waReportModal.isGenerating"
-               class="p-8 rounded-xl bg-slate-900/90 text-slate-400 border border-slate-800 flex flex-col items-center justify-center space-y-2">
-            <div class="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
-            <span class="text-xs font-semibold">Menghitung rute & jadwal target toko...</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Footer Info -->
-      <div class="pt-3 mt-1 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-        <span>💡 Klik tombol di atas untuk langsung kirim atau paste di grup WhatsApp.</span>
-        <button @click="closeWaReportModal()" class="font-bold text-slate-400 hover:text-slate-200">Tutup</button>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- AUDIT ANOMALI MODAL -->
-  <div x-show="anomalyModal.isOpen" x-cloak class="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm">
-    <div class="glass-card rounded-2xl max-w-3xl w-full p-4 sm:p-6 shadow-2xl relative border border-slate-700 flex flex-col max-h-[92vh]" @click.outside="closeAnomalyModal()">
-      
-      <!-- Header -->
-      <div class="flex items-center justify-between pb-3.5 border-b border-slate-200 dark:border-slate-700">
-        <div class="flex items-center space-x-2.5">
-          <div class="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center flex-shrink-0">
-            <i data-lucide="shield-alert" class="w-5 h-5"></i>
-          </div>
-          <div>
-            <h4 class="font-display font-bold text-base text-slate-900 dark:text-white">Audit Disiplin & Anomali Absensi MDS</h4>
-            <p class="text-xs text-slate-500 dark:text-slate-400">Investigasi Kepatuhan Jam Masuk, Validasi GPS, Alpha & Lupa Absen</p>
-          </div>
-        </div>
-        <button @click="closeAnomalyModal()" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-white transition-colors">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
-      </div>
-
-      <!-- Quick Stats & Reconciliation Bar -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 py-3 border-b border-slate-200 dark:border-slate-800 text-center">
-        <div class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700">
-          <span class="text-[10px] font-semibold text-slate-400 block uppercase">Total Populasi</span>
-          <span class="text-lg font-bold text-slate-200" x-text="`${auditAnomalies.totalRoster} MDS`">0</span>
-        </div>
-        <div class="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-          <span class="text-[10px] font-semibold text-emerald-500 block uppercase">Absen Masuk</span>
-          <div class="flex items-baseline justify-center space-x-1">
-            <span class="text-lg font-bold text-emerald-500" x-text="auditAnomalies.totalAbsenMasuk">0</span>
-            <span class="text-[10px] text-emerald-400/80" x-text="`(${auditAnomalies.totalTepatWaktu} tepat)`"></span>
-          </div>
-        </div>
-        <div class="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20">
-          <span class="text-[10px] font-semibold text-sky-400 block uppercase">Aktif Kunjungan</span>
-          <div class="flex items-baseline justify-center space-x-1">
-            <span class="text-lg font-bold text-sky-400" x-text="auditAnomalies.totalActiveVisit">0</span>
-            <span class="text-[10px] text-sky-300/80" x-text="`(${auditAnomalies.totalNormalVisit} sinkron)`"></span>
-          </div>
-        </div>
-        <div class="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20">
-          <span class="text-[10px] font-semibold text-rose-500 block uppercase">Perlu Evaluasi</span>
-          <span class="text-lg font-bold text-rose-500" x-text="`${auditAnomalies.totalAnomalies} MDS`">0</span>
-        </div>
-      </div>
-
-      <!-- Action Buttons: Copy & Share Report -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 py-3">
-        <button @click="copyAnomalyReport()"
-          class="flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-md active:scale-95"
-          :class="anomalyModal.copiedSuccess ? 'bg-emerald-600 text-white shadow-emerald-600/30' : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'">
-          <i :data-lucide="anomalyModal.copiedSuccess ? 'check' : 'copy'" class="w-4 h-4"></i>
-          <span x-text="anomalyModal.copiedSuccess ? '✓ Laporan Lengkap Disalin!' : 'Salin Laporan Lengkap (WA)'"></span>
-        </button>
-
-        <button @click="shareAnomalyReport()"
-          class="flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-600/30 transition-all active:scale-95">
-          <i data-lucide="share-2" class="w-4 h-4"></i>
-          <span>Kirim ke WhatsApp Group</span>
-        </button>
-      </div>
-
-      <!-- Category Tabs (Horizontal Scrollable) -->
-      <div class="flex space-x-2 pb-2 border-b border-slate-200 dark:border-slate-800 overflow-x-auto no-scrollbar touch-scroll">
-        <button @click="anomalyModal.activeTab = 'absen_no_visit'"
-          class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0"
-          :class="anomalyModal.activeTab === 'absen_no_visit' ? 'bg-rose-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
-          <span>🔴 Absen 0 Visit</span>
-          <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.absenNoVisit.length"></span>
-        </button>
-
-        <button @click="anomalyModal.activeTab = 'visit_no_absen'"
-          class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0"
-          :class="anomalyModal.activeTab === 'visit_no_absen' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
-          <span>🟡 Lupa Absen Masuk</span>
-          <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.visitNoAbsen.length"></span>
-        </button>
-
-        <button @click="anomalyModal.activeTab = 'terlambat'"
-          class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0"
-          :class="anomalyModal.activeTab === 'terlambat' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
-          <span>⏰ Terlambat (>08:00)</span>
-          <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.terlambatList.length"></span>
-        </button>
-
-        <button @click="anomalyModal.activeTab = 'lupa_pulang'"
-          class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0"
-          :class="anomalyModal.activeTab === 'lupa_pulang' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
-          <span>🏠 Belum Pulang</span>
-          <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.lupaPulangList.length"></span>
-        </button>
-
-        <button @click="anomalyModal.activeTab = 'izin_sakit'"
-          class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0"
-          :class="anomalyModal.activeTab === 'izin_sakit' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
-          <span>🏥 Izin / Sakit / Cuti</span>
-          <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.totalIzinSakit"></span>
-        </button>
-
-        <button @click="anomalyModal.activeTab = 'gps_issue'"
-          class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0"
-          :class="anomalyModal.activeTab === 'gps_issue' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
-          <span>📍 Anomali GPS</span>
-          <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.gpsIssueList.length"></span>
-        </button>
-
-        <button @click="anomalyModal.activeTab = 'alpha'"
-          class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0"
-          :class="anomalyModal.activeTab === 'alpha' ? 'bg-slate-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 bg-slate-100 dark:bg-slate-800'">
-          <span>❓ Alpha</span>
-          <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20" x-text="auditAnomalies.alphaList.length"></span>
-        </button>
-      </div>
-
-      <!-- Tab 1: Absen tapi 0 Kunjungan -->
-      <div x-show="anomalyModal.activeTab === 'absen_no_visit'" class="flex-1 overflow-y-auto py-2 space-y-2 touch-scroll">
-        <template x-for="(crew, idx) in auditAnomalies.absenNoVisit" :key="crew.namaCrew + idx">
-          <div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
-            <div class="flex items-center space-x-3 min-w-0">
-              <div class="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-500 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
-              <div class="min-w-0">
-                <div class="flex items-center space-x-2">
-                  <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
-                </div>
-                <div class="text-[11px] text-slate-400 flex items-center space-x-2 mt-0.5">
-                  <span>Absen Masuk: <b class="text-amber-400" x-text="crew.waktuMasuk"></b></span>
-                  <span>•</span>
-                  <span class="text-rose-400 font-semibold">0 Kunjungan</span>
-                </div>
-              </div>
-            </div>
-            <button @click="sendWaReminder(crew, 'ABSEN_NO_VISIT')"
-              class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center space-x-1 flex-shrink-0 transition-all shadow-sm">
-              <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-              <span>Follow Up WA</span>
-            </button>
-          </div>
-        </template>
-        <template x-if="auditAnomalies.absenNoVisit.length === 0">
-          <div class="text-center py-8 text-slate-400 text-xs">
-            ✅ Semua MDS yang absen masuk sudah melakukan kunjungan toko.
-          </div>
-        </template>
-      </div>
-
-      <!-- Tab 2: Kunjungan tapi Belum Absen -->
-      <div x-show="anomalyModal.activeTab === 'visit_no_absen'" class="flex-1 overflow-y-auto py-2 space-y-2 touch-scroll">
-        <template x-for="(crew, idx) in auditAnomalies.visitNoAbsen" :key="crew.namaCrew + idx">
-          <div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
-            <div class="flex items-center space-x-3 min-w-0">
-              <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
-              <div class="min-w-0">
-                <div class="flex items-center space-x-2">
-                  <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
-                </div>
-                <div class="text-[11px] text-slate-400 flex items-center space-x-2 mt-0.5">
-                  <span class="text-emerald-400 font-semibold" x-text="`${crew.visitCount} Kunjungan Selesai`"></span>
-                  <span>•</span>
-                  <span class="text-amber-400 font-semibold">⚠️ Belum Absen Masuk</span>
-                </div>
-              </div>
-            </div>
-            <button @click="sendWaReminder(crew, 'VISIT_NO_ABSEN')"
-              class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center space-x-1 flex-shrink-0 transition-all shadow-sm">
-              <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-              <span>Ingatkan Absen</span>
-            </button>
-          </div>
-        </template>
-        <template x-if="auditAnomalies.visitNoAbsen.length === 0">
-          <div class="text-center py-8 text-slate-400 text-xs">
-            ✅ Semua MDS yang submit kunjungan sudah tercatat absensi masuk.
-          </div>
-        </template>
-      </div>
-
-      <!-- Tab 3: Terlambat Masuk -->
-      <div x-show="anomalyModal.activeTab === 'terlambat'" class="flex-1 overflow-y-auto py-2 space-y-2 touch-scroll">
-        <template x-for="(crew, idx) in auditAnomalies.terlambatList" :key="crew.namaCrew + idx">
-          <div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
-            <div class="flex items-center space-x-3 min-w-0">
-              <div class="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
-              <div class="min-w-0">
-                <div class="flex items-center space-x-2">
-                  <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
-                </div>
-                <div class="text-[11px] text-slate-400 flex items-center space-x-2 mt-0.5">
-                  <span>Masuk: <b class="text-indigo-400" x-text="crew.waktuMasuk"></b></span>
-                  <span>•</span>
-                  <span class="text-rose-400 font-semibold" x-text="`Terlambat ${crew.lateMinutes} menit`"></span>
-                </div>
-              </div>
-            </div>
-            <button @click="sendWaReminder(crew, 'TERLAMBAT')"
-              class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center space-x-1 flex-shrink-0 transition-all shadow-sm">
-              <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-              <span>Konfirmasi WA</span>
-            </button>
-          </div>
-        </template>
-        <template x-if="auditAnomalies.terlambatList.length === 0">
-          <div class="text-center py-8 text-slate-400 text-xs">
-            ✅ Disiplin tinggi! Seluruh MDS absen masuk tepat waktu sebelum pukul 08:00.
-          </div>
-        </template>
-      </div>
-
-      <!-- Tab 4: Belum Absen Pulang -->
-      <div x-show="anomalyModal.activeTab === 'lupa_pulang'" class="flex-1 overflow-y-auto py-2 space-y-2 touch-scroll">
-        <template x-for="(crew, idx) in auditAnomalies.lupaPulangList" :key="crew.namaCrew + idx">
-          <div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
-            <div class="flex items-center space-x-3 min-w-0">
-              <div class="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
-              <div class="min-w-0">
-                <div class="flex items-center space-x-2">
-                  <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
-                </div>
-                <div class="text-[11px] text-slate-400 flex items-center space-x-2 mt-0.5">
-                  <span class="text-slate-300" x-text="`${crew.visitCount} Toko Selesai`"></span>
-                  <span>•</span>
-                  <span class="text-purple-400 font-semibold">Belum Tap Pulang</span>
-                </div>
-              </div>
-            </div>
-            <button @click="sendWaReminder(crew, 'LUPA_PULANG')"
-              class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center space-x-1 flex-shrink-0 transition-all shadow-sm">
-              <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-              <span>Ingatkan Pulang</span>
-            </button>
-          </div>
-        </template>
-        <template x-if="auditAnomalies.lupaPulangList.length === 0">
-          <div class="text-center py-8 text-slate-400 text-xs">
-            ✅ Seluruh MDS sudah menyelesaikan absensi pulang.
-          </div>
-        </template>
-      </div>
-
-      <!-- Tab 5: Izin / Sakit / Cuti / DC -->
-      <div x-show="anomalyModal.activeTab === 'izin_sakit'" class="flex-1 overflow-y-auto py-2 space-y-2 touch-scroll">
-        <template x-for="(crew, idx) in [...auditAnomalies.sakitList, ...auditAnomalies.izinList, ...auditAnomalies.cutiList, ...auditAnomalies.visitDcList]" :key="crew.namaCrew + idx">
-          <div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
-            <div class="flex items-center space-x-3 min-w-0">
-              <div class="w-8 h-8 rounded-lg bg-teal-500/10 text-teal-400 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
-              <div class="min-w-0">
-                <div class="flex items-center space-x-2">
-                  <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-500/10 text-teal-400 border border-teal-500/20 uppercase" x-text="crew.isDc ? 'VISIT DC' : crew.status"></span>
-                </div>
-                <div class="text-[11px] text-slate-400 mt-0.5 truncate" x-text="crew.catatan || (crew.isDc ? 'Penugasan Kunjungan DC' : 'Keterangan tercatat di sistem')"></div>
-              </div>
-            </div>
-            <span class="text-xs font-semibold text-slate-400" x-text="crew.waktu || '-'"></span>
-          </div>
-        </template>
-        <template x-if="auditAnomalies.totalIzinSakit === 0">
-          <div class="text-center py-8 text-slate-400 text-xs">
-            ✅ Tidak ada personil yang mengajukan Izin, Sakit, Cuti, atau Visit DC hari ini.
-          </div>
-        </template>
-      </div>
-
-      <!-- Tab 6: GPS / Lokasi -->
-      <div x-show="anomalyModal.activeTab === 'gps_issue'" class="flex-1 overflow-y-auto py-2 space-y-2 touch-scroll">
-        <template x-for="(crew, idx) in auditAnomalies.gpsIssueList" :key="crew.namaCrew + idx">
-          <div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
-            <div class="flex items-center space-x-3 min-w-0">
-              <div class="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
-              <div class="min-w-0">
-                <div class="flex items-center space-x-2">
-                  <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
-                </div>
-                <div class="text-[11px] text-rose-400 mt-0.5 font-medium" x-text="crew.reason"></div>
-              </div>
-            </div>
-            <button @click="sendWaReminder(crew, 'GPS_ISSUE')"
-              class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center space-x-1 flex-shrink-0 transition-all shadow-sm">
-              <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-              <span>Cek GPS</span>
-            </button>
-          </div>
-        </template>
-        <template x-if="auditAnomalies.gpsIssueList.length === 0">
-          <div class="text-center py-8 text-slate-400 text-xs">
-            ✅ Semua absensi tercatat dengan koordinat GPS yang valid dan akurat.
-          </div>
-        </template>
-      </div>
-
-      <!-- Tab 7: Alpha -->
-      <div x-show="anomalyModal.activeTab === 'alpha'" class="flex-1 overflow-y-auto py-2 space-y-2 touch-scroll">
-        <template x-for="(crew, idx) in auditAnomalies.alphaList" :key="crew.namaCrew + idx">
-          <div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
-            <div class="flex items-center space-x-3 min-w-0">
-              <div class="w-8 h-8 rounded-lg bg-slate-500/10 text-slate-400 flex items-center justify-center font-bold text-xs flex-shrink-0" x-text="idx + 1"></div>
-              <div class="min-w-0">
-                <div class="flex items-center space-x-2">
-                  <span class="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate" x-text="crew.namaCrew"></span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-400 border border-brand-500/20 flex-shrink-0" x-text="crew.modul"></span>
-                </div>
-                <div class="text-[11px] text-slate-400 mt-0.5">Belum ada aktivitas absensi maupun kunjungan toko hari ini.</div>
-              </div>
-            </div>
-            <button @click="sendWaReminder(crew, 'ALPHA')"
-              class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center space-x-1 flex-shrink-0 transition-all shadow-sm">
-              <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-              <span>Hubungi WA</span>
-            </button>
-          </div>
-        </template>
-        <template x-if="auditAnomalies.alphaList.length === 0">
-          <div class="text-center py-8 text-slate-400 text-xs">
-            ✅ Tidak ada tim yang berstatus Alpha. Semua personil tercatat aktif.
-          </div>
-        </template>
-      </div>
-
-      <!-- Footer -->
-      <div class="pt-3 mt-1 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-        <span>💡 Klik tombol Follow Up untuk mengirim pesan pengingat instan via WhatsApp.</span>
-        <button @click="closeAnomalyModal()" class="font-bold text-slate-400 hover:text-slate-200">Tutup</button>
       </div>
 
     </div>
@@ -3193,12 +3442,12 @@
   </div>
 
   <!-- Modular Scripts with Cache-Buster -->
-  <script src="./js/config.js?v=20260908_10"></script>
-  <script src="./js/db.js?v=20260908_10"></script>
-  <script src="./js/api.js?v=20260908_10"></script>
-  <script src="./js/charts.js?v=20260908_10"></script>
-  <script src="./js/map.js?v=20260908_10"></script>
-  <script src="./js/app.js?v=20260908_10"></script>
+  <script src="./js/config.js?v=20260908_14"></script>
+  <script src="./js/db.js?v=20260908_14"></script>
+  <script src="./js/api.js?v=20260908_14"></script>
+  <script src="./js/charts.js?v=20260908_14"></script>
+  <script src="./js/map.js?v=20260908_14"></script>
+  <script src="./js/app.js?v=20260908_14"></script>
 
   <!-- Failsafe preloader auto-dismiss -->
   <script>

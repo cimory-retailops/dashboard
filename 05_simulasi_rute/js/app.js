@@ -124,13 +124,11 @@ document.addEventListener('alpine:init', () => {
 
       setTimeout(() => {
         const isJawaStore = (st) => {
-          return (st.lat >= -8.9 && st.lat <= -5.8 && st.lng >= 105.1 && st.lng <= 114.6);
+          return RouteEngine.getIslandGroup(st.lat, st.lng, st.kabKota, '') === 'JAWA';
         };
 
         const isJawaMds = (m) => {
-          const reg = (m.region || '').toUpperCase();
-          const mod = (m.modul || '').toUpperCase();
-          return reg.includes('JABODETABEK') || reg.includes('PULAU JAWA') || mod.startsWith('DK') || mod.startsWith('LK');
+          return RouteEngine.getIslandGroup(m.lat, m.lng, m.kota || m.kecamatan, m.region) === 'JAWA';
         };
 
         let targetPersonnel = this.rawPersonnel;
@@ -250,9 +248,9 @@ document.addEventListener('alpine:init', () => {
       if (this.tableFilterType === 'PERDIN') {
         list = list.filter(st => st.isPerdin);
       } else if (this.tableFilterType === 'NON_PERDIN') {
-        list = list.filter(st => !st.isPerdin && st.type !== 'DC');
+        list = list.filter(st => !st.isPerdin && !st.isDc && st.type !== 'DC');
       } else if (this.tableFilterType === 'DC') {
-        list = list.filter(st => st.type === 'DC' || st.account === 'DC');
+        list = list.filter(st => st.isDc || st.type === 'DC' || st.account === 'DC' || st.tipeKunjungan === 'KUNJUNGAN DC');
       }
 
       // Search query
@@ -403,7 +401,7 @@ document.addEventListener('alpine:init', () => {
             <span>Alamat: ${mds.alamat}</span><br>
             <span>Kecamatan: <b>${mds.kecamatan}</b>, ${mds.kota}</span><br>
             <hr style="margin: 5px 0; border: none; border-top: 1px solid #e2e8f0;">
-            <span>Total Kunjungan: <b>${mds.assignedStores.length} Toko + 4 Hari DC</b></span><br>
+            <span>Total Kunjungan: <b>${mds.assignedStores.length} Toko + 4 Hari DC (460 Titik)</b></span><br>
             <span>Rincian: <b>${mds.nonPerdinDays || mds.localDays || 0} Hari Non Perdin</b> • <b>${mds.perdinDays || 0} Hari Perdin</b></span>
           </div>
         `);
@@ -428,11 +426,12 @@ document.addEventListener('alpine:init', () => {
 
       (storesToPlot || []).forEach((st, idx) => {
         const isPerdin = isDayPerdin || st.isPerdin;
-        const pinBg = isPerdin ? '#f59e0b' : (isDayDc ? '#059669' : mds.color);
-        const pinBorder = isPerdin ? '#b45309' : (isDayDc ? '#047857' : 'white');
-        const pinText = isPerdin ? `🏨 ${idx + 1}` : (isDayDc ? `🏭 ${idx + 1}` : `${idx + 1}`);
+        const isThisStoreDc = Boolean(st.isDc || st.type === 'DC' || (st.tipeKunjungan && st.tipeKunjungan.includes('DC')));
+        const pinBg = isPerdin ? '#f59e0b' : (isThisStoreDc ? '#059669' : mds.color);
+        const pinBorder = isPerdin ? '#b45309' : (isThisStoreDc ? '#047857' : 'white');
+        const pinText = isPerdin ? `🏨 ${idx + 1}` : (isThisStoreDc ? `🏭 ${idx + 1}` : `${idx + 1}`);
 
-        // Calculate jitter/radial spiderfy offset if multiple points share identical coordinates (e.g. DC days)
+        // Calculate jitter/radial spiderfy offset if multiple points share identical coordinates
         const key = `${(st.lat || 0).toFixed(5)}_${(st.lng || 0).toFixed(5)}`;
         const totalAtCoord = coordCounts.get(key) || 1;
         let plotLat = st.lat;
@@ -442,7 +441,7 @@ document.addEventListener('alpine:init', () => {
           const currentIdx = coordIndices.get(key) || 0;
           coordIndices.set(key, currentIdx + 1);
           
-          // Radius ~40 meters (0.00038 degrees lat) spread in a neat circle
+          // Radius ~40 meters spread in a neat circle
           const angle = (2 * Math.PI * currentIdx) / totalAtCoord - Math.PI / 2;
           const radius = 0.00038;
           plotLat = st.lat + radius * Math.sin(angle);
@@ -463,8 +462,8 @@ document.addEventListener('alpine:init', () => {
         const storeMarker = L.marker([plotLat, plotLng], { icon: storeIcon })
           .bindPopup(`
             <div style="font-family: sans-serif; font-size: 12px; line-height: 1.45; min-width: 200px;">
-              <div style="display:inline-block; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 10.5px; margin-bottom: 5px; ${isPerdin ? 'background: #fef3c7; color: #b45309; border: 1px solid #fcd34d;' : (isDayDc ? 'background: #d1fae5; color: #047857; border: 1px solid #a7f3d0;' : 'background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe;')}">
-                ${isPerdin ? '🏨 TOKO PERJALANAN DINAS (PERDIN)' : (isDayDc ? '🏭 KUNJUNGAN DISTRIBUTION CENTER' : '🚗 TOKO NON PERDIN')}
+              <div style="display:inline-block; padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 10.5px; margin-bottom: 5px; ${isPerdin ? 'background: #fef3c7; color: #b45309; border: 1px solid #fcd34d;' : (isThisStoreDc ? 'background: #d1fae5; color: #047857; border: 1px solid #a7f3d0;' : 'background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe;')}">
+                ${isPerdin ? '🏨 TOKO PERJALANAN DINAS (PERDIN)' : (isThisStoreDc ? '🏭 KUNJUNGAN DISTRIBUTION CENTER' : (st.tipeKunjungan === 'TOKO SEKITAR DC' ? '🚗 TOKO SEKITAR DC' : '🚗 TOKO NON PERDIN'))}
               </div><br>
               <b>Stop #${idx + 1}: ${st.storeName || st.name}</b><br>
               <span style="display:inline-block; padding: 2px 6px; border-radius: 4px; background: #e0e7ff; color: #4338ca; font-size: 10px; font-weight: bold;">${st.account || 'DC'}</span>
@@ -539,7 +538,7 @@ document.addEventListener('alpine:init', () => {
         'Hari Toko Non Perdin': m.nonPerdinDays || m.localDays || 0,
         'Hari Toko Perdin': m.perdinDays || 0,
         'Hari Kunjungan DC': m.dcDays || 4,
-        'Total Beban Kunjungan/Bulan': m.assignedStores.length + m.assignedDc.length,
+        'Total Beban Kunjungan/Bulan': (m.assignedStores?.length || 0) + (m.assignedDc?.length || 40),
         'Estimasi Anggaran Perdin/Bulan (Rp)': (m.estPerdinBudget || 0),
         'Rata-rata Jarak dari Rumah (KM)': m.avgDistanceKm,
         'Jarak Terjauh (KM)': m.maxDistanceKm,
@@ -554,12 +553,13 @@ document.addEventListener('alpine:init', () => {
         (m.dailySchedule || []).forEach(day => {
           (day.stores || []).forEach((st, sIdx) => {
             const isPerdin = Boolean(st.isPerdin);
+            const isDcStop = Boolean(st.isDc || st.type === 'DC' || st.tipeKunjungan === 'KUNJUNGAN DC');
             scheduleRows.push({
               'Kode MDS': m.id,
               'Nama MDS': m.nama,
               'Kota Asal MDS': m.kota,
               'Hari Ke': day.dayNumber,
-              'Tipe Kunjungan': day.type === 'DC' ? 'KUNJUNGAN DC' : (isPerdin ? 'PERDIN' : 'NON PERDIN'),
+              'Tipe Kunjungan': isDcStop ? 'KUNJUNGAN DC' : (st.tipeKunjungan === 'TOKO SEKITAR DC' ? 'TOKO SEKITAR DC' : (isPerdin ? 'PERDIN' : 'NON PERDIN')),
               'Status Perdin': isPerdin ? 'PERDIN' : 'NON PERDIN',
               'Uang Harian Perdin (Rp)': isPerdin ? 400000 : 0,
               'Urutan Stop': sIdx + 1,

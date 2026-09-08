@@ -38,7 +38,7 @@ function normalizeModulKey_(key) {
 }
 
 function sebarJadwal(e) {
-  Logger.log("--- Memulai Pengecekan Sebar Jadwal ---");
+  Logger.log("--- Memulai Pengecekan Sebar Jadwal (Strict 13-Col AppSheet Schema) ---");
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("Master_Toko");
   if (!sheet) {
@@ -56,31 +56,22 @@ function sebarJadwal(e) {
   var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   var statusColIdx = -1;
   for (var h = 0; h < headers.length; h++) {
-    if (String(headers[h]).trim().toLowerCase() === "status_sebar") {
+    var hStr = String(headers[h]).trim().toLowerCase();
+    if (hStr === "status_sebar" || hStr === "status") {
       statusColIdx = h + 1;
       break;
     }
   }
 
+  // Jika kolom status tidak terdeteksi spesifik, gunakan kolom terakhir yang ada (JANGAN buat kolom baru)
   if (statusColIdx === -1) {
-    statusColIdx = lastCol + 1;
-    sheet.getRange(1, statusColIdx).setValue("Status_Sebar");
-    var initialStatuses = [];
-    for (var r = 0; r < lastRow - 1; r++) {
-      initialStatuses.push(["TERSEBAR"]);
-    }
-    if (initialStatuses.length > 0) {
-      sheet.getRange(2, statusColIdx, initialStatuses.length, 1).setValues(initialStatuses);
-    }
-    Logger.log("Inisialisasi Status_Sebar: " + initialStatuses.length + " baris historis ditandai TERSEBAR di Kolom ke-" + statusColIdx);
-    return;
+    statusColIdx = lastCol;
   }
 
-  Logger.log("Kolom 'Status_Sebar' terdeteksi di Kolom ke-" + statusColIdx + ". Memeriksa " + (lastRow - 1) + " baris...");
+  Logger.log("Kolom status terdeteksi di Kolom ke-" + statusColIdx + ". Memeriksa " + (lastRow - 1) + " baris...");
 
-  var dataRange = sheet.getRange(2, 1, lastRow - 1, Math.max(lastCol, statusColIdx));
+  var dataRange = sheet.getRange(2, 1, lastRow - 1, lastCol);
   var values = dataRange.getValues();
-  var dataColCount = statusColIdx - 1;
 
   var unspreadRowIndices = [];
   var modulBatches = {};
@@ -89,14 +80,33 @@ function sebarJadwal(e) {
 
   for (var i = 0; i < values.length; i++) {
     var row = values[i];
-    var status = String(row[statusColIdx - 1] || "").trim().toUpperCase();
-    if (status === "TERSEBAR") continue;
+    var statusVal = String(row[statusColIdx - 1] || "").trim().toUpperCase();
+    if (statusVal === "TERSEBAR") continue;
 
     var rawModul = String(row[0] || "").trim();
     if (!rawModul) continue;
 
     var kodeModul = normalizeModulKey_(rawModul);
-    var rowToAppend = row.slice(1, dataColCount);
+    
+    // Strict 13 Columns for Target AppSheet Tables:
+    // 1: ACCOUNT, 2: KODE TOKO, 3: NAMA TOKO, 4: KODE CREW, 5: NAMA CREW, 6: RUTE,
+    // 7: TIPE TOKO, 8: NAMA KEPALA TOKO, 9: ALAMAT, 10: NO TELP, 11: ATASAN, 12: CATATAN, 13: STATUS
+    var rowToAppend = [
+      (row[1] || "ALFAMART").toString().trim().toUpperCase(), // ACCOUNT
+      (row[2] || "").toString().trim().toUpperCase(),         // KODE TOKO
+      (row[3] || "").toString().trim(),                       // NAMA TOKO
+      (row[4] || "").toString().trim(),                       // KODE CREW
+      (row[5] || "").toString().trim(),                       // NAMA CREW
+      (row[6] || "1").toString().trim().replace(/[^0-9]/g, "") || "1", // RUTE
+      (row[7] || "-").toString().trim(),                      // TIPE TOKO
+      (row[8] || "-").toString().trim(),                      // NAMA KEPALA TOKO
+      (row[9] || "-").toString().trim(),                      // ALAMAT
+      (row[10] || "-").toString().trim(),                     // NO TELP
+      (row[11] || "-").toString().trim(),                     // ATASAN
+      (row[12] || "-").toString().trim(),                     // CATATAN
+      "AKTIF"                                                 // STATUS (Col 13)
+    ];
+
     unspreadRowIndices.push(i + 2);
 
     if (modulIDs[kodeModul]) {
@@ -571,10 +581,21 @@ function appendDataWithoutDuplicates_(targetSheet, rows, chunkSize) {
 function appendDataInChunks_(targetSheet, rows, chunkSize) {
   if (!targetSheet || !rows || rows.length === 0) return;
   chunkSize = chunkSize || 2000;
-  var numCols = rows[0].length;
+  
+  // Strict Safety: Never append more columns than targetSheet's existing header width (Strict Max 13 for AppSheet)
+  var sheetLastCol = targetSheet.getLastColumn();
+  var maxCols = sheetLastCol > 0 ? Math.min(sheetLastCol, 13) : 13;
 
-  for (var c = 0; c < rows.length; c += chunkSize) {
-    var chunk = rows.slice(c, c + chunkSize);
+  var sanitizedRows = rows.map(function(r) {
+    var fixed = r.slice(0, maxCols);
+    while (fixed.length < maxCols) fixed.push("-");
+    return fixed;
+  });
+
+  var numCols = maxCols;
+
+  for (var c = 0; c < sanitizedRows.length; c += chunkSize) {
+    var chunk = sanitizedRows.slice(c, c + chunkSize);
     var startRow = getActualLastRow_(targetSheet) + 1;
     ensureGridSize_(targetSheet, startRow + chunk.length, numCols);
     targetSheet.getRange(startRow, 1, chunk.length, numCols).setValues(chunk);
@@ -804,6 +825,38 @@ function doGet(e) {
       responseData.total = responseData.data.length;
     } else if (action === "resolveImage") {
       responseData = handleResolveImage_(params);
+    } else if (
+      action === "update_store_route_info" ||
+      action === "transfer_store_crew" ||
+      action === "delete_scheduled_store" ||
+      action === "purge_duplicate_routes" ||
+      action === "assign_scheduled_store" ||
+      action === "create_or_update_master_store" ||
+      action === "delete_master_store"
+    ) {
+      var payload = params;
+      if (params.data) {
+        try {
+          payload = JSON.parse(params.data);
+        } catch (pe) {
+          payload = params;
+        }
+      }
+      if (action === "update_store_route_info") {
+        responseData.data = handleUpdateStoreRouteInfo_(payload);
+      } else if (action === "transfer_store_crew") {
+        responseData.data = handleTransferStoreCrew_(payload);
+      } else if (action === "delete_scheduled_store") {
+        responseData.data = handleDeleteScheduledStore_(payload);
+      } else if (action === "purge_duplicate_routes") {
+        responseData.data = handlePurgeDuplicateRoutes_(payload);
+      } else if (action === "assign_scheduled_store") {
+        responseData.data = handleAssignScheduledStore_(payload);
+      } else if (action === "create_or_update_master_store") {
+        responseData.data = handleCreateOrUpdateMasterStore_(payload);
+      } else if (action === "delete_master_store") {
+        responseData.data = handleDeleteMasterStore_(payload);
+      }
     } else {
       responseData = { status: "error", message: "Action '" + action + "' tidak dikenali." };
     }
@@ -1733,7 +1786,7 @@ function handleTransferStoreCrew_(payload) {
       }
     } else {
       // Jika baris belum ada di Pipeline, tambahkan baris baru
-      centralSheet.appendRow([newModul, account, kodeToko, namaToko, newCrewCode, newCrewName, newRute, "TRANSFER", "", "", "", "", "TRANSFER", "AKTIF", "TERSEBAR"]);
+      centralSheet.appendRow([newModul, account, kodeToko, namaToko, newCrewCode, newCrewName, newRute, "TRANSFER", "-", "-", "-", "-", "-", "TERSEBAR"]);
       audit.pipelineTransferred = true;
     }
   }
@@ -1769,7 +1822,8 @@ function handleTransferStoreCrew_(payload) {
       var newSs = SpreadsheetApp.openById(modulIDs[newModul]);
       var newSheet = getSheetByNames_(newSs, ["Master_Toko", "master_toko", "Master Toko", "DATA TOKO", "Sheet1"]);
       if (newSheet) {
-        var newRow = [account, kodeToko, namaToko, newCrewCode, newCrewName, newRute, "MINIMARKET", "", "", "", "", "", "", "AKTIF"];
+        // Strict 13 Columns for AppSheet: ACCOUNT, KODE TOKO, NAMA TOKO, KODE CREW, NAMA CREW, RUTE, TIPE TOKO, KEPALA TOKO, ALAMAT, NO TELP, ATASAN, CATATAN, STATUS
+        var newRow = [account, kodeToko, namaToko, newCrewCode, newCrewName, newRute, "MINIMARKET", "-", "-", "-", "-", "-", "AKTIF"];
         newSheet.appendRow(newRow);
         audit.newModulAdded = true;
       }
@@ -1953,19 +2007,19 @@ function handleAssignScheduledStore_(payload) {
   var centralSs = SpreadsheetApp.getActiveSpreadsheet();
   var centralSheet = centralSs.getSheetByName("Master_Toko");
   if (centralSheet) {
-    var pRow = [targetModul, account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "SCHEDULED", "", "", "", "", "SCHEDULED", "AKTIF", "TERSEBAR"];
+    var pRow = [targetModul, account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "MINIMARKET", "-", "-", "-", "-", "-", "TERSEBAR"];
     centralSheet.appendRow(pRow);
     audit.pipelineAdded = true;
     audit.details.push("Ditambahkan ke Pipeline Master_Toko Sentral (Modul " + targetModul + ", " + targetCrewName + ", Rute " + targetRute + ")");
   }
 
-  // 2. Tambah ke Modul Sheet Cabang
+  // 2. Tambah ke Modul Sheet Cabang (Strict 13 Columns for AppSheet)
   if (targetModul && modulIDs[targetModul]) {
     try {
       var mSs = SpreadsheetApp.openById(modulIDs[targetModul]);
       var mSheet = getSheetByNames_(mSs, ["Master_Toko", "master_toko", "Master Toko", "DATA TOKO", "Sheet1"]);
       if (mSheet) {
-        var mRow = [account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "MINIMARKET", "", "", "", "", "", "", "AKTIF"];
+        var mRow = [account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "MINIMARKET", "-", "-", "-", "-", "-", "AKTIF"];
         mSheet.appendRow(mRow);
         audit.modulSheetAdded = true;
         audit.details.push("Ditambahkan ke Modul " + targetModul);
@@ -1975,14 +2029,14 @@ function handleAssignScheduledStore_(payload) {
     }
   }
 
-  // 3. Tambah ke Toko_Absen Regional
+  // 3. Tambah ke Toko_Absen Regional (Strict 13 Columns for AppSheet)
   var prefix = targetModul.substring(0, 2);
   if (absenIDs[prefix]) {
     try {
       var aSs = SpreadsheetApp.openById(absenIDs[prefix]);
       var aSheet = getSheetByNames_(aSs, ["Toko_Absen", "toko_absen", "Toko Absen", "Master_Toko", "Sheet1"]);
       if (aSheet) {
-        var aRow = [account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "MINIMARKET", "", "", "", "", "", "", "AKTIF"];
+        var aRow = [account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "MINIMARKET", "-", "-", "-", "-", "-", "AKTIF"];
         aSheet.appendRow(aRow);
         audit.absenSheetAdded = true;
       }
@@ -2069,4 +2123,125 @@ function handleDeleteMasterStore_(payload) {
   } else {
     throw new Error("Toko dengan kode " + kodeToko + " tidak ditemukan di Master Database 49k");
   }
+}
+
+/**
+ * ==============================================================================
+ * UTILITY: AUDIT & TRIM UNUSED CELLS TO FIX 10,000,000 CELL LIMIT
+ * ==============================================================================
+ */
+
+/**
+ * 1. AUDIT CELL USAGE ACROSS ALL TABS IN SPREADSHEET
+ */
+function auditWorkbookCells() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheets = ss.getSheets();
+  var totalMaxCells = 0;
+  var totalUsedCells = 0;
+  var report = [];
+
+  Logger.log("=== AUDIT CELL WORKBOOK: " + ss.getName() + " ===");
+
+  for (var i = 0; i < sheets.length; i++) {
+    var sh = sheets[i];
+    var name = sh.getName();
+    var maxR = sh.getMaxRows();
+    var lastR = Math.max(1, sh.getLastRow());
+    var maxC = sh.getMaxColumns();
+    var lastC = Math.max(1, sh.getLastColumn());
+
+    var sheetMaxCells = maxR * maxC;
+    var sheetUsedCells = lastR * lastC;
+    var wastedCells = sheetMaxCells - sheetUsedCells;
+
+    totalMaxCells += sheetMaxCells;
+    totalUsedCells += sheetUsedCells;
+
+    var info = {
+      sheet: name,
+      maxRows: maxR,
+      lastRow: lastR,
+      maxCols: maxC,
+      lastCol: lastC,
+      totalCells: sheetMaxCells,
+      usedCells: sheetUsedCells,
+      wastedCells: wastedCells
+    };
+    report.push(info);
+
+    Logger.log("[" + name + "] Rows: " + lastR + "/" + maxR + " | Cols: " + lastC + "/" + maxC + " | Total Cells: " + sheetMaxCells.toLocaleString() + " (Wasted: " + wastedCells.toLocaleString() + ")");
+  }
+
+  var percentUsed = Math.round((totalMaxCells / 10000000) * 100);
+  Logger.log("--------------------------------------------------");
+  Logger.log("TOTAL CELL WORKBOOK: " + totalMaxCells.toLocaleString() + " / 10,000,000 (" + percentUsed + "% LIMIT GOOGLE SHEETS)");
+  Logger.log("TOTAL ACTUAL USED CELLS: " + totalUsedCells.toLocaleString());
+  Logger.log("TOTAL POTENSI HEMAT CELL: " + (totalMaxCells - totalUsedCells).toLocaleString());
+  Logger.log("--------------------------------------------------");
+
+  return {
+    totalMaxCells: totalMaxCells,
+    totalUsedCells: totalUsedCells,
+    wastedCells: totalMaxCells - totalUsedCells,
+    percentOfLimit: percentUsed,
+    sheets: report
+  };
+}
+
+/**
+ * 2. AUTO-TRIM UNUSED EMPTY ROWS & COLUMNS ACROSS ALL TABS
+ * Deletes all unused trailing blank columns (e.g. Cols P to Z) and blank rows at bottom.
+ */
+function trimWorkbookEmptyCells() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheets = ss.getSheets();
+  var cellsFreed = 0;
+
+  Logger.log("=== MEMULAI PEMBERSIHAN CELL KOSONG WORKBOOK ===");
+
+  for (var i = 0; i < sheets.length; i++) {
+    var sh = sheets[i];
+    var name = sh.getName();
+    var maxR = sh.getMaxRows();
+    var lastR = sh.getLastRow();
+    var maxC = sh.getMaxColumns();
+    var lastC = sh.getLastColumn();
+
+    var beforeCells = maxR * maxC;
+
+    // 1. Trim unused trailing columns (Leave 0 trailing empty columns)
+    if (lastC > 0 && maxC > lastC) {
+      var colsToDelete = maxC - lastC;
+      try {
+        sh.deleteColumns(lastC + 1, colsToDelete);
+        Logger.log("[" + name + "] Berhasil menghapus " + colsToDelete + " kolom kosong di sebelah kanan (Kolom " + (lastC + 1) + " s/d " + maxC + ")");
+      } catch (e) {
+        Logger.log("[" + name + "] Gagal menghapus kolom: " + e.message);
+      }
+    }
+
+    // Refresh max rows & cols after column deletion
+    maxR = sh.getMaxRows();
+    maxC = sh.getMaxColumns();
+
+    // 2. Trim unused trailing rows (Leave 5 buffer rows at bottom)
+    if (lastR > 0 && maxR > lastR + 5) {
+      var rowsToDelete = maxR - (lastR + 5);
+      try {
+        sh.deleteRows(lastR + 6, rowsToDelete);
+        Logger.log("[" + name + "] Berhasil menghapus " + rowsToDelete + " baris kosong di bagian bawah (Baris " + (lastR + 6) + " s/d " + maxR + ")");
+      } catch (e) {
+        Logger.log("[" + name + "] Gagal menghapus baris: " + e.message);
+      }
+    }
+
+    var afterCells = sh.getMaxRows() * sh.getMaxColumns();
+    cellsFreed += (beforeCells - afterCells);
+  }
+
+  Logger.log("=== PEMBERSIHAN SELESAI: Total " + cellsFreed.toLocaleString() + " cells berhasil dibebaskan! ===");
+  SpreadsheetApp.flush();
+  
+  return auditWorkbookCells();
 }
