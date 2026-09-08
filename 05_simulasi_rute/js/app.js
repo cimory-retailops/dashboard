@@ -153,7 +153,7 @@ document.addEventListener('alpine:init', () => {
           );
 
           if (this.simulationResult.assignments.length > 0) {
-            if (!this.selectedMds) {
+            if (!this.selectedMds || !this.simulationResult.assignments.some(m => m.id === this.selectedMds.id)) {
               this.selectedMds = this.simulationResult.assignments[0];
             } else {
               this.selectedMds = this.simulationResult.assignments.find(m => m.id === this.selectedMds.id) || this.simulationResult.assignments[0];
@@ -168,6 +168,10 @@ document.addEventListener('alpine:init', () => {
         } finally {
           this.isLoading = false;
           this.$nextTick(() => {
+            if (this.map) {
+              this.map.invalidateSize();
+              this.renderMap();
+            }
             if (window.lucide) lucide.createIcons();
           });
         }
