@@ -95,123 +95,421 @@
     <div class="h-full bg-gradient-to-r from-brand-500 via-sky-400 to-emerald-400 animate-loading-bar shadow-sm"></div>
   </div>
 
+  <!-- EXPORT PNG LOADING OVERLAY MODAL -->
+  <div x-show="Boolean(isDownloadingPng)" x-cloak
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0 backdrop-blur-none"
+       x-transition:enter-end="opacity-100 backdrop-blur-md"
+       x-transition:leave="transition ease-in duration-200"
+       x-transition:leave-start="opacity-100 backdrop-blur-md"
+       x-transition:leave-end="opacity-0 backdrop-blur-none"
+       class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md select-none">
+    <div class="glass-card rounded-3xl p-6 sm:p-8 max-w-[340px] sm:max-w-sm w-full shadow-2xl flex flex-col items-center text-center border border-brand-500/40 animate-pulse-glow">
+      <div class="relative w-16 h-16 mb-4 flex items-center justify-center">
+        <div class="absolute inset-0 rounded-2xl bg-brand-500/25 animate-ping"></div>
+        <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 via-sky-500 to-emerald-400 flex items-center justify-center text-white shadow-lg shadow-brand-500/30 z-10">
+          <i data-lucide="camera" class="w-7 h-7 animate-bounce"></i>
+        </div>
+      </div>
+      <h3 class="font-display font-extrabold text-base sm:text-lg text-slate-900 dark:text-white tracking-tight">Menyiapkan Gambar Tabel</h3>
+      <p class="text-xs text-brand-600 dark:text-brand-400 font-bold mt-1" x-text="isDownloadingPng?.tableName || 'Evaluasi Kinerja MDS'"></p>
+      <p class="text-[11.5px] text-slate-400 mt-2 leading-relaxed">
+        Sedang merender snapshot tabel beresolusi tinggi (HD 2x) & mengunduh file PNG. Mohon tunggu beberapa saat...
+      </p>
+      
+      <!-- Progress Bar Animation -->
+      <div class="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full mt-4 overflow-hidden relative shadow-inner">
+        <div class="bg-gradient-to-r from-brand-500 via-sky-400 to-emerald-400 h-full w-full animate-loading-bar rounded-full"></div>
+      </div>
+
+      <div class="flex items-center gap-2 mt-3.5 text-[11px] text-slate-400 font-medium">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+        <span x-text="isDownloadingPng?.status || 'Memproses snapshot tabel...'"></span>
+      </div>
+    </div>
+  </div>
+
   <!-- ============================================================================== -->
-  <!-- 1. FIXED TOP NAVBAR & TABS CONTAINER -->
+  <!-- 1. FIXED TOP NAVBAR WITH INTEGRATED ALFAGIFT MEGA MENU -->
   <!-- ============================================================================== -->
   <header class="fixed top-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
     
-    <!-- Top Row: Logo & Controls -->
-    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-1.5 border-b border-slate-200/60 dark:border-slate-800/60">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
       
-      <!-- Brand Logo -->
-      <div class="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
-        <a href="../index.html" class="flex items-center space-x-2 sm:space-x-3 group" title="Kembali ke Portal">
-          <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-sky-400 flex items-center justify-center text-white shadow-md shadow-brand-500/20 group-hover:scale-105 transition-transform flex-shrink-0">
+      <!-- Left: Brand Logo & Alfagift Mega Menu Trigger -->
+      <div class="flex items-center space-x-2 sm:space-x-3.5 flex-shrink-0">
+        
+        <!-- Brand Logo -->
+        <a href="../index.html" class="flex items-center space-x-2 sm:space-x-2.5 group" title="Kembali ke Portal">
+          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-sky-400 flex items-center justify-center text-white shadow-md shadow-brand-500/20 group-hover:scale-105 transition-transform flex-shrink-0">
             <i data-lucide="layout-dashboard" class="w-4 h-4 sm:w-5 sm:h-5"></i>
           </div>
           <div>
-            <div class="flex items-center space-x-1.5 sm:space-x-2">
-              <span class="font-display font-extrabold text-sm sm:text-base md:text-lg tracking-tight text-slate-900 dark:text-white whitespace-nowrap">CIMORY MDS</span>
-              <span class="hidden md:inline px-1.5 py-0.2 rounded text-[10px] font-bold bg-brand-100 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
+            <div class="flex items-center space-x-1.5">
+              <span class="font-display font-extrabold text-sm sm:text-base tracking-tight text-slate-900 dark:text-white whitespace-nowrap">CIMORY MDS</span>
+              <span class="hidden lg:inline px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-brand-100 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
                 Centralized
               </span>
             </div>
-            <p class="hidden sm:block text-[11px] text-slate-500 dark:text-slate-400 font-medium">Retail Operations Monitoring</p>
+            <p class="hidden xl:block text-[10.5px] text-slate-500 dark:text-slate-400 font-medium">Retail Operations Monitoring</p>
           </div>
         </a>
-      </div>
 
-      <!-- Center / Right Controls -->
-      <div class="flex items-center space-x-1.5 sm:space-x-3 flex-shrink-0">
-        
-        <!-- Universal 5-Module App Switcher Dropdown -->
-        <div class="relative" @click.away="showAppMenu = false">
-          <button type="button" @click="showAppMenu = !showAppMenu; $nextTick(() => { if (window.lucide) lucide.createIcons(); })"
-            class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm">
-            <i data-lucide="layout-grid" class="w-3.5 h-3.5 text-brand-500"></i>
-            <span class="hidden sm:inline">Pindah Modul</span>
-            <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400 transition-transform duration-200" :class="showAppMenu ? 'rotate-180' : ''"></i>
+        <!-- Divider -->
+        <div class="h-6 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block"></div>
+
+        <!-- ========================================================================= -->
+        <!-- ALFAGIFT-STYLE MEGA MENU / KATEGORI FLYOUT TRIGGER & DRAWER -->
+        <!-- ========================================================================= -->
+        <div class="relative"
+             @mouseenter="openCategoryMenu()"
+             @mouseleave="scheduleCloseCategoryMenu()">
+          
+          <!-- Trigger Button (Persis Alfagift Kategori) -->
+          <button type="button" @click="toggleCategoryMenu()"
+            class="flex items-center space-x-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all whitespace-nowrap cursor-pointer shadow-sm border"
+            :class="showCategoryMenu ? 'bg-brand-600 text-white shadow-brand-500/30 ring-2 ring-brand-400 border-brand-500' : 'bg-gradient-to-r from-brand-500/15 via-sky-500/15 to-indigo-500/15 hover:from-brand-500/25 hover:to-sky-500/25 text-brand-600 dark:text-brand-300 border-brand-500/40'">
+            <i data-lucide="layout-grid" class="w-4 h-4 text-brand-500 dark:text-brand-300"></i>
+            <span>Kategori Menu</span>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" :class="showCategoryMenu ? 'rotate-180 text-white' : 'text-brand-500 dark:text-brand-400'"></i>
           </button>
 
-          <!-- Dropdown Menu -->
-          <div x-show="showAppMenu" x-cloak
-            x-transition:enter="transition ease-out duration-200"
-            x-transition:enter-start="opacity-0 scale-95 -translate-y-1"
-            x-transition:enter-end="opacity-100 scale-100 translate-y-0"
-            x-transition:leave="transition ease-in duration-150"
-            x-transition:leave-start="opacity-100 scale-100 translate-y-0"
-            x-transition:leave-end="opacity-0 scale-95 -translate-y-1"
-            class="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-2 z-50 space-y-1 text-xs">
+          <!-- Mega Menu Flyout Panel (Alfagift Layout) -->
+          <div x-show="showCategoryMenu" x-cloak
+               x-transition:enter="transition ease-out duration-200"
+               x-transition:enter-start="opacity-0 -translate-y-2 scale-95"
+               x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+               x-transition:leave="transition ease-in duration-150"
+               x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+               x-transition:leave-end="opacity-0 -translate-y-2 scale-95"
+               @mouseenter="cancelCloseCategoryMenu()"
+               @mouseleave="scheduleCloseCategoryMenu()"
+               class="absolute left-0 top-full mt-2 w-[340px] sm:w-[680px] md:w-[780px] max-w-[95vw] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800/80 p-3 sm:p-4 z-[90] overflow-hidden">
             
-            <div class="px-2.5 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
-              Pusat Navigasi Modul Cimory
+            <!-- Header of Mega Menu -->
+            <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 dark:border-slate-800">
+              <div class="flex items-center space-x-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-brand-500 animate-pulse"></span>
+                <h4 class="font-display font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white uppercase tracking-wider">
+                  Direktori Modul & Tab Navigasi
+                </h4>
+              </div>
+              <span class="text-[11px] text-slate-400 font-semibold hidden sm:inline">
+                Arahkan kursor / klik untuk membuka modul
+              </span>
             </div>
 
-            <!-- 0. Portal Hub -->
-            <a href="../index.html"
-              class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
-              <div class="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                🏠
-              </div>
-              <div class="min-w-0">
-                <div class="font-bold text-slate-900 dark:text-white">Portal Hub Utama</div>
-                <div class="text-[10px] text-slate-400 truncate">Menu utama navigasi seluruh modul</div>
-              </div>
-            </a>
+            <!-- 2-Column Alfagift Layout -->
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 min-h-[290px]">
+              
+              <!-- Left Category List (Vertical like Alfagift) -->
+              <div class="sm:col-span-4 space-y-1 sm:border-r sm:border-slate-100 dark:sm:border-slate-800 sm:pr-3">
+                
+                <!-- Cat 1: Operasional -->
+                <button type="button" @mouseenter="activeMegaCategory = 'operasional'" @click="activeMegaCategory = 'operasional'"
+                  class="w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-bold transition-all text-left cursor-pointer"
+                  :class="activeMegaCategory === 'operasional' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'">
+                  <div class="flex items-center space-x-2.5">
+                    <div class="w-6 h-6 rounded-lg flex items-center justify-center text-xs" :class="activeMegaCategory === 'operasional' ? 'bg-white/20 text-white' : 'bg-brand-500/10 text-brand-600 dark:text-brand-400'">
+                      🚀
+                    </div>
+                    <span>Operasional & Live</span>
+                  </div>
+                  <i data-lucide="chevron-right" class="w-3.5 h-3.5 opacity-60"></i>
+                </button>
 
-            <!-- 1. Web Absen -->
-            <a href="../01_web_absen/index.html"
-              class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
-              <div class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                📱
-              </div>
-              <div class="min-w-0">
-                <div class="font-bold text-slate-900 dark:text-white">01. Web Absen & Jadwal</div>
-                <div class="text-[10px] text-slate-400 truncate">Input absensi GPS & jadwal lapangan</div>
-              </div>
-            </a>
+                <!-- Cat 2: Evaluasi & Performa -->
+                <button type="button" @mouseenter="activeMegaCategory = 'evaluasi'" @click="activeMegaCategory = 'evaluasi'"
+                  class="w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-bold transition-all text-left cursor-pointer"
+                  :class="activeMegaCategory === 'evaluasi' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'">
+                  <div class="flex items-center space-x-2.5">
+                    <div class="w-6 h-6 rounded-lg flex items-center justify-center text-xs" :class="activeMegaCategory === 'evaluasi' ? 'bg-white/20 text-white' : 'bg-sky-500/10 text-sky-600 dark:text-sky-400'">
+                      🎖️
+                    </div>
+                    <span>Performa & Scorecard</span>
+                  </div>
+                  <i data-lucide="chevron-right" class="w-3.5 h-3.5 opacity-60"></i>
+                </button>
 
-            <!-- 2. Dashboard Monitoring (Active) -->
-            <div class="flex items-center gap-2.5 p-2 rounded-xl bg-brand-500/10 border border-brand-500/20 text-brand-600 dark:text-brand-400 font-bold">
-              <div class="w-7 h-7 rounded-lg bg-brand-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
-                📊
+                <!-- Cat 3: Master Data & Outlet -->
+                <button type="button" @mouseenter="activeMegaCategory = 'master'" @click="activeMegaCategory = 'master'"
+                  class="w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-bold transition-all text-left cursor-pointer"
+                  :class="activeMegaCategory === 'master' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'">
+                  <div class="flex items-center space-x-2.5">
+                    <div class="w-6 h-6 rounded-lg flex items-center justify-center text-xs" :class="activeMegaCategory === 'master' ? 'bg-white/20 text-white' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'">
+                      🏬
+                    </div>
+                    <span>Master Data 49k Toko</span>
+                  </div>
+                  <i data-lucide="chevron-right" class="w-3.5 h-3.5 opacity-60"></i>
+                </button>
+
+                <!-- Cat 4: Laporan & Anomali -->
+                <button type="button" @mouseenter="activeMegaCategory = 'laporan'" @click="activeMegaCategory = 'laporan'"
+                  class="w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-bold transition-all text-left cursor-pointer"
+                  :class="activeMegaCategory === 'laporan' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'">
+                  <div class="flex items-center space-x-2.5">
+                    <div class="w-6 h-6 rounded-lg flex items-center justify-center text-xs" :class="activeMegaCategory === 'laporan' ? 'bg-white/20 text-white' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'">
+                      📑
+                    </div>
+                    <span>Laporan & Anomali</span>
+                  </div>
+                  <i data-lucide="chevron-right" class="w-3.5 h-3.5 opacity-60"></i>
+                </button>
+
+                <!-- Cat 5: Modul Ekosistem -->
+                <button type="button" @mouseenter="activeMegaCategory = 'modul'" @click="activeMegaCategory = 'modul'"
+                  class="w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-bold transition-all text-left cursor-pointer"
+                  :class="activeMegaCategory === 'modul' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'">
+                  <div class="flex items-center space-x-2.5">
+                    <div class="w-6 h-6 rounded-lg flex items-center justify-center text-xs" :class="activeMegaCategory === 'modul' ? 'bg-white/20 text-white' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'">
+                      🌐
+                    </div>
+                    <span>Modul Lain Cimory</span>
+                  </div>
+                  <i data-lucide="chevron-right" class="w-3.5 h-3.5 opacity-60"></i>
+                </button>
+
               </div>
-              <div class="min-w-0">
-                <div class="text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <span>02. Dashboard Monitoring</span>
-                  <span class="px-1.5 py-0.2 rounded text-[9px] font-black bg-brand-500 text-white">AKTIF</span>
+
+              <!-- Right Content / Submenu Cards (Interactive grid based on active category) -->
+              <div class="sm:col-span-8 p-1">
+                
+                <!-- Submenu 1: Operasional -->
+                <div x-show="activeMegaCategory === 'operasional'" class="space-y-2">
+                  <div class="text-[11px] font-extrabold uppercase tracking-wider text-brand-600 dark:text-brand-400 mb-2">
+                    Monitoring Kunjungan & Presensi Lapangan
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <!-- Kunjungan -->
+                    <div @click="navigateToTab('kunjungan')"
+                      class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-500/50 dark:hover:border-brand-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-brand-500/5 dark:hover:bg-brand-500/10 transition-all cursor-pointer group">
+                      <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center space-x-2">
+                          <div class="w-7 h-7 rounded-xl bg-brand-500/15 text-brand-600 dark:text-brand-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <i data-lucide="map-pin" class="w-4 h-4"></i>
+                          </div>
+                          <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-brand-500 transition-colors">Kunjungan Lapangan</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-brand-500/15 text-brand-600 dark:text-brand-400" x-text="filteredVisits.length + ' Data'"></span>
+                      </div>
+                      <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Live tracking toko yang dikunjungi MDS, durasi stay, timeline & validasi GPS.
+                      </p>
+                    </div>
+
+                    <!-- Absensi Tim -->
+                    <div @click="navigateToTab('absensi')"
+                      class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-500/50 dark:hover:border-brand-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-brand-500/5 dark:hover:bg-brand-500/10 transition-all cursor-pointer group">
+                      <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center space-x-2">
+                          <div class="w-7 h-7 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <i data-lucide="clock" class="w-4 h-4"></i>
+                          </div>
+                          <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-emerald-500 transition-colors">Absensi Tim MDS</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" x-text="groupedAbsensi.length + ' MDS'"></span>
+                      </div>
+                      <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Jam masuk, jam pulang, foto selfie, status kehadiran & radius check-in.
+                      </p>
+                    </div>
+
+                    <!-- Target Jadwal Rute -->
+                    <div @click="navigateToTab('jadwal')" class="sm:col-span-2 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-500/50 dark:hover:border-brand-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-brand-500/5 dark:hover:bg-brand-500/10 transition-all cursor-pointer group">
+                      <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center space-x-2">
+                          <div class="w-7 h-7 rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <i data-lucide="calendar" class="w-4 h-4"></i>
+                          </div>
+                          <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-purple-500 transition-colors">Target Jadwal Rute (R1 - R31)</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-500/15 text-purple-600 dark:text-purple-400" x-text="filteredMasterToko.length + ' Toko Rute'"></span>
+                      </div>
+                      <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Matriks jadwal kerja bulanan per-supervisor, rute reguler vs rute DC, & alokasi toko per MDS.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div class="text-[10px] text-brand-600 dark:text-brand-400 truncate">Analitik operasional DK, LK, LP & KPI</div>
+
+                <!-- Submenu 2: Performa & Scorecard -->
+                <div x-show="activeMegaCategory === 'evaluasi'" class="space-y-2">
+                  <div class="text-[11px] font-extrabold uppercase tracking-wider text-sky-600 dark:text-sky-400 mb-2">
+                    Evaluasi Kinerja & KPI Supervisor / MDS
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div @click="navigateToTab('evaluasi')"
+                      class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-sky-500/50 dark:hover:border-sky-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-sky-500/5 dark:hover:bg-sky-500/10 transition-all cursor-pointer group">
+                      <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center space-x-2">
+                          <div class="w-7 h-7 rounded-xl bg-sky-500/15 text-sky-600 dark:text-sky-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <i data-lucide="award" class="w-4 h-4"></i>
+                          </div>
+                          <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-sky-500 transition-colors">Daily & MTD Scorecard</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-500/15 text-sky-600 dark:text-sky-400">74 MDS Aktif</span>
+                      </div>
+                      <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Ringkasan KPI, total jam kerja, perbandingan target vs aktual kunjungan harian & akumulasi.
+                      </p>
+                    </div>
+
+                    <div @click="navigateToTab('evaluasi')"
+                      class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-amber-500/50 dark:hover:border-amber-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-amber-500/5 dark:hover:bg-amber-500/10 transition-all cursor-pointer group">
+                      <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center space-x-2">
+                          <div class="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <i data-lucide="building-2" class="w-4 h-4"></i>
+                          </div>
+                          <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-amber-500 transition-colors">Evaluasi Toko & DC</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/15 text-amber-600 dark:text-amber-400">Snapshot HD</span>
+                      </div>
+                      <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Tabel evaluasi 1 toko 1x & 4 DC berbeda dengan fitur export gambar PNG super tajam.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Submenu 3: Master Data -->
+                <div x-show="activeMegaCategory === 'master'" class="space-y-2">
+                  <div class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-2">
+                    Database Outlet Nasional & Geolocation
+                  </div>
+
+                  <div @click="navigateToTab('tokonasional')"
+                    class="p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-emerald-500/50 dark:hover:border-emerald-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-emerald-500/5 dark:hover:bg-emerald-500/10 transition-all cursor-pointer group">
+                    <div class="flex items-center justify-between mb-1.5">
+                      <div class="flex items-center space-x-2">
+                        <div class="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <i data-lucide="store" class="w-4 h-4"></i>
+                        </div>
+                        <div>
+                          <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-emerald-500 transition-colors">Master Database 49k Toko</span>
+                          <div class="text-[10px] text-slate-400">Indomaret, Alfamart, Supermarket, Hypermarket</div>
+                        </div>
+                      </div>
+                      <span class="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-500 text-white" x-text="stores49k.length ? stores49k.length.toLocaleString('id-ID') + ' Toko' : '49.861 Toko'"></span>
+                    </div>
+                    <p class="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed mt-2">
+                      Pencarian instan kode toko, nama toko, alamat, region DK/LK/LP, koordinat latitude/longitude, dan mapping MDS terdaftar.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Submenu 4: Laporan & Anomali -->
+                <div x-show="activeMegaCategory === 'laporan'" class="space-y-2">
+                  <div class="text-[11px] font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-2">
+                    Pusat Laporan WhatsApp, XLS & Deteksi Anomali
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div @click="navigateToTab('laporan')"
+                      class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-emerald-500/50 dark:hover:border-emerald-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-emerald-500/5 dark:hover:bg-emerald-500/10 transition-all cursor-pointer group">
+                      <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center space-x-2">
+                          <div class="w-7 h-7 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <i data-lucide="share-2" class="w-4 h-4"></i>
+                          </div>
+                          <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-emerald-500 transition-colors">Generator Rekap WA</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">One Click</span>
+                      </div>
+                      <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Format pesan WhatsApp siap kirim ke grup operasional manajemen & supervisor.
+                      </p>
+                    </div>
+
+                    <div @click="navigateToTab('laporan', 'anomali')"
+                      class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-rose-500/50 dark:hover:border-rose-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-rose-500/5 dark:hover:bg-rose-500/10 transition-all cursor-pointer group">
+                      <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center space-x-2">
+                          <div class="w-7 h-7 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                          </div>
+                          <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-rose-500 transition-colors">Radar Anomali</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500/15 text-rose-600 dark:text-rose-400">Audit</span>
+                      </div>
+                      <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Deteksi otomatis anomali absen tanpa visit toko atau visit tanpa rekaman absen.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Submenu 5: Ekosistem Modul -->
+                <div x-show="activeMegaCategory === 'modul'" class="space-y-2">
+                  <div class="text-[11px] font-extrabold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-2">
+                    Ekosistem Aplikasi Terintegrasi Cimory
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <a href="../01_web_absen/index.html"
+                      class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-brand-500/5 transition-all block group">
+                      <div class="flex items-center space-x-2 mb-1">
+                        <span class="text-sm">📱</span>
+                        <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-brand-500">01. Web Absen & Jadwal</span>
+                      </div>
+                      <p class="text-[10.5px] text-slate-500 dark:text-slate-400 leading-relaxed">Input presensi & GPS check-in mandiri MDS.</p>
+                    </a>
+
+                    <a href="../04_galeri_pajangan/index.html"
+                      class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-brand-500/5 transition-all block group">
+                      <div class="flex items-center space-x-2 mb-1">
+                        <span class="text-sm">🖼️</span>
+                        <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-brand-500">04. Galeri Pajangan</span>
+                      </div>
+                      <p class="text-[10.5px] text-slate-500 dark:text-slate-400 leading-relaxed">Audit foto Before/After display produk.</p>
+                    </a>
+
+                    <a href="../05_simulasi_rute/index.html"
+                      class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-brand-500/5 transition-all block group">
+                      <div class="flex items-center space-x-2 mb-1">
+                        <span class="text-sm">🗺️</span>
+                        <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-brand-500">05. Simulasi Rute MDS</span>
+                      </div>
+                      <p class="text-[10.5px] text-slate-500 dark:text-slate-400 leading-relaxed">Kalkulasi 25 hari kerja, rute efisien & perdin.</p>
+                    </a>
+
+                    <a href="../index.html"
+                      class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-brand-500/5 transition-all block group">
+                      <div class="flex items-center space-x-2 mb-1">
+                        <span class="text-sm">🏠</span>
+                        <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-brand-500">Portal Hub Utama</span>
+                      </div>
+                      <p class="text-[10.5px] text-slate-500 dark:text-slate-400 leading-relaxed">Halaman utama seluruh modul operasional.</p>
+                    </a>
+                  </div>
+                </div>
+
               </div>
+
             </div>
-
-            <!-- 4. Galeri Pajangan -->
-            <a href="../04_galeri_pajangan/index.html"
-              class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
-              <div class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                🖼️
-              </div>
-              <div class="min-w-0">
-                <div class="font-bold text-slate-900 dark:text-white">04. Galeri Pajangan</div>
-                <div class="text-[10px] text-slate-400 truncate">Audit foto Before/After planogram</div>
-              </div>
-            </a>
-
-            <!-- 5. Simulasi Rute -->
-            <a href="../05_simulasi_rute/index.html"
-              class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
-              <div class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                🗺️
-              </div>
-              <div class="min-w-0">
-                <div class="font-bold text-slate-900 dark:text-white">05. Simulasi Rute MDS</div>
-                <div class="text-[10px] text-slate-400 truncate">Simulasi 25 hari kerja & perdin</div>
-              </div>
-            </a>
 
           </div>
         </div>
 
+        <!-- Active Screen / Tab Indicator Pill -->
+        <div class="hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 text-xs font-bold text-slate-700 dark:text-slate-200 select-none">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span x-show="activeTab === 'kunjungan'">📍 Kunjungan Lapangan</span>
+          <span x-show="activeTab === 'absensi'">⏱️ Absensi Tim MDS</span>
+          <span x-show="activeTab === 'jadwal'">📅 Target Jadwal Rute</span>
+          <span x-show="activeTab === 'tokonasional'">🏬 Database 49k Toko</span>
+          <span x-show="activeTab === 'laporan'">📑 Pusat Laporan WA</span>
+          <span x-show="activeTab === 'evaluasi'">🎖️ Evaluasi Kinerja SPV</span>
+        </div>
+
+      </div>
+
+      <!-- Right Controls -->
+      <div class="flex items-center space-x-1.5 sm:space-x-3 flex-shrink-0">
+        
         <!-- Period / Archive Selector Dropdown -->
         <div class="relative">
           <select x-model="selectedPeriod" @change="onPeriodChange()"
@@ -249,57 +547,12 @@
       </div>
 
     </div>
-
-    <!-- Bottom Row: Navigation Tabs (Fixed & Sticky with Header) -->
-    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 flex space-x-2 sm:space-x-3 overflow-x-auto py-2.5 touch-scroll no-scrollbar">
-      
-      <button @click="activeTab = 'kunjungan'"
-        class="flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
-        :class="activeTab === 'kunjungan' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'">
-        <i data-lucide="map-pin" class="w-4 h-4"></i>
-        <span>Kunjungan Lapangan</span>
-        <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-bold" x-text="filteredVisits.length"></span>
-      </button>
-
-      <button @click="activeTab = 'absensi'"
-        class="flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
-        :class="activeTab === 'absensi' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'">
-        <i data-lucide="clock" class="w-4 h-4"></i>
-        <span>Absensi Tim</span>
-        <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-bold" x-text="groupedAbsensi.length"></span>
-      </button>
-
-      <button @click="activeTab = 'jadwal'"
-        class="flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
-        :class="activeTab === 'jadwal' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'">
-        <i data-lucide="calendar" class="w-4 h-4"></i>
-        <span>Target Jadwal Rute</span>
-        <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-bold" x-text="filteredMasterToko.length"></span>
-      </button>
-
-      <button @click="activeTab = 'tokonasional'"
-        class="flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
-        :class="activeTab === 'tokonasional' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'">
-        <i data-lucide="store" class="w-4 h-4"></i>
-        <span>Database Toko</span>
-        <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 font-bold" x-text="stores49k.length ? stores49k.length.toLocaleString('id-ID') : '0'"></span>
-      </button>
-
-      <button @click="activeTab = 'laporan'; $nextTick(() => { if (window.lucide) lucide.createIcons(); })"
-        class="flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 cursor-pointer"
-        :class="activeTab === 'laporan' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'">
-        <i data-lucide="share-2" class="w-4 h-4"></i>
-        <span>Pusat Laporan</span>
-        <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/80 text-white font-bold">WA</span>
-      </button>
-
-    </div>
   </header>
 
   <!-- ============================================================================== -->
   <!-- 3. MAIN DASHBOARD CONTENT (TABS CONTAINER) -->
   <!-- ============================================================================== -->
-  <main class="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pt-28 sm:pt-32 pb-8 space-y-6 overflow-x-hidden min-w-0">
+  <main class="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pt-18 sm:pt-20 pb-8 space-y-6 overflow-x-hidden min-w-0">
 
     <!-- ============================================================================== -->
     <!-- 4. TAB 1: KUNJUNGAN LAPANGAN & KPI OVERVIEW -->
@@ -361,20 +614,20 @@
               <span x-show="selectedCrews.length > 0" class="text-amber-500 font-extrabold text-[10px]" x-text="`${selectedCrews.length} Terpilih`"></span>
             </label>
             
-            <!-- Trigger Button -->
-            <button type="button" @click="crewDropdownOpen ? (crewDropdownOpen = false) : openCrewDropdown()"
-              class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 flex items-center justify-between gap-2 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all cursor-pointer shadow-sm hover:border-amber-400">
+            <!-- Trigger Container (div role=button to prevent invalid button-in-button HTML5 DOM truncation) -->
+            <div role="button" tabindex="0" @click="crewDropdownOpen ? (crewDropdownOpen = false) : openCrewDropdown()"
+              class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 flex items-center justify-between gap-2 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all cursor-pointer shadow-sm hover:border-amber-400 select-none">
               <div class="flex items-center gap-2 truncate">
                 <i data-lucide="users" class="w-3.5 h-3.5 text-amber-500 flex-shrink-0"></i>
                 <span class="truncate" x-text="selectedCrews.length === 0 ? 'Pilih Nama Crew (Semua)' : (selectedCrews.length === 1 ? selectedCrews[0] : `${selectedCrews.length} MDS Terpilih`)"></span>
               </div>
               <div class="flex items-center gap-1.5 flex-shrink-0">
-                <button type="button" x-show="selectedCrews.length > 0" @click.stop="clearAllSelectedCrews()" class="p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600" title="Reset Pilihan">
+                <span role="button" tabindex="0" x-show="selectedCrews.length > 0" @click.stop="clearAllSelectedCrews()" class="p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 cursor-pointer" title="Reset Pilihan">
                   <i data-lucide="x" class="w-3 h-3"></i>
-                </button>
+                </span>
                 <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" :class="crewDropdownOpen ? 'rotate-180 text-amber-500' : ''"></i>
               </div>
-            </button>
+            </div>
 
             <!-- DROPDOWN POPOVER (Anchored Right Directly Below Column 4) -->
             <div x-show="crewDropdownOpen" x-cloak x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95 -translate-y-2" x-transition:enter-end="opacity-100 scale-100 translate-y-0"
@@ -540,109 +793,110 @@
 
       </div>
       
-      <!-- Top 4 KPI Cards -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <!-- ============================================================================== -->
+      <!-- TIER 1: COMPACT EXECUTIVE KPI CARDS (SLIM & HIGH-DENSITY) -->
+      <!-- ============================================================================== -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
         
         <!-- Card 1: Total Kunjungan Selesai -->
-        <div class="glass-card rounded-2xl p-5 shadow-sm relative overflow-hidden group">
+        <div class="glass-card rounded-2xl p-3.5 sm:p-4 shadow-sm relative overflow-hidden group border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">Total Kunjungan</span>
-            <div class="w-8 h-8 rounded-xl bg-brand-500/10 text-brand-500 flex items-center justify-center">
-              <i data-lucide="check-circle" class="w-4 h-4"></i>
+            <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Realisasi Kunjungan</span>
+            <div class="w-7 h-7 rounded-xl bg-brand-500/10 text-brand-500 flex items-center justify-center">
+              <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
             </div>
           </div>
-          <div class="mt-3 flex items-baseline space-x-2">
+          <div class="mt-2 flex items-baseline space-x-1.5">
             <template x-if="isLoading">
-              <div class="h-8 w-24 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse"></div>
+              <div class="h-7 w-20 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse"></div>
             </template>
             <template x-if="!isLoading">
-              <span class="text-2xl sm:text-3xl font-display font-extrabold text-slate-900 dark:text-white" x-text="kpiSummary.totalVisits.toLocaleString()">0</span>
+              <span class="text-xl sm:text-2xl font-display font-extrabold text-slate-900 dark:text-white" x-text="kpiSummary.totalVisits.toLocaleString()">0</span>
             </template>
-            <span class="text-xs text-slate-500 font-medium" x-show="!isLoading">kunjungan</span>
+            <span class="text-[11px] text-slate-500 font-medium" x-show="!isLoading">kunjungan</span>
           </div>
-          <div class="mt-2 text-[11px] text-slate-400 flex items-center space-x-1">
-            <template x-if="isLoading">
-              <div class="h-3.5 w-32 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
-            </template>
+          <div class="mt-1 text-[10.5px] text-slate-400 flex items-center justify-between">
             <template x-if="!isLoading">
               <div>
-                <span class="text-emerald-500 font-semibold" x-text="`${kpiSummary.uniqueStores} Toko Unik`"></span>
-                <span>terselesaikan</span>
+                <span class="text-emerald-500 font-bold" x-text="`${kpiSummary.uniqueStores} Toko Unik`"></span>
+                <span>selesai</span>
               </div>
+            </template>
+            <template x-if="isLoading">
+              <div class="h-2.5 w-24 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
             </template>
           </div>
         </div>
 
         <!-- Card 2: Target Toko & Achievement -->
-        <div class="glass-card rounded-2xl p-5 shadow-sm relative overflow-hidden group">
+        <div class="glass-card rounded-2xl p-3.5 sm:p-4 shadow-sm relative overflow-hidden group border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">% Achievement</span>
-            <div class="w-8 h-8 rounded-xl bg-sky-500/10 text-sky-500 flex items-center justify-center">
-              <i data-lucide="target" class="w-4 h-4"></i>
+            <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">% Target Tercapai</span>
+            <div class="w-7 h-7 rounded-xl bg-sky-500/10 text-sky-500 flex items-center justify-center">
+              <i data-lucide="target" class="w-3.5 h-3.5"></i>
             </div>
           </div>
-          <div class="mt-3 flex items-baseline space-x-2">
+          <div class="mt-2 flex items-baseline space-x-1.5">
             <template x-if="isLoading">
-              <div class="h-8 w-24 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse"></div>
+              <div class="h-7 w-20 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse"></div>
             </template>
             <template x-if="!isLoading">
-              <span class="text-2xl sm:text-3xl font-display font-extrabold text-sky-600 dark:text-sky-400" x-text="`${kpiSummary.achievementRate}%`">0%</span>
+              <span class="text-xl sm:text-2xl font-display font-extrabold text-sky-600 dark:text-sky-400" x-text="`${kpiSummary.achievementRate}%`">0%</span>
             </template>
-            <span class="text-xs text-slate-500 font-medium" x-show="!isLoading" x-text="`/ ${kpiSummary.totalTarget} Target`"></span>
+            <span class="text-[11px] text-slate-500 font-medium" x-show="!isLoading" x-text="`/ ${kpiSummary.totalTarget} Target`"></span>
           </div>
-          <div class="mt-2 w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+          <div class="mt-1.5 w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
             <div class="bg-sky-500 h-full rounded-full transition-all duration-500" :style="`width: ${isLoading ? '30%' : kpiSummary.achievementRate + '%'}`" :class="isLoading ? 'animate-pulse' : ''"></div>
           </div>
         </div>
 
         <!-- Card 3: Crew Aktif -->
-        <div class="glass-card rounded-2xl p-5 shadow-sm relative overflow-hidden group">
+        <div class="glass-card rounded-2xl p-3.5 sm:p-4 shadow-sm relative overflow-hidden group border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">Tim MDS Bertugas</span>
-            <div class="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-              <i data-lucide="users" class="w-4 h-4"></i>
+            <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tim MDS Bertugas</span>
+            <div class="w-7 h-7 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+              <i data-lucide="users" class="w-3.5 h-3.5"></i>
             </div>
           </div>
-          <div class="mt-3 flex items-baseline space-x-1.5 flex-wrap">
+          <div class="mt-2 flex items-baseline space-x-1">
             <template x-if="isLoading">
-              <div class="h-8 w-16 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse"></div>
+              <div class="h-7 w-16 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse"></div>
             </template>
             <template x-if="!isLoading">
               <div class="flex items-baseline space-x-1">
-                <span class="text-2xl sm:text-3xl font-display font-extrabold text-emerald-600 dark:text-emerald-400" x-text="kpiSummary.uniqueCrews">0</span>
-                <span class="text-base font-bold text-slate-400" x-text="`/ ${kpiSummary.totalScheduledCrews || kpiSummary.uniqueCrews || 0}`"></span>
+                <span class="text-xl sm:text-2xl font-display font-extrabold text-emerald-600 dark:text-emerald-400" x-text="kpiSummary.uniqueCrews">0</span>
+                <span class="text-xs font-bold text-slate-400" x-text="`/ ${kpiSummary.totalScheduledCrews || kpiSummary.uniqueCrews || 0} MDS`"></span>
               </div>
             </template>
-            <span class="text-xs text-slate-500 font-medium" x-show="!isLoading">MDS aktif</span>
           </div>
-          <div class="mt-2 text-[11px] flex items-center justify-between">
-            <span class="text-slate-400" x-text="auditAnomalies.totalAnomalies > 0 ? `${auditAnomalies.absenNoVisit.length} Absen 0 Visit · ${auditAnomalies.visitNoAbsen.length} Lupa Absen` : 'Semua Tim Sinkron'"></span>
-            <button @click="openAnomalyModal()" class="text-[10px] font-bold text-rose-500 bg-rose-500/10 hover:bg-rose-500 hover:text-white px-2 py-0.5 rounded-lg border border-rose-500/20 transition-all cursor-pointer flex items-center space-x-1">
+          <div class="mt-1 text-[10.5px] flex items-center justify-between">
+            <span class="text-slate-400 truncate" x-text="auditAnomalies.totalAnomalies > 0 ? `${auditAnomalies.totalAnomalies} Butuh Pantauan` : 'Semua Sinkron'"></span>
+            <button @click="openAnomalyModal()" class="text-[9.5px] font-bold text-rose-500 bg-rose-500/10 hover:bg-rose-500 hover:text-white px-1.5 py-0.5 rounded-lg border border-rose-500/20 transition-all cursor-pointer flex items-center space-x-0.5">
               <span>⚠️ Pantau</span>
-              <span class="bg-rose-500 text-white rounded-full px-1 text-[9px]" x-text="auditAnomalies.totalAnomalies" x-show="auditAnomalies.totalAnomalies > 0"></span>
+              <span class="bg-rose-500 text-white rounded-full px-1 text-[8.5px]" x-text="auditAnomalies.totalAnomalies" x-show="auditAnomalies.totalAnomalies > 0"></span>
             </button>
           </div>
         </div>
 
         <!-- Card 4: Absensi Kehadiran -->
-        <div class="glass-card rounded-2xl p-5 shadow-sm relative overflow-hidden group">
+        <div class="glass-card rounded-2xl p-3.5 sm:p-4 shadow-sm relative overflow-hidden group border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">Kehadiran Tim</span>
-            <div class="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-              <i data-lucide="user-check" class="w-4 h-4"></i>
+            <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Kehadiran Tim</span>
+            <div class="w-7 h-7 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+              <i data-lucide="user-check" class="w-3.5 h-3.5"></i>
             </div>
           </div>
-          <div class="mt-3 flex items-baseline space-x-2">
+          <div class="mt-2 flex items-baseline space-x-1.5">
             <template x-if="isLoading">
-              <div class="h-8 w-16 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse"></div>
+              <div class="h-7 w-16 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse"></div>
             </template>
             <template x-if="!isLoading">
-              <span class="text-2xl sm:text-3xl font-display font-extrabold text-amber-500" x-text="kpiSummary.hadirCount">0</span>
+              <span class="text-xl sm:text-2xl font-display font-extrabold text-amber-500" x-text="kpiSummary.hadirCount">0</span>
             </template>
-            <span class="text-xs text-slate-500 font-medium" x-show="!isLoading">absen masuk</span>
+            <span class="text-[11px] text-slate-500 font-medium" x-show="!isLoading">absen masuk</span>
           </div>
-          <div class="mt-2 text-[11px] flex items-center justify-between">
-            <span class="text-slate-400">Live 3 sheet absen</span>
+          <div class="mt-1 text-[10.5px] flex items-center justify-between">
+            <span class="text-slate-400">Live 3 Sheet</span>
             <button @click="openAnomalyModal()" class="text-[10px] font-bold text-amber-500 hover:text-amber-400 hover:underline cursor-pointer flex items-center space-x-0.5">
               <span>Audit Tim</span>
               <i data-lucide="chevron-right" class="w-3 h-3"></i>
@@ -652,117 +906,110 @@
 
       </div>
 
-      <!-- Charts Row -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- ============================================================================== -->
+      <!-- TIER 2: UNIFIED COMMAND CENTER (MAP 60% + TABBED ANALYTICS 40%) -->
+      <!-- ============================================================================== -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
         
-        <!-- Chart 1: Tren Kunjungan Harian (Span 2) -->
-        <div class="glass-card rounded-2xl p-5 shadow-sm lg:col-span-2 flex flex-col justify-between">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h3 class="font-display font-bold text-base text-slate-900 dark:text-white">Tren Kunjungan Harian</h3>
-              <p class="text-xs text-slate-500">Volume kunjungan toko per hari</p>
-            </div>
-            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-500/10 text-brand-500">Chart.js</span>
-          </div>
-          <div class="h-64 relative w-full">
-            <canvas id="trend-chart"></canvas>
-          </div>
-        </div>
-
-        <!-- Chart 2 & 3: Modul & Account Distribution -->
-        <div class="glass-card rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="font-display font-bold text-base text-slate-900 dark:text-white">Sebaran Modul</h3>
-            <span class="text-xs text-slate-400">DK vs LK vs LP</span>
-          </div>
-          <div class="h-40 relative w-full mb-4">
-            <canvas id="modul-chart"></canvas>
-          </div>
-          <div class="pt-3 border-t border-slate-200 dark:border-slate-800">
-            <div class="h-32 relative w-full">
-              <canvas id="account-chart"></canvas>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Compliance & GPS Map Row -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        <!-- KEPATUHAN & DISIPLIN TARGET MDS -->
-        <div class="glass-card rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+        <!-- Left: Leaflet GPS Map Tracker (Span 7) -->
+        <div class="glass-card rounded-2xl p-4 sm:p-5 shadow-sm lg:col-span-7 flex flex-col justify-between border border-slate-200 dark:border-slate-800">
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center space-x-2">
-              <i data-lucide="shield-alert" class="w-4 h-4 text-indigo-500"></i>
+              <div class="w-7 h-7 rounded-xl bg-sky-500/10 text-sky-500 flex items-center justify-center">
+                <i data-lucide="map" class="w-4 h-4"></i>
+              </div>
               <div>
-                <h3 class="font-display font-bold text-base text-slate-900 dark:text-white">Kepatuhan Target MDS</h3>
-                <p class="text-[11px] text-slate-400">Realisasi vs Target Rute MDS</p>
+                <h3 class="font-display font-bold text-sm sm:text-base text-slate-900 dark:text-white">Peta Sebaran Kunjungan Real-time</h3>
+                <p class="text-[10.5px] text-slate-400">GPS Tracker interaktif toko & pergerakan MDS</p>
               </div>
             </div>
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">Leaflet.js</span>
           </div>
-
-          <!-- Skeleton Placeholders when Loading -->
-          <template x-if="isLoading">
-            <div class="space-y-2.5">
-              <template x-for="i in [1,2,3,4]" :key="i">
-                <div class="p-3 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50 animate-pulse">
-                  <div class="flex items-center justify-between mb-2">
-                    <div>
-                      <div class="h-3 w-28 skeleton-box mb-1"></div>
-                      <div class="h-2.5 w-16 skeleton-box"></div>
-                    </div>
-                    <div class="h-4 w-20 skeleton-box rounded-full"></div>
-                  </div>
-                  <div class="h-2 w-full skeleton-box mt-2 rounded-full"></div>
-                </div>
-              </template>
-            </div>
-          </template>
-
-          <!-- Real Compliance List -->
-          <div x-show="!isLoading" class="space-y-2.5 overflow-y-auto max-h-80 pr-1 touch-scroll">
-            <template x-for="(crw, idx) in complianceList" :key="'compl_'+(crw.modul||'')+'_'+(crw.namaCrew||'')+idx">
-              <div class="p-3 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50 hover:border-brand-500/40 transition-colors">
-                <div class="flex items-center justify-between mb-1.5">
-                  <div>
-                    <span class="text-xs font-bold text-slate-900 dark:text-slate-100 block" x-text="crw.namaCrew"></span>
-                    <span class="text-[10px] text-slate-400" x-text="`Modul: ${crw.modul}`"></span>
-                  </div>
-                  <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold border" :class="crw.statusColor" x-text="crw.statusBadge"></span>
-                </div>
-
-                <!-- Progress Bar & Store Numbers -->
-                <div class="flex items-center space-x-2 text-[11px] text-slate-500 mt-2">
-                  <div class="flex-1 bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
-                    <div class="h-full rounded-full transition-all duration-300"
-                      :class="crw.rate === 100 ? 'bg-emerald-500' : (crw.rate > 0 ? 'bg-amber-500' : 'bg-rose-500')"
-                      :style="`width: ${crw.rate}%`"></div>
-                  </div>
-                  <span class="font-bold text-slate-700 dark:text-slate-300" x-text="`${crw.visitedCount}/${crw.targetCount} Toko`"></span>
-                  <span class="font-extrabold" :class="crw.rate === 100 ? 'text-emerald-500' : 'text-amber-500'" x-text="`(${crw.rate}%)`"></span>
-                </div>
-              </div>
-            </template>
-
-            <template x-if="!isLoading && complianceList.length === 0">
-              <div class="text-center py-8 text-xs text-slate-400">
-                Belum ada data kepatuhan pada filter ini.
-              </div>
-            </template>
-          </div>
+          <div id="visits-map" class="h-80 sm:h-[350px] w-full rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 z-10 shadow-inner"></div>
         </div>
 
-        <!-- Leaflet GPS Map (Span 2) -->
-        <div class="glass-card rounded-2xl p-5 shadow-sm lg:col-span-2 flex flex-col justify-between">
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center space-x-2">
-              <i data-lucide="map" class="w-4 h-4 text-sky-500"></i>
-              <h3 class="font-display font-bold text-base text-slate-900 dark:text-white">Peta Sebaran Kunjungan Real-time</h3>
+        <!-- Right: Tabbed Distribution & Analytics Panel (Span 5) -->
+        <div class="glass-card rounded-2xl p-4 sm:p-5 shadow-sm lg:col-span-5 flex flex-col justify-between border border-slate-200 dark:border-slate-800">
+          
+          <!-- Analytics Header with Segmented Switcher Tabs -->
+          <div>
+            <div class="flex items-center justify-between gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div class="flex items-center space-x-1.5">
+                <i data-lucide="pie-chart" class="w-4 h-4 text-brand-500"></i>
+                <h3 class="font-display font-bold text-sm sm:text-base text-slate-900 dark:text-white">Analisis Sebaran</h3>
+              </div>
+
+              <!-- Segmented Pill Tabs -->
+              <div class="flex items-center p-0.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-[10.5px] font-bold">
+                <button type="button" @click="setAnalyticsTab('modul')"
+                  class="px-2 py-1 rounded-lg transition-all cursor-pointer"
+                  :class="analyticsTab === 'modul' ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-300 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'">
+                  Wilayah
+                </button>
+                <button type="button" @click="setAnalyticsTab('account')"
+                  class="px-2 py-1 rounded-lg transition-all cursor-pointer"
+                  :class="analyticsTab === 'account' ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-300 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'">
+                  Retailer
+                </button>
+                <button type="button" @click="setAnalyticsTab('trend')"
+                  class="px-2 py-1 rounded-lg transition-all cursor-pointer"
+                  :class="analyticsTab === 'trend' ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-300 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'">
+                  Tren
+                </button>
+              </div>
             </div>
-            <span class="text-xs text-slate-400">Leaflet.js GPS Tracker</span>
+
+            <!-- Tab 1 Content: Modul Distribution (DK vs LK vs LP) -->
+            <div x-show="analyticsTab === 'modul'" x-cloak class="pt-3 space-y-3">
+              <div class="flex items-center justify-between text-xs text-slate-500">
+                <span>Distribusi Kunjungan per Wilayah Operasional</span>
+                <span class="text-[10px] font-bold text-brand-500">DK vs LK vs LP</span>
+              </div>
+              <div class="h-44 relative w-full">
+                <canvas id="modul-chart"></canvas>
+              </div>
+              <!-- Mini Legend Pills -->
+              <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 text-center">
+                <div class="p-1.5 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-800/40">
+                  <span class="text-[9px] font-extrabold text-indigo-500 block uppercase">Jabodetabek</span>
+                  <span class="text-xs font-black text-indigo-700 dark:text-indigo-300">DK (1-6)</span>
+                </div>
+                <div class="p-1.5 rounded-lg bg-sky-50/60 dark:bg-sky-950/30 border border-sky-200/60 dark:border-sky-800/40">
+                  <span class="text-[9px] font-extrabold text-sky-500 block uppercase">Jawa & Bali</span>
+                  <span class="text-xs font-black text-sky-700 dark:text-sky-300">LK (1-5)</span>
+                </div>
+                <div class="p-1.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40">
+                  <span class="text-[9px] font-extrabold text-emerald-500 block uppercase">Luar Jawa</span>
+                  <span class="text-xs font-black text-emerald-700 dark:text-emerald-300">LP (1-4)</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab 2 Content: Account / Retailer Share -->
+            <div x-show="analyticsTab === 'account'" x-cloak class="pt-3 space-y-3">
+              <div class="flex items-center justify-between text-xs text-slate-500">
+                <span>Komposisi Toko Berdasarkan Akun Retail</span>
+                <span class="text-[10px] font-bold text-sky-500">Channel Share</span>
+              </div>
+              <div class="h-48 relative w-full">
+                <canvas id="account-chart"></canvas>
+              </div>
+              <p class="text-[10px] text-center text-slate-400">Proporsi kunjungan toko Alfamart, Indomaret, Family Mart, dan lainnya</p>
+            </div>
+
+            <!-- Tab 3 Content: Daily Trend Line Chart -->
+            <div x-show="analyticsTab === 'trend'" x-cloak class="pt-3 space-y-3">
+              <div class="flex items-center justify-between text-xs text-slate-500">
+                <span>Volume Kunjungan Harian (Rentang 14 Hari)</span>
+                <span class="text-[10px] font-bold text-amber-500">Trend Tracker</span>
+              </div>
+              <div class="h-52 relative w-full">
+                <canvas id="trend-chart"></canvas>
+              </div>
+              <p class="text-[10px] text-center text-slate-400">Fluktuasi jumlah toko terselesaikan per tanggal</p>
+            </div>
           </div>
-          <div id="visits-map" class="h-80 w-full rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 z-10"></div>
+
         </div>
 
       </div>
@@ -1038,28 +1285,6 @@
                   </div>
                 </div>
 
-                <!-- Extra Visits Section (If any) -->
-                <div x-show="card.extraVisits && card.extraVisits.length > 0" class="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-                  <span class="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider block">
-                    Kunjungan Tambahan / Luar Jadwal Rute (<span x-text="card.extraVisits.length"></span> Toko)
-                  </span>
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
-                    <template x-for="(ext, eIdx) in card.extraVisits" :key="ext.kodeToko + eIdx">
-                      <div class="p-2 rounded-xl bg-sky-50/60 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800/40 text-xs flex items-center justify-between gap-2">
-                        <div class="truncate">
-                          <span class="font-bold text-slate-800 dark:text-slate-200 truncate" x-text="ext.namaToko"></span>
-                          <span class="text-[10px] text-slate-400 block" x-text="`Kode: ${ext.kodeToko} · Jam: ${ext.visitTime}`"></span>
-                        </div>
-                        <template x-if="ext.foto">
-                          <button type="button" @click.stop="openPhotoModal(ext.rawVisit || ext)"
-                            class="text-[10px] text-sky-600 font-bold hover:underline cursor-pointer flex-shrink-0">
-                            Foto 🔍
-                          </button>
-                        </template>
-                      </div>
-                    </template>
-                  </div>
-                </div>
 
               </div>
 
@@ -1077,194 +1302,6 @@
 
       </div>
 
-      <!-- Main Visits Data Table -->
-      <div class="glass-card rounded-2xl shadow-sm overflow-hidden border border-slate-200 dark:border-slate-800">
-        <div class="p-3.5 sm:p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div>
-            <div class="flex items-center space-x-2">
-              <i data-lucide="history" class="w-4 h-4 text-brand-500"></i>
-              <h3 class="font-display font-bold text-base text-slate-900 dark:text-white">Rincian Riwayat Kunjungan</h3>
-            </div>
-            <p class="text-xs text-slate-500 mt-0.5">Daftar transaksi kunjungan lapangan terbaru</p>
-          </div>
-          
-          <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
-            <!-- Table Quick Search Input -->
-            <div class="relative flex-1 md:w-72 lg:w-80 flex items-center">
-              <input type="text" x-model="searchInputText" @keydown.enter.prevent="executeSearch()" placeholder="Cari Toko, MDS, ID..."
-                class="w-full h-9 text-xs font-medium pl-8 pr-20 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all">
-              <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                <i data-lucide="search" class="w-3.5 h-3.5"></i>
-              </div>
-              <button type="button" x-show="searchInputText" @click="clearSearch()" class="absolute right-14 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5" title="Hapus teks">
-                <i data-lucide="x" class="w-3.5 h-3.5"></i>
-              </button>
-              <button type="button" @click="executeSearch()" class="absolute right-1.5 top-1/2 -translate-y-1/2 h-6.5 px-2.5 bg-brand-500 hover:bg-brand-600 active:scale-95 text-white font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 shadow-sm" title="Klik atau tekan Enter untuk cari">
-                <span>Cari</span>
-              </button>
-            </div>
-
-            <!-- Active Search Filter Pill in Table Header -->
-            <div x-show="selectedCrew || searchQuery" x-cloak class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold">
-              <span x-text="selectedCrew ? `MDS: ${selectedCrew}` : `Cari: '${searchQuery}'`"></span>
-              <button type="button" @click="clearSearch()" class="p-0.5 hover:bg-amber-500/20 rounded cursor-pointer" title="Hapus Filter">
-                <i data-lucide="x" class="w-3.5 h-3.5"></i>
-              </button>
-            </div>
-
-            <!-- Filter Counter Badge -->
-            <span class="text-xs font-bold text-brand-600 dark:text-brand-400 whitespace-nowrap bg-brand-50 dark:bg-brand-950/60 px-3 py-1.5 rounded-xl border border-brand-200 dark:border-brand-800/60" x-text="`${paginatedVisits.length} / ${filteredVisits.length} Kunjungan`" title="Data ditampilkan / Total data yang cocok"></span>
-          </div>
-        </div>
-
-        <!-- MULTI-MDS DISAMBIGUATION SUGGESTION BAR (IN TABLE) -->
-        <div x-show="matchingCrewSuggestions.length > 0 && (searchQuery || searchInputText).trim().length >= 2" x-cloak
-          class="p-2.5 px-4 bg-brand-50/90 dark:bg-brand-950/40 border-b border-brand-200/70 dark:border-brand-800/50 flex flex-wrap items-center gap-2 text-xs transition-all">
-          <div class="flex items-center gap-1.5 text-brand-700 dark:text-brand-300 font-semibold flex-shrink-0">
-            <i data-lucide="users" class="w-3.5 h-3.5"></i>
-            <span x-text="`Ditemukan ${matchingCrewSuggestions.length} MDS '${(searchQuery || searchInputText).trim()}':`"></span>
-          </div>
-          
-          <div class="flex flex-wrap items-center gap-1.5">
-            <template x-for="c in matchingCrewSuggestions" :key="c.namaCrew + c.kodeCrew">
-              <button type="button" @click="selectCrewSuggestion(c)"
-                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shadow-sm cursor-pointer"
-                :class="(selectedCrew || '').toUpperCase() === c.namaCrew.toUpperCase() ? 'bg-brand-500 text-white shadow-brand-500/30 ring-2 ring-brand-400' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-brand-100 dark:hover:bg-brand-900/50 border border-slate-200 dark:border-slate-700'">
-                <span x-text="c.namaCrew"></span>
-                <span class="px-1.5 py-0.2 rounded text-[9.5px] font-extrabold"
-                  :class="(selectedCrew || '').toUpperCase() === c.namaCrew.toUpperCase() ? 'bg-white/25 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'"
-                  x-text="`${c.modul}${c.visitCount > 0 ? ' • ' + c.visitCount + ' Toko' : ' • 0 Toko'}`"></span>
-              </button>
-            </template>
-          </div>
-        </div>
-
-
-
-        <div class="overflow-x-auto w-full max-w-full touch-scroll">
-          <table class="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr class="bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700">
-                <th class="py-3 px-4">Waktu</th>
-                <th class="py-3 px-4">Modul</th>
-                <th class="py-3 px-4">MDS / Crew</th>
-                <th class="py-3 px-4">Toko Target</th>
-                <th class="py-3 px-4">Account</th>
-                <th class="py-3 px-4">GPS Check-in</th>
-                <th class="py-3 px-4 text-center">Foto</th>
-                <th class="py-3 px-4 text-center">Aksi</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
-              <!-- SKELETON ROWS WHILE LOADING -->
-              <template x-if="isLoading">
-                <template x-for="i in [1,2,3,4,5]" :key="i">
-                  <tr class="animate-pulse">
-                    <td class="py-3 px-4">
-                      <div class="h-3.5 w-20 skeleton-box mb-1"></div>
-                      <div class="h-2.5 w-12 skeleton-box"></div>
-                    </td>
-                    <td class="py-3 px-4"><div class="h-4 w-10 skeleton-box rounded"></div></td>
-                    <td class="py-3 px-4">
-                      <div class="h-3.5 w-28 skeleton-box mb-1"></div>
-                      <div class="h-2.5 w-16 skeleton-box"></div>
-                    </td>
-                    <td class="py-3 px-4">
-                      <div class="h-3.5 w-36 skeleton-box mb-1"></div>
-                      <div class="h-2.5 w-20 skeleton-box"></div>
-                    </td>
-                    <td class="py-3 px-4"><div class="h-3.5 w-20 skeleton-box"></div></td>
-                    <td class="py-3 px-4"><div class="h-3.5 w-24 skeleton-box"></div></td>
-                    <td class="py-3 px-4 text-center"><div class="h-6 w-12 mx-auto skeleton-box rounded-lg"></div></td>
-                    <td class="py-3 px-4 text-center"><div class="h-6 w-14 mx-auto skeleton-box rounded-lg"></div></td>
-                  </tr>
-                </template>
-              </template>
-
-              <!-- REAL VISIT ROWS -->
-              <template x-if="!isLoading">
-                <template x-for="v in paginatedVisits" :key="v.idVisit">
-                  <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td class="py-3 px-4 whitespace-nowrap">
-                      <span class="font-semibold text-slate-900 dark:text-slate-100 block" x-text="v.date"></span>
-                      <span class="text-[11px] text-slate-400" x-text="v.time"></span>
-                    </td>
-                    <td class="py-3 px-4">
-                      <span class="px-2 py-0.5 rounded text-[10px] font-extrabold"
-                        :class="v.prefix === 'LP' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : (v.prefix === 'LK' ? 'bg-sky-500/10 text-sky-500 border border-sky-500/20' : 'bg-brand-500/10 text-brand-500 border border-brand-500/20')"
-                        x-text="v.modul || v.prefix"></span>
-                    </td>
-                    <td class="py-3 px-4">
-                      <span class="font-bold text-slate-900 dark:text-slate-100 block" x-text="v.namaCrew"></span>
-                      <span class="text-[11px] text-slate-400" x-text="v.kodeCrew"></span>
-                    </td>
-                    <td class="py-3 px-4">
-                      <span class="font-semibold text-slate-800 dark:text-slate-200 block" x-text="v.namaToko"></span>
-                      <span class="text-[11px] text-slate-400" x-text="`Kode: ${v.kodeToko}`"></span>
-                    </td>
-                    <td class="py-3 px-4 text-[11px]">
-                      <template x-if="isGpsAnomaly(v.koordinat)">
-                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-[10px] font-extrabold" title="GPS Mati / Koordinat Nol (0,0)">
-                          <i data-lucide="map-pin-off" class="w-3 h-3 text-rose-500 animate-pulse"></i>
-                          <span>GPS Mati (0,0)</span>
-                        </span>
-                      </template>
-                      <template x-if="!isGpsAnomaly(v.koordinat)">
-                        <button type="button" @click="flyToVisit(v)" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 hover:bg-brand-50 dark:bg-slate-800 dark:hover:bg-brand-900/30 text-slate-600 hover:text-brand-600 dark:text-slate-300 dark:hover:text-brand-400 border border-slate-200 dark:border-slate-700/80 transition-all text-[10.5px] font-mono cursor-pointer" title="Klik untuk fokuskan peta ke toko ini">
-                          <i data-lucide="map-pin" class="w-3 h-3 text-brand-500"></i>
-                          <span x-text="v.koordinat.split(',')[0].trim().slice(0, 7) + '...'"></span>
-                        </button>
-                      </template>
-                    </td>
-                    <td class="py-3 px-4 text-center">
-                      <button @click="openPhotoModal(v)"
-                        class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-brand-500/10 text-brand-600 dark:text-brand-400 hover:bg-brand-500 hover:text-white transition-colors">
-                        <i data-lucide="image" class="w-3.5 h-3.5 inline mr-1"></i>Foto
-                      </button>
-                    </td>
-                    <td class="py-3 px-4 text-center">
-                      <button @click="openAuditModal(v)"
-                        class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 hover:bg-sky-500 hover:text-white transition-colors">
-                        <i data-lucide="list-checks" class="w-3.5 h-3.5 inline mr-1"></i>Audit
-                      </button>
-                    </td>
-                  </tr>
-                </template>
-              </template>
-
-              <!-- Empty State -->
-              <tr x-show="!isLoading && filteredVisits.length === 0">
-                <td colspan="8" class="py-12 text-center text-slate-400">
-                  <i data-lucide="inbox" class="w-10 h-10 mx-auto mb-2 text-slate-300 dark:text-slate-600"></i>
-                  <p class="font-semibold text-xs">Tidak ada data transaksi kunjungan yang sesuai dengan filter.</p>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Visits Table Pagination -->
-        <div class="p-3.5 sm:p-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-          <div>
-            Menampilkan <span class="font-bold text-slate-700 dark:text-slate-300" x-text="filteredVisits.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1"></span> - 
-            <span class="font-bold text-slate-700 dark:text-slate-300" x-text="Math.min(currentPage * itemsPerPage, filteredVisits.length)"></span> dari 
-            <span class="font-bold text-slate-700 dark:text-slate-300" x-text="filteredVisits.length"></span> transaksi
-          </div>
-          
-          <div class="flex items-center space-x-1.5" x-show="totalPages > 1">
-            <button @click="currentPage = Math.max(1, currentPage - 1)" :disabled="currentPage === 1"
-              class="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-              Prev
-            </button>
-            <span class="px-3 py-1 font-bold text-slate-800 dark:text-slate-200" x-text="`${currentPage} / ${totalPages}`"></span>
-            <button @click="currentPage = Math.min(totalPages, currentPage + 1)" :disabled="currentPage === totalPages"
-              class="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-              Next
-            </button>
-          </div>
-        </div>
-
-      </div>
 
     </div>
 
@@ -3957,6 +3994,395 @@
 
     </div>
 
+    <!-- ============================================================================== -->
+    <!-- 9. TAB 6: EVALUASI KINERJA SPV & SCORECARD MTD -->
+    <!-- ============================================================================== -->
+    <div x-show="activeTab === 'evaluasi'" class="space-y-6 min-w-0">
+      
+      <!-- EVALUASI SPV: DEDICATED FILTER & ACTION BAR -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 dark:border-slate-800/80 space-y-4">
+        
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-slate-200 dark:border-slate-800">
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                DAILY & MTD SCORECARD
+              </span>
+              <h2 class="font-display font-black text-lg sm:text-xl text-slate-900 dark:text-white">
+                Evaluasi Kinerja SPV & MTD Kunjungan MDS
+              </h2>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Rekapitulasi performa bulanan & harian personil MDS berdasarkan pembagian Supervisor (SPV)
+            </p>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex items-center gap-2 flex-wrap">
+            <button type="button" @click="refreshSpvCharts()"
+              class="h-9 px-3 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+              <span>Refresh Data</span>
+            </button>
+            <button type="button" @click="exportSpvEvaluationToCSV()"
+              class="h-9 px-3.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/30 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              <span>Export Excel / CSV</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          
+          <!-- Filter 1: Pilih SPV -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Pilih Supervisor (SPV):</label>
+            <select x-model="filterSpv.spv" @change="filterSpv.page = 1; refreshSpvCharts()"
+              class="w-full h-10 text-xs font-bold px-3 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
+              <template x-for="spv in spvConfigs" :key="spv.code">
+                <option :value="spv.code" x-text="spv.name"></option>
+              </template>
+            </select>
+          </div>
+
+          <!-- Filter 2: Periode Bulan -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Periode Bulan:</label>
+            <select x-model="filterSpv.month" @change="refreshSpvCharts()"
+              class="w-full h-10 text-xs font-bold px-3 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
+              <option value="CURRENT">📆 September 2026 (MTD Berjalan)</option>
+              <option value="2026-08">📅 Agustus 2026</option>
+              <option value="ALL">🌐 Semua Bulan</option>
+            </select>
+          </div>
+
+          <!-- Filter 3: Tampilan Sub-Tabel -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Kategori Evaluasi:</label>
+            <select x-model="filterSpv.activeSubTable"
+              class="w-full h-10 text-xs font-bold px-3 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
+              <option value="ALL">📊 Semua (Hari Toko & Hari DC)</option>
+              <option value="TOKO">🏬 Hari Toko (Kunjungan Regular)</option>
+              <option value="DC">🏢 Hari DC (Distribution Center)</option>
+            </select>
+          </div>
+
+          <!-- Filter 4: Cari Nama MDS -->
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Cari Personil MDS:</label>
+            <div class="relative flex items-center">
+              <input type="text" x-model="filterSpv.searchInput" @keydown.enter="executeSpvSearch()" placeholder="Ketik nama MDS..."
+                class="w-full h-10 text-xs font-semibold pl-8 pr-8 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500">
+              <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 text-slate-400 pointer-events-none"></i>
+              <button type="button" x-show="filterSpv.searchInput" @click="clearSpvSearch()"
+                class="absolute right-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- KPI SUMMARY CARDS -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        
+        <!-- Card 1: Total Populasi MDS -->
+        <div class="glass-card rounded-2xl p-4 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">Total Personil MDS</span>
+            <div class="w-8 h-8 rounded-xl bg-brand-500/10 text-brand-500 flex items-center justify-center">
+              <i data-lucide="users" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="mt-2 flex items-baseline space-x-1.5">
+            <span class="text-2xl sm:text-3xl font-display font-extrabold text-slate-900 dark:text-white" x-text="spvSummary.totalMds">0</span>
+            <span class="text-xs text-slate-500 font-medium">MDS Terdata</span>
+          </div>
+          <p class="text-[10.5px] text-slate-400 mt-1" x-text="filterSpv.spv === 'ALL' ? 'Nasional (Seluruh SPV)' : 'SPV: ' + (spvConfigs.find(s => s.code === filterSpv.spv)?.spvName || '')"></p>
+        </div>
+
+        <!-- Card 2: Hari Toko Achievement -->
+        <div class="glass-card rounded-2xl p-4 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">% Capaian Hari Toko</span>
+            <div class="w-8 h-8 rounded-xl bg-sky-500/10 text-sky-500 flex items-center justify-center">
+              <i data-lucide="store" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="mt-2 flex items-baseline space-x-1.5">
+            <span class="text-2xl sm:text-3xl font-display font-extrabold text-sky-600 dark:text-sky-400" x-text="spvSummary.avgPctToko + '%'">0%</span>
+            <span class="text-xs text-slate-500 font-medium" x-text="spvSummary.totalKunjunganToko.toLocaleString('id-ID') + ' / ' + spvSummary.totalRpsToko.toLocaleString('id-ID') + ' RPS'"></span>
+          </div>
+          <div class="mt-1.5 w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+            <div class="bg-sky-500 h-full rounded-full transition-all duration-500" :style="'width: ' + spvSummary.avgPctToko + '%'"></div>
+          </div>
+        </div>
+
+        <!-- Card 3: Hari DC Achievement -->
+        <div class="glass-card rounded-2xl p-4 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">% Capaian Hari DC</span>
+            <div class="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+              <i data-lucide="building-2" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="mt-2 flex items-baseline space-x-1.5">
+            <span class="text-2xl sm:text-3xl font-display font-extrabold text-amber-500" x-text="spvSummary.avgPctDc + '%'">0%</span>
+            <span class="text-xs text-slate-500 font-medium" x-text="spvSummary.totalKunjunganDc + ' / ' + spvSummary.totalRpsDc + ' Target DC'"></span>
+          </div>
+          <div class="mt-1.5 w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+            <div class="bg-amber-500 h-full rounded-full transition-all duration-500" :style="'width: ' + spvSummary.avgPctDc + '%'"></div>
+          </div>
+        </div>
+
+        <!-- Card 4: Rata-rata Jam Kerja -->
+        <div class="glass-card rounded-2xl p-4 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">Rata-rata Jam Kerja</span>
+            <div class="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+              <i data-lucide="clock" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="mt-2 flex items-baseline space-x-1.5">
+            <span class="text-2xl sm:text-3xl font-display font-extrabold text-emerald-600 dark:text-emerald-400" x-text="spvSummary.avgJamKerja + ' Jam'">9 Jam</span>
+            <span class="text-xs text-slate-500 font-medium">/ Hari</span>
+          </div>
+          <p class="text-[10.5px] text-slate-400 mt-1">Dihitung dari selisih Absen Masuk & Pulang</p>
+        </div>
+
+      </div>
+
+      <!-- MTD PERFORMANCE CHART CONTAINER (MATCHING EXCEL FORMAT) -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200 dark:border-slate-800 space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="font-display font-bold text-base text-slate-900 dark:text-white">MTD Kunjungan MDS</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Komparasi Target RPS vs Realisasi Kunjungan Bulanan</p>
+          </div>
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-500/10 text-brand-500 border border-brand-500/20">Chart.js MTD</span>
+        </div>
+        <div class="h-64 sm:h-72 w-full relative">
+          <canvas id="spv-mtd-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- ============================================================================== -->
+      <!-- TABLE 1: HARI TOKO (STORE VISIT EVALUATION) -->
+      <!-- ============================================================================== -->
+      <div id="toko-eval-table-card" x-show="filterSpv.activeSubTable === 'ALL' || filterSpv.activeSubTable === 'TOKO'" class="glass-card rounded-2xl border border-slate-200/80 dark:border-slate-800/80 overflow-hidden shadow-sm space-y-0">
+        
+        <!-- Table 1 Header -->
+        <div class="bg-sky-600 dark:bg-sky-700 text-white p-3 sm:px-4 flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="store" class="w-4 h-4"></i>
+            <h3 class="font-bold text-sm uppercase tracking-wider">HARI TOKO (Evaluasi Kunjungan Reguler)</h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs bg-sky-700 dark:bg-sky-800 text-sky-100 font-bold px-2 py-0.5 rounded-lg">1 toko 1x</span>
+            <button type="button" @click="downloadTableAsPng('toko-eval-table-card', 'Evaluasi_Hari_Toko')" :disabled="Boolean(isDownloadingPng)"
+              class="no-export inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-white/20 hover:bg-white/30 text-white transition-all shadow-sm border border-white/25 active:scale-95 disabled:opacity-60 cursor-pointer"
+              title="Download gambar tabel HARI TOKO sebagai format PNG">
+              <template x-if="isDownloadingPng?.key === 'toko'">
+                <div class="flex items-center gap-1.5">
+                  <span class="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  <span>Menyiapkan PNG...</span>
+                </div>
+              </template>
+              <template x-if="isDownloadingPng?.key !== 'toko'">
+                <div class="flex items-center gap-1.5">
+                  <i data-lucide="camera" class="w-3.5 h-3.5"></i>
+                  <span>Download PNG</span>
+                </div>
+              </template>
+            </button>
+          </div>
+        </div>
+
+        <!-- Catatan Petunjuk Evaluasi Hari Toko -->
+        <div class="px-4 py-2.5 bg-sky-50 dark:bg-sky-950/40 border-b border-sky-100 dark:border-sky-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11.5px] text-slate-600 dark:text-slate-300">
+          <div class="flex items-start sm:items-center gap-2">
+            <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-400 font-bold flex-shrink-0 text-xs">ℹ</span>
+            <div class="leading-relaxed">
+              <span class="font-bold text-sky-800 dark:text-sky-200">Catatan Metrik:</span>
+              <span class="font-semibold text-slate-700 dark:text-slate-200">RPS (Target):</span> Total toko yang di-input MDS di Master Rute &bull;
+              <span class="font-semibold text-slate-700 dark:text-slate-200">#Kunjungan:</span> Akumulasi MTD (Tgl 1 s/d hari ini, 1 toko 1x) &bull;
+              <span class="font-semibold text-slate-700 dark:text-slate-200">Absen & Jam Kerja:</span> Snapshot kehadiran <strong class="text-sky-700 dark:text-sky-300">Hari Berjalan (Hari Ini)</strong>.
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 flex-shrink-0 font-medium text-[11px] text-slate-500 dark:text-slate-400 bg-white/80 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200/60 dark:border-slate-700/60 shadow-xs">
+            <i data-lucide="calendar" class="w-3.5 h-3.5 text-sky-500"></i>
+            <span x-text="'Hari Ini: ' + (activeDateLabel || '9 Sep 2026')"></span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto custom-scrollbar">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead class="bg-slate-100/90 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-700/80 select-none">
+              <tr>
+                <th class="py-3 px-3 text-center w-12">No</th>
+                <th class="py-3 px-3.5">Region/Area</th>
+                <th class="py-3 px-3">SPV</th>
+                <th class="py-3 px-4">Nama MDS</th>
+                <th class="py-3 px-3 text-center">Absen Masuk<span class="block text-[9px] font-normal text-sky-600 dark:text-sky-400">Hari Ini</span></th>
+                <th class="py-3 px-3 text-center">Absen Pulang<span class="block text-[9px] font-normal text-sky-600 dark:text-sky-400">Hari Ini</span></th>
+                <th class="py-3 px-3 text-center">#Jam Kerja<span class="block text-[9px] font-normal text-slate-400">Hari Ini</span></th>
+                <th class="py-3 px-3 text-right">RPS (Target)<span class="block text-[9px] font-normal text-slate-400">Input MDS</span></th>
+                <th class="py-3 px-3 text-right">#Kunjungan<span class="block text-[9px] font-normal text-slate-400">1 Toko 1x (MTD)</span></th>
+                <th class="py-3 px-3.5 text-center">% Target</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-800/80">
+              <template x-for="(row, idx) in spvEvaluationList" :key="'toko_' + row.namaMds + idx">
+                <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                  <td class="py-2.5 px-3 text-center text-slate-400 font-medium" x-text="idx + 1"></td>
+                  <td class="py-2.5 px-3.5 font-bold text-slate-800 dark:text-slate-200" x-text="row.region"></td>
+                  <td class="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-400" x-text="row.spvName"></td>
+                  <td class="py-2.5 px-4 font-bold text-slate-900 dark:text-white">
+                    <div class="flex items-center gap-1.5">
+                      <span x-text="row.namaMds"></span>
+                      <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300" x-text="row.modul"></span>
+                    </div>
+                  </td>
+                  <td class="py-2.5 px-3 text-center font-mono text-slate-700 dark:text-slate-300" x-text="row.absenMasuk"></td>
+                  <td class="py-2.5 px-3 text-center font-mono text-slate-700 dark:text-slate-300" x-text="row.absenPulang"></td>
+                  <td class="py-2.5 px-3 text-center font-bold text-slate-800 dark:text-slate-200" x-text="row.jamKerja + ' Jam'"></td>
+                  <td class="py-2.5 px-3 text-right font-bold text-slate-700 dark:text-slate-300" x-text="row.rpsToko.toLocaleString('id-ID')"></td>
+                  <td class="py-2.5 px-3 text-right font-black text-sky-600 dark:text-sky-400" x-text="row.kunjunganToko.toLocaleString('id-ID')"></td>
+                  <td class="py-2.5 px-3.5 text-center">
+                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border"
+                      :class="row.pctToko >= 80 ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : (row.pctToko >= 50 ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' : 'bg-rose-500/10 text-rose-600 border-rose-500/20')"
+                      x-text="row.pctToko + '%'"></span>
+                  </td>
+                </tr>
+              </template>
+
+              <!-- Footer Total / Average Row -->
+              <tr class="bg-slate-100 dark:bg-slate-800/90 font-black border-t-2 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white">
+                <td colspan="4" class="py-3 px-4 text-left uppercase tracking-wider">
+                  TOTAL (AVG) - <span x-text="spvSummary.totalMds + ' MDS'"></span>
+                </td>
+                <td colspan="2" class="py-3 px-3 text-center text-slate-400 text-[10px] font-normal">-</td>
+                <td class="py-3 px-3 text-center" x-text="spvSummary.avgJamKerja + ' Jam'"></td>
+                <td class="py-3 px-3 text-right" x-text="spvSummary.totalRpsToko.toLocaleString('id-ID')"></td>
+                <td class="py-3 px-3 text-right text-sky-600 dark:text-sky-400" x-text="spvSummary.totalKunjunganToko.toLocaleString('id-ID')"></td>
+                <td class="py-3 px-3.5 text-center text-emerald-600 dark:text-emerald-400" x-text="spvSummary.avgPctToko + '%'"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ============================================================================== -->
+      <!-- TABLE 2: HARI DC (DISTRIBUTION CENTER EVALUATION) -->
+      <!-- ============================================================================== -->
+      <div id="dc-eval-table-card" x-show="filterSpv.activeSubTable === 'ALL' || filterSpv.activeSubTable === 'DC'" class="glass-card rounded-2xl border border-slate-200/80 dark:border-slate-800/80 overflow-hidden shadow-sm space-y-0">
+        
+        <!-- Table 2 Header -->
+        <div class="bg-amber-500 dark:bg-amber-600 text-white p-3 sm:px-4 flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="building-2" class="w-4 h-4"></i>
+            <h3 class="font-bold text-sm uppercase tracking-wider">HARI DC (Evaluasi Kunjungan Gudang/DC)</h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs bg-amber-600 dark:bg-amber-700 text-amber-100 font-bold px-2 py-0.5 rounded-lg">4 DC harus berbeda</span>
+            <button type="button" @click="downloadTableAsPng('dc-eval-table-card', 'Evaluasi_Hari_DC')" :disabled="Boolean(isDownloadingPng)"
+              class="no-export inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-white/20 hover:bg-white/30 text-white transition-all shadow-sm border border-white/25 active:scale-95 disabled:opacity-60 cursor-pointer"
+              title="Download gambar tabel HARI DC sebagai format PNG">
+              <template x-if="isDownloadingPng?.key === 'dc'">
+                <div class="flex items-center gap-1.5">
+                  <span class="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  <span>Menyiapkan PNG...</span>
+                </div>
+              </template>
+              <template x-if="isDownloadingPng?.key !== 'dc'">
+                <div class="flex items-center gap-1.5">
+                  <i data-lucide="camera" class="w-3.5 h-3.5"></i>
+                  <span>Download PNG</span>
+                </div>
+              </template>
+            </button>
+          </div>
+        </div>
+
+        <!-- Catatan Petunjuk Evaluasi Hari DC -->
+        <div class="px-4 py-2.5 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-100 dark:border-amber-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11.5px] text-slate-600 dark:text-slate-300">
+          <div class="flex items-start sm:items-center gap-2">
+            <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold flex-shrink-0 text-xs">ℹ</span>
+            <div class="leading-relaxed">
+              <span class="font-bold text-amber-800 dark:text-amber-200">Catatan Metrik:</span>
+              <span class="font-semibold text-slate-700 dark:text-slate-200">RPS DC:</span> Standar target 4 DC berbeda &bull;
+              <span class="font-semibold text-slate-700 dark:text-slate-200">#Kunjungan DC:</span> Akumulasi MTD (Tgl 1 s/d hari berjalan) &bull;
+              <span class="font-semibold text-slate-700 dark:text-slate-200">Absen & Jam Kerja:</span> Snapshot kehadiran <strong class="text-amber-700 dark:text-amber-300">Hari Berjalan (Hari Ini)</strong>.
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 flex-shrink-0 font-medium text-[11px] text-slate-500 dark:text-slate-400 bg-white/80 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200/60 dark:border-slate-700/60 shadow-xs">
+            <i data-lucide="calendar" class="w-3.5 h-3.5 text-amber-500"></i>
+            <span x-text="'Hari Ini: ' + (activeDateLabel || '9 Sep 2026')"></span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto custom-scrollbar">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead class="bg-slate-100/90 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-700/80 select-none">
+              <tr>
+                <th class="py-3 px-3 text-center w-12">No</th>
+                <th class="py-3 px-3.5">Region/Area</th>
+                <th class="py-3 px-3">SPV</th>
+                <th class="py-3 px-4">Nama MDS</th>
+                <th class="py-3 px-3 text-center">Absen Masuk<span class="block text-[9px] font-normal text-amber-600 dark:text-amber-400">Hari Ini</span></th>
+                <th class="py-3 px-3 text-center">Absen Pulang<span class="block text-[9px] font-normal text-amber-600 dark:text-amber-400">Hari Ini</span></th>
+                <th class="py-3 px-3 text-center">#Jam Kerja<span class="block text-[9px] font-normal text-slate-400">Hari Ini</span></th>
+                <th class="py-3 px-3 text-right">RPS DC (Target)<span class="block text-[9px] font-normal text-slate-400">Standar 4 DC</span></th>
+                <th class="py-3 px-3 text-right">#Kunjungan DC<span class="block text-[9px] font-normal text-slate-400">Akumulasi MTD</span></th>
+                <th class="py-3 px-3.5 text-center">% Target DC</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-800/80">
+              <template x-for="(row, idx) in spvEvaluationList" :key="'dc_' + row.namaMds + idx">
+                <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                  <td class="py-2.5 px-3 text-center text-slate-400 font-medium" x-text="idx + 1"></td>
+                  <td class="py-2.5 px-3.5 font-bold text-slate-800 dark:text-slate-200" x-text="row.region"></td>
+                  <td class="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-400" x-text="row.spvName"></td>
+                  <td class="py-2.5 px-4 font-bold text-slate-900 dark:text-white">
+                    <div class="flex items-center gap-1.5">
+                      <span x-text="row.namaMds"></span>
+                      <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300" x-text="row.modul"></span>
+                    </div>
+                  </td>
+                  <td class="py-2.5 px-3 text-center font-mono text-slate-700 dark:text-slate-300" x-text="row.absenMasuk"></td>
+                  <td class="py-2.5 px-3 text-center font-mono text-slate-700 dark:text-slate-300" x-text="row.absenPulang"></td>
+                  <td class="py-2.5 px-3 text-center font-bold text-slate-800 dark:text-slate-200" x-text="row.jamKerja + ' Jam'"></td>
+                  <td class="py-2.5 px-3 text-right font-bold text-slate-700 dark:text-slate-300" x-text="row.rpsDc"></td>
+                  <td class="py-2.5 px-3 text-right font-black text-amber-600 dark:text-amber-400" x-text="row.kunjunganDc"></td>
+                  <td class="py-2.5 px-3.5 text-center">
+                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border"
+                      :class="row.pctDc >= 75 ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : (row.pctDc >= 50 ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' : 'bg-rose-500/10 text-rose-600 border-rose-500/20')"
+                      x-text="row.pctDc + '%'"></span>
+                  </td>
+                </tr>
+              </template>
+
+              <!-- Footer Total / Average Row -->
+              <tr class="bg-slate-100 dark:bg-slate-800/90 font-black border-t-2 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white">
+                <td colspan="4" class="py-3 px-4 text-left uppercase tracking-wider">
+                  TOTAL (AVG) - <span x-text="spvSummary.totalMds + ' MDS'"></span>
+                </td>
+                <td colspan="2" class="py-3 px-3 text-center text-slate-400 text-[10px] font-normal">-</td>
+                <td class="py-3 px-3 text-center" x-text="spvSummary.avgJamKerja + ' Jam'"></td>
+                <td class="py-3 px-3 text-right" x-text="spvSummary.totalRpsDc"></td>
+                <td class="py-3 px-3 text-right text-amber-600 dark:text-amber-400" x-text="spvSummary.totalKunjunganDc"></td>
+                <td class="py-3 px-3.5 text-center text-amber-600 dark:text-amber-400" x-text="spvSummary.avgPctDc + '%'"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
   </main>
 
   <!-- ============================================================================== -->
@@ -4136,11 +4562,6 @@
             Tidak ada data detail audit spesifik untuk kunjungan ini.
           </div>
         </template>
-      </div>
-
-    </div>
-  </div>
-
       </div>
 
     </div>
@@ -4689,12 +5110,12 @@
   </div>
 
   <!-- Modular Scripts with Cache-Buster -->
-  <script src="./js/config.js?v=20260909_17"></script>
-  <script src="./js/db.js?v=20260909_17"></script>
-  <script src="./js/api.js?v=20260909_17"></script>
-  <script src="./js/charts.js?v=20260909_17"></script>
-  <script src="./js/map.js?v=20260909_17"></script>
-  <script src="./js/app.js?v=20260909_17"></script>
+  <script src="./js/config.js?v=20260909_26"></script>
+  <script src="./js/db.js?v=20260909_26"></script>
+  <script src="./js/api.js?v=20260909_26"></script>
+  <script src="./js/charts.js?v=20260909_37"></script>
+  <script src="./js/map.js?v=20260909_37"></script>
+  <script src="./js/app.js?v=20260909_37"></script>
 
   <!-- Failsafe preloader auto-dismiss -->
   <script>

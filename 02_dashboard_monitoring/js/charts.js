@@ -179,5 +179,133 @@ const ChartService = {
         }
       }
     });
+  },
+
+  spvMtdChartInstance: null,
+
+  /**
+   * 4. Render SPV MTD Evaluation Performance Chart (Grouped Bar: Target RPS vs #KUNJUNGAN)
+   */
+  renderSpvMtdChart(canvasEl, chartData, isDark = false) {
+    if (!canvasEl || typeof Chart === 'undefined') return;
+    try {
+      if (this.spvMtdChartInstance) {
+        this.spvMtdChartInstance.destroy();
+        this.spvMtdChartInstance = null;
+      }
+
+      const labels = (chartData && chartData.labels) || ['AGUSTUS', 'SEPTEMBER (MTD)'];
+      const rpsData = (chartData && chartData.rps) || [2000, 2000];
+      const visitData = (chartData && chartData.visits) || [2000, 1000];
+
+      const ctx = canvasEl.getContext('2d');
+      if (!ctx) return;
+
+      // Custom inline plugin to display numbers directly on top of each bar (matching Excel)
+      const spvBarLabels = {
+        id: 'spvBarLabels',
+        afterDatasetsDraw(chart) {
+          const { ctx } = chart;
+          chart.data.datasets.forEach((dataset, datasetIndex) => {
+            const meta = chart.getDatasetMeta(datasetIndex);
+            if (!meta.hidden) {
+              meta.data.forEach((bar, index) => {
+                const val = dataset.data[index];
+                if (val !== null && val !== undefined) {
+                  const formatted = Number(val).toLocaleString('id-ID');
+                  ctx.save();
+                  ctx.fillStyle = isDark ? '#f1f5f9' : '#1e293b';
+                  ctx.font = 'bold 12px Inter, system-ui, sans-serif';
+                  ctx.textAlign = 'center';
+                  ctx.textBaseline = 'bottom';
+                  ctx.fillText(formatted, bar.x, bar.y - 6);
+                  ctx.restore();
+                }
+              });
+            }
+          });
+        }
+      };
+
+      this.spvMtdChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'RPS (Target)',
+              data: rpsData,
+              backgroundColor: '#0284c7', // Sky blue / Navy
+              borderRadius: 6,
+              maxBarThickness: 55
+            },
+            {
+              label: '#KUNJUNGAN (Realisasi)',
+              data: visitData,
+              backgroundColor: '#f97316', // Orange
+              borderRadius: 6,
+              maxBarThickness: 55
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                color: isDark ? '#cbd5e1' : '#334155',
+                font: { size: 12, weight: 'bold' },
+                padding: 16,
+                usePointStyle: true,
+                pointStyle: 'rectRounded'
+              }
+            },
+            tooltip: {
+              backgroundColor: isDark ? '#1e293b' : '#ffffff',
+              titleColor: isDark ? '#f1f5f9' : '#0f172a',
+              bodyColor: isDark ? '#cbd5e1' : '#334155',
+              borderColor: isDark ? '#334155' : '#e2e8f0',
+              borderWidth: 1,
+              padding: 10,
+              cornerRadius: 8,
+              callbacks: {
+                label: function(context) {
+                  return ' ' + context.dataset.label + ': ' + Number(context.raw || 0).toLocaleString('id-ID') + ' Toko';
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: {
+                color: isDark ? '#94a3b8' : '#475569',
+                font: { size: 12, weight: 'bold' }
+              }
+            },
+            y: {
+              beginAtZero: true,
+              grace: '15%',
+              grid: {
+                color: isDark ? 'rgba(51, 65, 85, 0.5)' : 'rgba(226, 232, 240, 0.8)'
+              },
+              ticks: {
+                color: isDark ? '#94a3b8' : '#64748b',
+                font: { size: 11 }
+              }
+            }
+          }
+        },
+        plugins: [spvBarLabels]
+      });
+    } catch (err) {
+      console.warn('SPV Chart Render Warning:', err);
+    }
   }
 };
+
+// Explicitly bind ChartService to window global scope
+window.ChartService = ChartService;
+

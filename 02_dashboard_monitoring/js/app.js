@@ -11,6 +11,9 @@ function dashboardApp() {
     role: localStorage.getItem('mds_role') || 'admin', // 'admin' | 'mds'
     activeTab: 'kunjungan', // 'kunjungan' | 'absensi' | 'jadwal' | 'audit'
     showAppMenu: false, // Dropdown switcher for 5 app modules
+    showCategoryMenu: false, // Flyout Mega Menu (Alfagift style)
+    activeMegaCategory: 'operasional', // 'operasional' | 'evaluasi' | 'master' | 'laporan' | 'modul'
+    categoryMenuTimer: null,
     isLoading: true,
     loadingMessage: 'Menghubungkan ke Database Central...',
     loadingStage: 1, // 1: Connecting, 2: Fetching, 3: Processing
@@ -117,6 +120,27 @@ function dashboardApp() {
       imageCopiedSuccess: false,
       imageDownloadedSuccess: false
     },
+
+    // 6. Evaluasi Kinerja SPV & Scorecard MTD (Tab 6 - Executive Evaluation)
+    filterSpv: {
+      spv: 'ALL', // 'ALL' | 'DK' | 'LK' | 'LP'
+      month: 'CURRENT', // 'CURRENT' | '2026-09' | '2026-08' | 'ALL'
+      dateFilter: 'ALL', // 'ALL' | 'TODAY' | 'CUSTOM'
+      startDate: '',
+      endDate: '',
+      activeSubTable: 'ALL', // 'ALL' | 'TOKO' | 'DC'
+      searchQuery: '',
+      searchInput: '',
+      page: 1,
+      pageSize: 50
+    },
+    isDownloadingPng: null,
+    spvConfigs: [
+      { code: 'ALL', name: 'Semua SPV & Wilayah Nasional', spvName: 'Nasional', prefix: 'ALL' },
+      { code: 'DK', name: 'DK (Jabodetabek) - Ibnu Fazarial', spvName: 'Ibnu Fazarial', prefix: 'DK', modules: ['DK1','DK2','DK3','DK4','DK5','DK6','DK'] },
+      { code: 'LK', name: 'LK (Jawa Bali) - Dwi Amanto', spvName: 'Dwi Amanto', prefix: 'LK', modules: ['LK1','LK2','LK3','LK4','LK5','LK'] },
+      { code: 'LP', name: 'LP (Luar Pulau) - Siti Pasikha', spvName: 'Siti Pasikha', prefix: 'LP', modules: ['LP1','LP2','LP3','LP4','LP'] }
+    ],
 
     // Raw Data Stores
     visits: [],
@@ -339,10 +363,23 @@ function dashboardApp() {
       // Initialize Master Database 49k Cache from IndexedDB in background
       this.initStores49k();
 
-      // Setup Lucide icons
+      // Setup Lucide icons & Watch activeTab for Evaluasi MTD chart
       this.$nextTick(() => {
         if (window.lucide) lucide.createIcons();
       });
+
+      if (typeof this.$watch === 'function') {
+        this.$watch('activeTab', (newTab) => {
+          if (newTab === 'evaluasi') {
+            this.$nextTick(() => {
+              setTimeout(() => {
+                this.refreshSpvCharts();
+                if (window.lucide) lucide.createIcons();
+              }, 80);
+            });
+          }
+        });
+      }
 
       // Auto-save session state when user switches apps (e.g. to WhatsApp)
       window.addEventListener('pagehide', () => this.saveSessionState());
@@ -394,6 +431,8 @@ function dashboardApp() {
         this.renderJadwalRouteMap();
       } else if (this.activeTab === 'tokonasional' && this.selectedStoreForMap) {
         this.selectStoreForMap(this.selectedStoreForMap);
+      } else if (this.activeTab === 'evaluasi') {
+        this.refreshSpvCharts();
       }
     },
 
@@ -725,6 +764,9 @@ function dashboardApp() {
           if (window.lucide) lucide.createIcons();
           if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
             MapService.renderVisitsOnMap(this.filteredVisits);
+          }
+          if (this.activeTab === 'evaluasi') {
+            this.refreshSpvCharts();
           }
           setTimeout(() => {
             this.isLoading = false;
@@ -2152,9 +2194,9 @@ function dashboardApp() {
             statusColor = 'bg-slate-500/10 text-slate-400 border-slate-500/20';
           }
         } else if (visitedCount > 0) {
-          status = 'NON_RUTE';
-          statusBadge = `🔵 Non-Rute (${visitedCount} Toko)`;
-          statusColor = 'bg-sky-500/10 text-sky-500 border-sky-500/20';
+          status = 'TUNTAS_TAMBAHAN';
+          statusBadge = `🟢 ${visitedCount} Toko Selesai`;
+          statusColor = 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
         } else {
           // targetCount === 0 and visitedCount === 0 -> Belum input jadwal untuk tanggal ini
           status = 'BELUM_INPUT';
@@ -2185,10 +2227,15 @@ function dashboardApp() {
       });
 
       return results.sort((a, b) => {
-        if (a.status === 'TUNTAS' && b.status !== 'TUNTAS') return -1;
-        if (b.status === 'TUNTAS' && a.status !== 'TUNTAS') return 1;
-        if (a.status === 'ON_PROGRESS' && b.status !== 'ON_PROGRESS') return -1;
-        if (b.status === 'ON_PROGRESS' && a.status !== 'ON_PROGRESS') return 1;
+        // 1. Sort by rate descending (100% down to 0%)
+        if (b.rate !== a.rate) {
+          return b.rate - a.rate;
+        }
+        // 2. If rate is equal, sort by visited count descending
+        if (b.visitedCount !== a.visitedCount) {
+          return b.visitedCount - a.visitedCount;
+        }
+        // 3. If still equal, sort alphabetically by name
         return a.namaCrew.localeCompare(b.namaCrew);
       });
     },
@@ -2459,6 +2506,17 @@ function dashboardApp() {
             catatan: crewAbsen.catatan || ''
           } : null
         };
+      }).sort((a, b) => {
+        // 1. Sort by rate descending (100% down to 0%)
+        if (b.rate !== a.rate) {
+          return b.rate - a.rate;
+        }
+        // 2. If rate is equal, sort by visited count descending
+        if (b.visitedCount !== a.visitedCount) {
+          return b.visitedCount - a.visitedCount;
+        }
+        // 3. If still equal, sort alphabetically by name
+        return (a.namaCrew || '').localeCompare(b.namaCrew || '');
       });
     },
 
@@ -2542,6 +2600,15 @@ function dashboardApp() {
       return this.filteredVisits.slice(start, start + this.itemsPerPage);
     },
 
+    analyticsTab: 'modul', // 'modul' | 'account' | 'trend'
+
+    setAnalyticsTab(tab) {
+      this.analyticsTab = tab;
+      this.$nextTick(() => {
+        this.refreshCharts();
+      });
+    },
+
     get totalPages() {
       return Math.max(1, Math.ceil(this.filteredVisits.length / this.itemsPerPage));
     },
@@ -2551,9 +2618,13 @@ function dashboardApp() {
      */
     refreshCharts() {
       const isDark = this.theme === 'dark';
-      ChartService.renderTrendChart(document.getElementById('trend-chart'), this.filteredVisits, isDark);
-      ChartService.renderModulComparisonChart(document.getElementById('modul-chart'), this.filteredVisits, isDark);
-      ChartService.renderAccountShareChart(document.getElementById('account-chart'), this.filteredVisits, isDark);
+      const trendEl = document.getElementById('trend-chart');
+      const modulEl = document.getElementById('modul-chart');
+      const accountEl = document.getElementById('account-chart');
+
+      if (trendEl) ChartService.renderTrendChart(trendEl, this.filteredVisits, isDark);
+      if (modulEl) ChartService.renderModulComparisonChart(modulEl, this.filteredVisits, isDark);
+      if (accountEl) ChartService.renderAccountShareChart(accountEl, this.filteredVisits, isDark);
     },
 
     /**
@@ -5866,6 +5937,566 @@ function dashboardApp() {
         this.crudModal.errorMsg = err.message || 'Terjadi kesalahan saat memproses data ke Google Sheet.';
       } finally {
         this.crudModal.isSubmitting = false;
+        this.$nextTick(() => {
+          if (window.lucide) lucide.createIcons();
+        });
+      }
+    },
+
+    /**
+     * ==============================================================================
+     * TAB 6: EVALUASI KINERJA SPV & SCORECARD MTD
+     * ==============================================================================
+     */
+    executeSpvSearch() {
+      this.filterSpv.searchQuery = (this.filterSpv.searchInput || '').trim();
+      this.filterSpv.page = 1;
+      this.$nextTick(() => this.refreshSpvCharts());
+    },
+
+    clearSpvSearch() {
+      this.filterSpv.searchInput = '';
+      this.filterSpv.searchQuery = '';
+      this.filterSpv.page = 1;
+      this.$nextTick(() => this.refreshSpvCharts());
+    },
+
+    get spvEvaluationList() {
+      const normKey = (str) => {
+        if (!str) return '';
+        return String(str).toUpperCase()
+          .replace(/[\.\,\-\_\(\)\/]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .replace(/SULISTIYO/g, 'SULISTIO')
+          .trim();
+      };
+
+      // Map visits by crew
+      const visitsByCrew = {};
+      (this.visits || []).forEach(v => {
+        const cKey = normKey(v.namaCrew) || normKey(v.kodeCrew);
+        if (!cKey) return;
+        if (!visitsByCrew[cKey]) visitsByCrew[cKey] = [];
+        visitsByCrew[cKey].push(v);
+      });
+
+      // Map attendance by crew
+      const absensiByCrew = {};
+      (this.absensi || []).forEach(a => {
+        const cKey = normKey(a.namaCrew) || normKey(a.kodeCrew);
+        if (!cKey) return;
+        if (!absensiByCrew[cKey]) absensiByCrew[cKey] = [];
+        absensiByCrew[cKey].push(a);
+      });
+
+      // Map unique target stores in Master Toko
+      const targetStoresByCrew = {};
+      (this.masterToko || []).forEach(m => {
+        const cKey = normKey(m.namaCrew) || normKey(m.kodeCrew);
+        if (!cKey) return;
+        if (!targetStoresByCrew[cKey]) targetStoresByCrew[cKey] = new Set();
+        if (m.kodeToko || m.namaToko) targetStoresByCrew[cKey].add(m.kodeToko || m.namaToko);
+      });
+
+      const list = [];
+      const searchQ = (this.filterSpv.searchQuery || '').toUpperCase().trim();
+      const selSpv = this.filterSpv.spv;
+
+      (this.allAvailableCrews || []).forEach(crw => {
+        const rawName = crw.namaCrew || '';
+        const cKey = normKey(rawName);
+        const mod = (crw.modul || this.getCrewOfficialModul(rawName, 'DK1')).toUpperCase().trim();
+
+        // Determine SPV & Region
+        let spvName = 'Ibnu Fazarial';
+        let regionName = 'DK (Jabodetabek)';
+        let spvCode = 'DK';
+
+        if (mod.startsWith('LK')) {
+          spvName = 'Dwi Amanto';
+          regionName = 'LK (Jawa Bali)';
+          spvCode = 'LK';
+        } else if (mod.startsWith('LP')) {
+          spvName = 'Siti Pasikha';
+          regionName = 'LP (Luar Pulau)';
+          spvCode = 'LP';
+        }
+
+        // Apply SPV Filter
+        if (selSpv !== 'ALL' && spvCode !== selSpv) return;
+
+        // Apply Search Filter
+        if (searchQ) {
+          const match = rawName.toUpperCase().includes(searchQ) ||
+                        mod.includes(searchQ) ||
+                        spvName.toUpperCase().includes(searchQ) ||
+                        (crw.kodeCrew && crw.kodeCrew.toUpperCase().includes(searchQ));
+          if (!match) return;
+        }
+
+        // Get crew visits
+        const myVisits = visitsByCrew[cKey] || [];
+        const myAbsensi = absensiByCrew[cKey] || [];
+
+        // Count Toko vs DC visits (1 toko 1x untuk evaluasi toko reguler)
+        let storeVisits = 0;
+        let dcVisits = 0;
+        const visitedStoreSet = new Set();
+        myVisits.forEach(v => {
+          const acc = (v.account || '').toUpperCase();
+          const storeName = (v.namaToko || '').toUpperCase();
+          if (acc.includes('DC') || storeName.includes('DC') || storeName.includes('GUDANG') || storeName.includes('DISTRIBUTION')) {
+            dcVisits++;
+          } else {
+            const sId = (v.kodeToko || '').trim() || (v.namaToko || '').trim();
+            if (sId) visitedStoreSet.add(sId);
+            storeVisits++;
+          }
+        });
+
+        // Attendance stats — absensi uses `waktu` + `status` per event record
+        // MASUK = check-in, PULANG = check-out (separate rows per event)
+        let jamMasuk = '-';
+        let jamPulang = '-';
+        let jamKerja = 0;
+
+        if (myAbsensi.length > 0) {
+          // Tanggal terbaru / hari berjalan dalam database absensi
+          const latestAbsenIso = (this.absensi && this.absensi[0] && this.absensi[0]._iso) || '';
+
+          // Cari record MASUK & PULANG khusus untuk tanggal hari berjalan (Hari Ini)
+          const recMasuk = myAbsensi.find(a => {
+            if (latestAbsenIso && a._iso && a._iso !== latestAbsenIso) return false;
+            const st = (a.status || '').toUpperCase();
+            return st === 'MASUK' || st.includes('DATANG') || st.includes('HADIR');
+          });
+          const recPulang = myAbsensi.find(a => {
+            if (latestAbsenIso && a._iso && a._iso !== latestAbsenIso) return false;
+            const st = (a.status || '').toUpperCase();
+            return st === 'PULANG' || st.includes('PULANG');
+          });
+
+          // Helper: normalize waktu "H:MM:SS" → "HH:MM"
+          const fmtWaktu = (w) => {
+            if (!w) return '-';
+            const parts = String(w).split(':');
+            if (parts.length >= 2) {
+              return `${String(parseInt(parts[0], 10)).padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+            }
+            return w;
+          };
+
+          if (recMasuk) jamMasuk = fmtWaktu(recMasuk.waktu);
+          if (recPulang) jamPulang = fmtWaktu(recPulang.waktu);
+
+          // If no PULANG yet (still working), estimate based on typical 9h
+          // Calculate jam kerja
+          try {
+            if (jamMasuk !== '-' && jamPulang !== '-') {
+              const pIn = jamMasuk.split(':');
+              const pOut = jamPulang.split(':');
+              if (pIn.length >= 2 && pOut.length >= 2) {
+                const hIn = parseInt(pIn[0], 10) + parseInt(pIn[1], 10) / 60;
+                const hOut = parseInt(pOut[0], 10) + parseInt(pOut[1], 10) / 60;
+                if (hOut > hIn) {
+                  jamKerja = Math.round((hOut - hIn) * 10) / 10;
+                }
+              }
+            } else if (jamMasuk !== '-') {
+              // Masuk tapi belum pulang — hitung sampai sekarang
+              const pIn = jamMasuk.split(':');
+              const now = new Date();
+              const hIn = parseInt(pIn[0], 10) + parseInt(pIn[1], 10) / 60;
+              const hNow = now.getHours() + now.getMinutes() / 60;
+              if (hNow > hIn) {
+                jamKerja = Math.round((hNow - hIn) * 10) / 10;
+              }
+            }
+          } catch (e) {}
+        }
+
+        // Targets: Total toko yang sudah di-input oleh MDS di Master Toko (RPS)
+        const uniqueTargets = (targetStoresByCrew[cKey] && targetStoresByCrew[cKey].size) || 0;
+        const rpsToko = uniqueTargets > 0 ? uniqueTargets : (storeVisits || 1);
+        const rpsDc = 4;     // Standar target bulanan 4 DC
+
+        // Realisasi Evaluasi Kunjungan Reguler: 1 toko 1x (toko unik yang sudah terkunjungi)
+        const kunjunganTokoUnik = visitedStoreSet.size;
+        const pctToko = Math.min(100, Math.round((kunjunganTokoUnik / rpsToko) * 100));
+        const pctDc = Math.min(100, Math.round((dcVisits / rpsDc) * 100));
+
+        list.push({
+          region: regionName,
+          spvCode: spvCode,
+          spvName: spvName,
+          namaMds: rawName,
+          kodeCrew: crw.kodeCrew || '-',
+          modul: mod,
+          absenMasuk: jamMasuk,
+          absenPulang: jamPulang,
+          jamKerja: jamKerja,
+          rpsToko: rpsToko,
+          kunjunganToko: kunjunganTokoUnik,
+          kunjunganRaw: storeVisits,
+          pctToko: pctToko,
+          rpsDc: rpsDc,
+          kunjunganDc: dcVisits,
+          pctDc: pctDc
+        });
+      });
+
+      // Sort by % Target Toko descending
+      return list.sort((a, b) => b.pctToko - a.pctToko || b.kunjunganToko - a.kunjunganToko || a.namaMds.localeCompare(b.namaMds));
+    },
+
+    get spvSummary() {
+      const list = this.spvEvaluationList || [];
+      const totalMds = list.length;
+      if (totalMds === 0) {
+        return {
+          totalMds: 0,
+          totalRpsToko: 0,
+          totalKunjunganToko: 0,
+          avgPctToko: 0,
+          totalRpsDc: 0,
+          totalKunjunganDc: 0,
+          avgPctDc: 0,
+          avgJamKerja: 0
+        };
+      }
+
+      let sumRpsToko = 0;
+      let sumKunjToko = 0;
+      let sumPctToko = 0;
+      let sumRpsDc = 0;
+      let sumKunjDc = 0;
+      let sumPctDc = 0;
+      let sumJamKerja = 0;
+
+      list.forEach(item => {
+        sumRpsToko += item.rpsToko;
+        sumKunjToko += item.kunjunganToko;
+        sumPctToko += item.pctToko;
+        sumRpsDc += item.rpsDc;
+        sumKunjDc += item.kunjunganDc;
+        sumPctDc += item.pctDc;
+        sumJamKerja += (item.jamKerja || 9);
+      });
+
+      return {
+        totalMds: totalMds,
+        totalRpsToko: sumRpsToko,
+        totalKunjunganToko: sumKunjToko,
+        avgPctToko: Math.round(sumPctToko / totalMds),
+        totalRpsDc: sumRpsDc,
+        totalKunjunganDc: sumKunjDc,
+        avgPctDc: Math.round(sumPctDc / totalMds),
+        avgJamKerja: Math.round((sumJamKerja / totalMds) * 10) / 10
+      };
+    },
+
+    refreshSpvCharts() {
+      try {
+        const isDark = this.theme === 'dark';
+        const el = document.getElementById('spv-mtd-chart');
+        if (!el) return;
+
+        const summary = this.spvSummary || {};
+        const allVisits = this.visits || [];
+        const selSpv = this.filterSpv.spv;
+
+        // Indonesian month names
+        const BULAN_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+
+        // Count store visits per month from actual data, filtered by SPV if needed
+        const visitsByMonth = {};
+        allVisits.forEach(v => {
+          // SPV filter
+          if (selSpv !== 'ALL') {
+            const mod = (v.modul || '').toUpperCase();
+            const isLK = mod.startsWith('LK');
+            const isLP = mod.startsWith('LP');
+            if (selSpv === 'LK' && !isLK) return;
+            if (selSpv === 'LP' && !isLP) return;
+            if (selSpv === 'DK' && (isLK || isLP)) return;
+          }
+
+          // Exclude DC visits from chart (only count store/toko visits)
+          const acc = (v.account || '').toUpperCase();
+          const storeName = (v.namaToko || '').toUpperCase();
+          if (acc.includes('DC') || storeName.includes('DC') || storeName.includes('GUDANG') || storeName.includes('DISTRIBUTION')) return;
+
+          // Get month key YYYY-MM — use normalizeIsoDate for all format variants
+          const rawDate = v.dateIso || v.date || v.tanggal || '';
+          const isoDate = this.normalizeIsoDate(rawDate); // handles M/D/YYYY, DD/MM/YYYY, YYYY-MM-DD etc.
+          if (!isoDate || isoDate.length < 7) return;
+          const monthKey = isoDate.slice(0, 7); // e.g. "2026-09"
+
+          visitsByMonth[monthKey] = (visitsByMonth[monthKey] || 0) + 1;
+        });
+
+        // Sort months chronologically
+        const sortedMonths = Object.keys(visitsByMonth).sort();
+
+        if (sortedMonths.length === 0) {
+          // Fallback: show single bar with current data from spvSummary
+          const now = new Date();
+          const curLabel = `${BULAN_ID[now.getMonth()]} ${now.getFullYear()} (MTD)`;
+          const cs = window.ChartService || (typeof ChartService !== 'undefined' ? ChartService : null);
+          if (cs && typeof cs.renderSpvMtdChart === 'function') {
+            cs.renderSpvMtdChart(el, {
+              labels: [curLabel],
+              rps: [summary.totalRpsToko || 0],
+              visits: [summary.totalKunjunganToko || 0]
+            }, isDark);
+          }
+          return;
+        }
+
+        // Build labels and data arrays
+        const labels = [];
+        const rpsValues = [];
+        const visitValues = [];
+
+        // Target RPS Toko dari akumulasi toko yang di-input MDS (summary.totalRpsToko)
+        const totalRpsTarget = summary.totalRpsToko || 0;
+
+        sortedMonths.forEach((mk, idx) => {
+          const [yr, mo] = mk.split('-');
+          const isLast = idx === sortedMonths.length - 1;
+          const label = `${BULAN_ID[parseInt(mo, 10) - 1]} ${yr}${isLast ? ' (MTD)' : ''}`;
+          labels.push(label);
+          rpsValues.push(totalRpsTarget);
+          visitValues.push(isLast && summary.totalKunjunganToko ? summary.totalKunjunganToko : visitsByMonth[mk]);
+        });
+
+        const cs = window.ChartService || (typeof ChartService !== 'undefined' ? ChartService : null);
+        if (cs && typeof cs.renderSpvMtdChart === 'function') {
+          cs.renderSpvMtdChart(el, { labels, rps: rpsValues, visits: visitValues }, isDark);
+        }
+      } catch (err) {
+        console.warn('refreshSpvCharts warning:', err);
+      }
+    },
+
+    exportSpvEvaluationToCSV() {
+      const list = this.spvEvaluationList || [];
+      if (list.length === 0) {
+        alert('Tidak ada data evaluasi SPV untuk di-export.');
+        return;
+      }
+
+      const rows = [
+        ['EVALUASI KINERJA SPV & MTD KUNJUNGAN MDS'],
+        ['Filter SPV:', this.filterSpv.spv, 'Tanggal Export:', new Date().toLocaleString('id-ID')],
+        [],
+        ['=== 1. HARI TOKO ==='],
+        ['REGION/AREA', 'SPV', 'NAMA MDS', 'MODUL', 'ABSEN MASUK', 'ABSEN PULANG', 'JAM KERJA', 'RPS (TARGET)', '#KUNJUNGAN', '% TARGET'],
+      ];
+
+      list.forEach(item => {
+        rows.push([
+          `"${item.region}"`,
+          `"${item.spvName}"`,
+          `"${item.namaMds}"`,
+          `"${item.modul}"`,
+          `"${item.absenMasuk}"`,
+          `"${item.absenPulang}"`,
+          `${item.jamKerja} Jam`,
+          item.rpsToko,
+          item.kunjunganToko,
+          `${item.pctToko}%`
+        ]);
+      });
+
+      const sum = this.spvSummary;
+      rows.push([
+        'TOTAL (AVG)',
+        '-',
+        `${sum.totalMds} MDS`,
+        '-',
+        '-',
+        '-',
+        `${sum.avgJamKerja} Jam`,
+        sum.totalRpsToko,
+        sum.totalKunjunganToko,
+        `${sum.avgPctToko}%`
+      ]);
+
+      rows.push([]);
+      rows.push(['=== 2. HARI DC ===']);
+      rows.push(['REGION/AREA', 'SPV', 'NAMA MDS', 'MODUL', 'ABSEN MASUK', 'ABSEN PULANG', 'JAM KERJA', 'RPS DC (TARGET)', '#KUNJUNGAN DC', '% TARGET DC']);
+
+      list.forEach(item => {
+        rows.push([
+          `"${item.region}"`,
+          `"${item.spvName}"`,
+          `"${item.namaMds}"`,
+          `"${item.modul}"`,
+          `"${item.absenMasuk}"`,
+          `"${item.absenPulang}"`,
+          `${item.jamKerja} Jam`,
+          item.rpsDc,
+          item.kunjunganDc,
+          `${item.pctDc}%`
+        ]);
+      });
+
+      rows.push([
+        'TOTAL (AVG)',
+        '-',
+        `${sum.totalMds} MDS`,
+        '-',
+        '-',
+        '-',
+        `${sum.avgJamKerja} Jam`,
+        sum.totalRpsDc,
+        sum.totalKunjunganDc,
+        `${sum.avgPctDc}%`
+      ]);
+
+      const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + rows.map(e => e.join(',')).join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `Evaluasi_SPV_MTD_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    },
+
+    async downloadTableAsPng(elementId, baseName) {
+      const cardEl = document.getElementById(elementId);
+      if (!cardEl) return;
+      if (!window.html2canvas) {
+        alert('Library html2canvas belum selesai dimuat. Silakan refresh halaman.');
+        return;
+      }
+
+      const isDc = elementId.includes('dc');
+      const btnKey = isDc ? 'dc' : 'toko';
+      const tableTitle = isDc ? 'HARI DC (Kunjungan Gudang/DC)' : 'HARI TOKO (Kunjungan Reguler)';
+      
+      this.isDownloadingPng = {
+        key: btnKey,
+        tableName: tableTitle,
+        status: 'Sedang merender seluruh baris tabel...'
+      };
+
+      if (window.lucide) {
+        this.$nextTick(() => { window.lucide.createIcons(); });
+      }
+
+      // Beri browser jeda 120ms agar tampilan modal overlay ter-render sempurna
+      await new Promise(resolve => setTimeout(resolve, 120));
+
+      try {
+        const isDark = document.documentElement.classList.contains('dark');
+
+        // Simpan state overflow asli
+        const scrollableDiv = cardEl.querySelector('.overflow-x-auto');
+        const origOverflow = scrollableDiv ? scrollableDiv.style.overflow : '';
+        if (scrollableDiv) {
+          scrollableDiv.style.overflow = 'visible';
+        }
+
+        // Render via html2canvas HD (2x scale)
+        const canvas = await html2canvas(cardEl, {
+          scale: 2, // 2x Resolution for crisp text
+          backgroundColor: isDark ? '#0f172a' : '#ffffff',
+          useCORS: true,
+          logging: false,
+          scrollX: 0,
+          scrollY: 0,
+          ignoreElements: (element) => element.classList && element.classList.contains('no-export')
+        });
+
+        if (scrollableDiv) {
+          scrollableDiv.style.overflow = origOverflow;
+        }
+
+        if (this.isDownloadingPng) {
+          this.isDownloadingPng.status = 'Menyimpan file ke perangkat...';
+        }
+
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+        const spvCode = (this.filterSpv && this.filterSpv.spv) || 'ALL';
+        const filename = `${baseName}_${spvCode}_${dateStr}.png`;
+
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = canvas.toDataURL('image/png');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Sedikit delay agar user melihat proses selesai & browser download handler aktif
+        await new Promise(resolve => setTimeout(resolve, 400));
+      } catch (err) {
+        console.error('Failed to export table as PNG:', err);
+        alert('Gagal mendownload gambar tabel: ' + (err.message || err));
+      } finally {
+        this.isDownloadingPng = null;
+        if (window.lucide) {
+          setTimeout(() => window.lucide.createIcons(), 50);
+        }
+      }
+    },
+
+    // =========================================================================
+    // CATEGORY MEGA MENU (ALFAGIFT STYLE) METHODS
+    // =========================================================================
+    openCategoryMenu() {
+      if (this.categoryMenuTimer) {
+        clearTimeout(this.categoryMenuTimer);
+        this.categoryMenuTimer = null;
+      }
+      this.showCategoryMenu = true;
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+
+    scheduleCloseCategoryMenu() {
+      if (this.categoryMenuTimer) clearTimeout(this.categoryMenuTimer);
+      this.categoryMenuTimer = setTimeout(() => {
+        this.showCategoryMenu = false;
+        this.categoryMenuTimer = null;
+      }, 250);
+    },
+
+    cancelCloseCategoryMenu() {
+      if (this.categoryMenuTimer) {
+        clearTimeout(this.categoryMenuTimer);
+        this.categoryMenuTimer = null;
+      }
+    },
+
+    toggleCategoryMenu() {
+      this.showCategoryMenu = !this.showCategoryMenu;
+      if (this.showCategoryMenu) {
+        this.$nextTick(() => {
+          if (window.lucide) lucide.createIcons();
+        });
+      }
+    },
+
+    navigateToTab(tabName, subTab = null) {
+      this.activeTab = tabName;
+      if (tabName === 'laporan' && subTab) {
+        this.reportTableSubTab = subTab;
+        if (subTab === 'anomali' && this.anomalyModal) {
+          this.anomalyModal.activeTab = 'absen_no_visit';
+        }
+      }
+      this.showCategoryMenu = false;
+      if (tabName === 'evaluasi') {
+        setTimeout(() => {
+          this.refreshSpvCharts();
+          if (window.lucide) lucide.createIcons();
+        }, 100);
+      } else {
         this.$nextTick(() => {
           if (window.lucide) lucide.createIcons();
         });
