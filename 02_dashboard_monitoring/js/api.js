@@ -180,7 +180,9 @@ const ApiService = {
     });
 
     const results = await Promise.all(promises);
-    return results.flat();
+    const flatVisits = results.flat();
+    console.log(`%c[Sync Kunjungan]%c Berhasil mengunduh total ${flatVisits.length} data kunjungan dari ${targetModules.length} cabang (${targetModules.map(m=>m.modKey).join(', ')})`, 'background:#0284c7;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#38bdf8;');
+    return flatVisits;
   },
 
   parseVisitsRows(csvText, defaultModul) {
@@ -316,7 +318,9 @@ const ApiService = {
     });
 
     const results = await Promise.all(promises);
-    return results.flat();
+    const flatAbs = results.flat();
+    console.log(`%c[Sync Absensi]%c Berhasil mengunduh total ${flatAbs.length} log absensi dari 3 regional (DK, LK, LP)`, 'background:#059669;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#34d399;');
+    return flatAbs;
   },
 
   parseAbsensiRows(csvText, defaultModul) {

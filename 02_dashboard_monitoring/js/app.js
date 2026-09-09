@@ -31,6 +31,12 @@ function dashboardApp() {
     searchInputText: '',
     searchQuery: '',
     selectedCrew: '',
+    selectedCrews: [], // Applied Multi-selected MDS names (e.g. ['AHMAD GHOZALI', 'ABDUL KHOLIK'])
+    tempSelectedCrews: [], // Temporary selection inside dropdown (Staged until "Done" clicked)
+    crewDropdownOpen: false, // Dropdown popover open/close state
+    crewDropdownSearch: '', // Search text inside the crew dropdown popover
+    expandedCrews: {}, // State map for expandable cards: { crewKey: true/false }
+    viewModeTab1: 'CARDS', // 'CARDS' | 'TABLE' (Switchable view mode)
 
     // 2. Filters Tab 2: Absensi Tim (Independent Scoped Filter)
     filterAbsensi: {
@@ -90,6 +96,7 @@ function dashboardApp() {
     reportViewMode: 'TABLE', // 'TABLE' | 'BROADCAST'
     reportTableSubTab: 'rute', // 'rute' | 'jadwal' | 'absen' | 'anomali'
     reportTableFilter: {
+      searchInput: '',
       searchQuery: '',
       region: 'ALL', // 'ALL' | 'JABODETABEK' | 'JABAR' | 'JATENG' | 'JATIM_BALI' | 'LUAR_JAWA'
       statusCategory: 'ALL',
@@ -560,37 +567,23 @@ function dashboardApp() {
       }
 
       try {
-        // Determine parameters based on filter
-        let visitParams = {
-          modul: this.selectedModul,
-          limit: 3000
-        };
-
         if (this.selectedPeriod === 'LIVE') {
-          if (this.dateFilter === 'TODAY') {
-            visitParams.date = 'TODAY';
-          } else if ((this.dateFilter === 'YESTERDAY' || this.dateFilter === 'CUSTOM') && this.startDate && this.endDate) {
-            visitParams.startDate = this.startDate;
-            visitParams.endDate = this.endDate;
-          }
-          
           if (showLoader) {
             this.loadingStage = 2;
             this.loadingMessage = 'Mengunduh data Kunjungan, Absensi & Master Rute...';
           }
 
+          // Clear in-memory API cache on explicit refresh
+          ApiService.memoryCache.clear();
+
           // Always fetch fresh Master Toko & Master User from live spreadsheets
           const masterTokoPromise = ApiService.getMasterToko({ modul: 'ALL' });
           const masterUserPromise = ApiService.getMasterUser({ modul: 'ALL' });
 
-          // Fetch Live Data in parallel (< 1.5s)
+          // Fetch Live Data in parallel (< 1.5s) across all 15 branch sheets + 3 absensi sheets
           const [visitsData, absensiData, masterTokoData, masterUserData] = await Promise.all([
-            ApiService.getVisits(visitParams),
-            ApiService.getAbsensi({ 
-              date: (this.dateFilter === 'TODAY' ? 'TODAY' : ''),
-              startDate: (this.dateFilter === 'YESTERDAY' || this.dateFilter === 'CUSTOM') ? this.startDate : '',
-              endDate: (this.dateFilter === 'YESTERDAY' || this.dateFilter === 'CUSTOM') ? this.endDate : ''
-            }),
+            ApiService.getVisits({ modul: 'ALL' }),
+            ApiService.getAbsensi({ modul: 'ALL' }),
             masterTokoPromise,
             masterUserPromise
           ]);
@@ -605,6 +598,8 @@ function dashboardApp() {
             this.masterUser = masterUserData;
             if (window.DashboardDB) DashboardDB.set('master_user', masterUserData);
           }
+
+          console.log(`%c[Data Sync Selesai]%c Visits: ${this.visits.length} baris | Absensi: ${this.absensi.length} baris | Master Toko: ${this.masterToko.length} toko | Master User: ${this.masterUser.length} personil`, 'background:#4338ca;color:white;padding:3px 8px;border-radius:4px;font-weight:bold;', 'color:#818cf8;');
 
         } else {
           // Fetch Archive Snapshot File
@@ -770,9 +765,26 @@ function dashboardApp() {
     },
 
     /**
+     * Helper: Get Today's Date in Local Client Timezone (ISO YYYY-MM-DD)
+     */
+    getTodayIso() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    },
+
+    /**
+     * Helper: Get Yesterday's Date in Local Client Timezone (ISO YYYY-MM-DD)
+     */
+    getYesterdayIso() {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    },
+
+    /**
      * Helper: Normalize Any Date String / Timestamp to ISO YYYY-MM-DD
      */
-    normalizeIsoDate(val, hariKe = '') {
+    normalizeIsoDate(val) {
       if (!val) return '';
       const s = String(val).trim();
       // Already ISO format: 2026-09-05
@@ -788,10 +800,6 @@ function dashboardApp() {
           if (y.length === 4) {
             // Google Sheets export default format is M/D/YYYY (p0 is Month, p1 is Day)
             if (p0 <= 12 && p1 <= 31) {
-              // If hariKe is given and matches p0, then p0 was day (D/M/YYYY)
-              if (hariKe && parseInt(hariKe, 10) === p0 && p0 !== p1) {
-                return `${y}-${String(p1).padStart(2, '0')}-${String(p0).padStart(2, '0')}`;
-              }
               return `${y}-${String(p0).padStart(2, '0')}-${String(p1).padStart(2, '0')}`;
             }
             // If p0 > 12, p0 is Day (D/M/YYYY)
@@ -893,7 +901,7 @@ function dashboardApp() {
 
       if (this.visits && this.visits.length > 0) {
         this.visits.forEach(v => {
-          const iso = this.normalizeIsoDate(v.dateIso || v.date || v.tanggal, v.hariKe);
+          const iso = this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
           v._iso = iso;
           v._officialModul = this.getCrewOfficialModul(v.namaCrew || v.kodeCrew, v.modul || v.prefix);
           v._accUpper = (v.account || '').toUpperCase();
@@ -940,6 +948,14 @@ function dashboardApp() {
           return timeB.localeCompare(timeA);
         });
       }
+
+      // Log summary date distribution for quick developer console verification
+      const vDates = {};
+      (this.visits || []).forEach(v => { if (v._iso) vDates[v._iso] = (vDates[v._iso] || 0) + 1; });
+      const aDates = {};
+      (this.absensi || []).forEach(a => { if (a._iso) aDates[a._iso] = (aDates[a._iso] || 0) + 1; });
+      console.log(`%c[Data Kunjungan Ready]%c Total: ${(this.visits || []).length} baris | Distribusi Tanggal:`, 'background:#6366f1;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#a5b4fc;', vDates);
+      console.log(`%c[Data Absensi Ready]%c Total: ${(this.absensi || []).length} baris | Distribusi Tanggal:`, 'background:#10b981;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#6ee7b7;', aDates);
 
       if (this.masterToko && this.masterToko.length > 0) {
         this.masterToko.forEach(m => {
@@ -1016,8 +1032,15 @@ function dashboardApp() {
         data = data.filter(v => (v._accUpper || (v.account || '').toUpperCase()).includes(selAcc));
       }
 
-      // 4. Filter by Selected Crew / Search Query
-      if (this.selectedCrew) {
+      // 4. Filter by Selected Crew / Multi-Selected Crews / Search Query
+      if (this.selectedCrews && this.selectedCrews.length > 0) {
+        const selCrewsUpper = new Set(this.selectedCrews.map(c => String(c).toUpperCase().trim()));
+        data = data.filter(v => {
+          const cName = (v.namaCrew || '').toUpperCase().trim();
+          const cCode = (v.kodeCrew || '').toUpperCase().trim();
+          return selCrewsUpper.has(cName) || selCrewsUpper.has(cCode);
+        });
+      } else if (this.selectedCrew) {
         const selCrew = this.selectedCrew.toUpperCase().trim();
         data = data.filter(v => {
           const cName = (v.namaCrew || '').toUpperCase().trim();
@@ -1097,9 +1120,23 @@ function dashboardApp() {
         }
       }
 
-      // 3. Filter by Search Query
+      // 3. Filter by Selected Crew / Multi-Selected Crews / Search Query
       const q = (f.searchQuery || '').toUpperCase().trim();
-      if (q) {
+      if (this.selectedCrews && this.selectedCrews.length > 0) {
+        const selCrewsUpper = new Set(this.selectedCrews.map(c => String(c).toUpperCase().trim()));
+        data = data.filter(a => {
+          const cName = (a.namaCrew || '').toUpperCase().trim();
+          const cCode = (a.kodeCrew || '').toUpperCase().trim();
+          return selCrewsUpper.has(cName) || selCrewsUpper.has(cCode);
+        });
+      } else if (this.selectedCrew) {
+        const selCrew = this.selectedCrew.toUpperCase().trim();
+        data = data.filter(a => {
+          const cName = (a.namaCrew || '').toUpperCase().trim();
+          const cCode = (a.kodeCrew || '').toUpperCase().trim();
+          return cName === selCrew || cCode === selCrew;
+        });
+      } else if (q) {
         data = data.filter(a =>
           (a.namaCrew || '').toUpperCase().includes(q) ||
           (a.kodeCrew || '').toUpperCase().includes(q) ||
@@ -1777,9 +1814,9 @@ function dashboardApp() {
     },
 
     /**
-     * Helper: Determine Active Route Match Set (Supports both Weekly Workdays 1..6 and Calendar Dates 1..31)
+     * Determine Active Target Date based on Date Filter
      */
-    getActiveRouteMatchList() {
+    getActiveTargetDate() {
       let targetDate = new Date();
       if (this.dateFilter === 'YESTERDAY') {
         targetDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -1793,33 +1830,61 @@ function dashboardApp() {
         if (!this.endDate || this.startDate === this.endDate) {
           targetDate = new Date(this.startDate);
         } else {
-          return null; // Multi-day range: match all stores
+          return null; // Multi-day range: all match
         }
       } else if (this.dateFilter === '7_DAYS' || this.dateFilter === 'THIS_MONTH') {
-        return null; // Multi-day range: match all stores
+        return null; // Multi-day range: all match
       }
+      return targetDate;
+    },
 
-      // Convert to Asia/Jakarta (WIB)
-      let wibIso = '';
-      try {
-        wibIso = targetDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' }); // "YYYY-MM-DD"
-      } catch (e) {
-        wibIso = targetDate.toISOString().slice(0, 10);
+    /**
+     * Strict Calendar Date Route Matcher (1..31: Tanggal 9 = Rute 9, Tanggal 17 = Rute 17, etc.)
+     */
+    getCrewTargetRouteSet(routesSet, targetDate = new Date()) {
+      if (!targetDate) return null; // Multi-day range: match all stores
+      
+      const calDay = targetDate.getDate(); // 1..31 (Tanggal Kalender)
+      const targetSet = new Set();
+      
+      targetSet.add(String(calDay));
+      targetSet.add(String(calDay).padStart(2, '0'));
+      targetSet.add('R' + calDay);
+      targetSet.add('R' + String(calDay).padStart(2, '0'));
+      targetSet.add('RUTE ' + calDay);
+      targetSet.add('RUTE ' + String(calDay).padStart(2, '0'));
+      targetSet.add('RUTE-' + calDay);
+      targetSet.add('RUTE-' + String(calDay).padStart(2, '0'));
+      targetSet.add('TGL ' + calDay);
+      targetSet.add('TGL ' + String(calDay).padStart(2, '0'));
+      targetSet.add('HARI ' + calDay);
+      targetSet.add('HARI ' + String(calDay).padStart(2, '0'));
+
+      return targetSet;
+    },
+
+    /**
+     * Active Route Match Set for Current Filter Date
+     */
+    getActiveRouteMatchList() {
+      const targetDate = this.getActiveTargetDate();
+      if (!targetDate) return null;
+      return this.getCrewTargetRouteSet(null, targetDate);
+    },
+
+    /**
+     * Flexible Route String Matcher
+     */
+    isRouteMatched(ruteStr, routeMatchSet) {
+      if (!routeMatchSet || routeMatchSet.size === 0) return true;
+      if (!ruteStr) return false;
+      const clean = String(ruteStr).toUpperCase().trim();
+      if (routeMatchSet.has(clean)) return true;
+      for (const target of routeMatchSet) {
+        if (clean === target) return true;
+        if (clean.endsWith(' ' + target) || clean.endsWith('-' + target) || clean.startsWith(target + ' ') || clean.startsWith(target + '-')) return true;
       }
-
-      const parts = wibIso.split('-');
-      const calDay = parseInt(parts[2], 10); // 1..31 (Tanggal Kalender)
-
-      const matchSet = new Set();
-      if (!isNaN(calDay)) {
-        matchSet.add(String(calDay));
-        matchSet.add(String(calDay).padStart(2, '0'));
-        matchSet.add('R' + calDay);
-        matchSet.add('RUTE ' + calDay);
-        matchSet.add('RUTE-' + calDay);
-      }
-
-      return matchSet;
+      return false;
     },
 
     getActiveRuteNumber() {
@@ -1831,6 +1896,28 @@ function dashboardApp() {
       } catch (e) {
         return String(new Date().getDate());
       }
+    },
+
+    /**
+     * Filtered Compliance List (Scoped by Selected Crew / Search Query)
+     */
+    get filteredComplianceList() {
+      let list = this.complianceList || [];
+      if (this.selectedCrews && this.selectedCrews.length > 0) {
+        const selCrewsUpper = new Set(this.selectedCrews.map(c => String(c).toUpperCase().trim()));
+        list = list.filter(c => selCrewsUpper.has((c.namaCrew || '').toUpperCase().trim()) || selCrewsUpper.has((c.kodeCrew || '').toUpperCase().trim()));
+      } else if (this.selectedCrew) {
+        const selCrew = this.selectedCrew.toUpperCase().trim();
+        list = list.filter(c => (c.namaCrew || '').toUpperCase().trim() === selCrew || (c.kodeCrew || '').toUpperCase().trim() === selCrew);
+      } else if (this.searchQuery && this.searchQuery.trim()) {
+        const q = this.searchQuery.toUpperCase().trim();
+        list = list.filter(c => 
+          (c.namaCrew || '').toUpperCase().includes(q) ||
+          (c.kodeCrew || '').toUpperCase().includes(q) ||
+          (c.modul || '').toUpperCase().includes(q)
+        );
+      }
+      return list;
     },
 
     /**
@@ -1852,31 +1939,34 @@ function dashboardApp() {
           .trim();
       };
 
-      // Official scheduled crews strictly from Master User
-      const userList = (this.filteredMasterUser && this.filteredMasterUser.length > 0) ? this.filteredMasterUser : [];
-      const distinctScheduled = new Set(userList.map(u => normKey(u.nama) || normKey(u.id)).filter(Boolean)).size;
-      const scheduled = distinctScheduled > 0 ? distinctScheduled : uniqueCrews;
-      const inactiveCrewsCount = Math.max(0, scheduled - uniqueCrews);
+      // Scoped compliance list (reflecting any active search / crew filter)
+      const compList = this.filteredComplianceList || [];
+      const scheduled = compList.length > 0 ? compList.length : uniqueCrews;
+      const inactiveCrewsCount = compList.filter(c => c.visitedCount === 0 && !c.isVisitDc).length;
 
-      const activeRute = this.getActiveRuteNumber();
+      const routeMatchSet = this.getActiveRouteMatchList();
       let totalTarget = 0;
 
-      if (activeRute) {
-        // Daily Mode: Calculate exact sum of target stores from all scheduled crews for this day
-        totalTarget = this.complianceList.reduce((sum, c) => sum + (c.targetCount || 0), 0);
+      if (routeMatchSet && routeMatchSet.size > 0) {
+        // Daily Mode: Exact sum of scheduled target stores for the active day across filtered crews
+        totalTarget = compList.reduce((sum, c) => sum + (c.targetCount || 0), 0);
       } else {
-        // Weekly / Monthly Mode: Target is all scheduled stores in master
-        totalTarget = this.filteredMasterToko.length || 1;
+        // Multi-day / Monthly Mode: Sum of all unique stores in master for filtered crews
+        totalTarget = compList.reduce((sum, c) => sum + (c.targetCount || 0), 0);
+        if (totalTarget === 0 && this.filteredMasterToko) {
+          totalTarget = this.filteredMasterToko.length || 1;
+        }
       }
 
-      const validatedTargetVisits = this.complianceList.reduce((sum, c) => sum + Math.min(c.visitedCount || 0, c.targetCount || 0), 0);
-      const achievementRate = totalTarget > 0 ? Math.min(100, Math.round((validatedTargetVisits / totalTarget) * 100)) : (totalVisits > 0 ? 100 : 0);
+      // Validated target visits: sum of visited stores for each crew
+      const totalVisitedStores = compList.reduce((sum, c) => sum + (c.visitedCount || 0), 0) || uniqueStores;
+      const achievementRate = totalTarget > 0 ? Math.min(100, Math.round((totalVisitedStores / totalTarget) * 100)) : (totalVisits > 0 ? 100 : 0);
       
-      // Absensi Kehadiran Terfilter (Jumlah personil yang absen masuk pada tanggal & modul aktif)
+      // Absensi Kehadiran Terfilter
       const aData = this.filteredAbsensi;
       const hadirList = aData.filter(a => {
         const st = (a.status || '').toUpperCase();
-        return st === 'MASUK' || st === 'HADIR';
+        return st.includes('MASUK') || st.includes('HADIR') || st.includes('IN');
       });
       const hadirCount = new Set(hadirList.map(a => (a.namaCrew || a.kodeCrew || '').toUpperCase().trim()).filter(Boolean)).size || hadirList.length;
 
@@ -1927,6 +2017,7 @@ function dashboardApp() {
             namaCrew: rawName.trim().toUpperCase(),
             kodeCrew: (rawId || '-').trim().toUpperCase(),
             modul: mod,
+            allRoutes: new Set(),
             targetStores: new Set(),
             allStores: new Set(),
             visitedStores: new Set(),
@@ -1945,17 +2036,27 @@ function dashboardApp() {
         return key && crewMap[key] ? crewMap[key] : null;
       };
 
-      // 2. Map Target Stores from Master Toko ONLY to existing Official Master Users
+      // 2. Pass 1: Collect all assigned routes for each official crew
+      this.masterToko.forEach(m => {
+        const crewObj = findOfficialCrew(m.namaCrew, m.kodeCrew);
+        if (!crewObj) return;
+        if (m.rute) crewObj.allRoutes.add(String(m.rute).trim().toUpperCase());
+      });
+
+      // Pass 2: Map Target Stores from Master Toko ONLY based on crew's specific schedule pattern
+      const targetDate = this.getActiveTargetDate();
       this.masterToko.forEach(m => {
         const crewObj = findOfficialCrew(m.namaCrew, m.kodeCrew);
         if (!crewObj) return; // Skip non-registered crew
 
-        if (m.kodeToko) {
-          crewObj.allStores.add(m.kodeToko);
+        const storeKey = normKey(m.kodeToko) || normKey(m.namaToko);
+        if (storeKey) {
+          crewObj.allStores.add(storeKey);
           const ruteStr = String(m.rute || '').toUpperCase().trim();
+          const crewTargetRoutes = this.getCrewTargetRouteSet(crewObj.allRoutes, targetDate);
           
-          if (!routeMatchSet || routeMatchSet.has(ruteStr) || Array.from(routeMatchSet).some(target => ruteStr.endsWith(' ' + target) || ruteStr.endsWith('-' + target))) {
-            crewObj.targetStores.add(m.kodeToko);
+          if (this.isRouteMatched(ruteStr, crewTargetRoutes)) {
+            crewObj.targetStores.add(storeKey);
           }
         }
       });
@@ -1966,7 +2067,8 @@ function dashboardApp() {
         if (!crewObj) return; // Skip non-registered crew
 
         crewObj.totalVisits++;
-        if (v.kodeToko) crewObj.visitedStores.add(v.kodeToko);
+        const visitStoreKey = normKey(v.kodeToko) || normKey(v.namaToko);
+        if (visitStoreKey) crewObj.visitedStores.add(visitStoreKey);
       });
 
       // 3.5 Map DC Visits from Attendance for Fair Route Compensation
@@ -2088,6 +2190,275 @@ function dashboardApp() {
         if (a.status === 'ON_PROGRESS' && b.status !== 'ON_PROGRESS') return -1;
         if (b.status === 'ON_PROGRESS' && a.status !== 'ON_PROGRESS') return 1;
         return a.namaCrew.localeCompare(b.namaCrew);
+      });
+    },
+
+    /**
+     * All official available crew list for multi-select dropdown
+     */
+    get allAvailableCrews() {
+      const seen = new Set();
+      const list = [];
+      (this.masterUser || []).forEach(u => {
+        const rawName = (u.nama || '').trim();
+        const rawId = (u.id || '').trim();
+        if (!rawName) return;
+        const upper = rawName.toUpperCase();
+        if (!seen.has(upper)) {
+          seen.add(upper);
+          const mod = (u.modul || this.getCrewOfficialModul(rawName, '-')).trim().toUpperCase();
+          list.push({
+            namaCrew: rawName,
+            kodeCrew: rawId || '-',
+            modul: mod,
+            upper: upper
+          });
+        }
+      });
+      return list.sort((a, b) => a.namaCrew.localeCompare(b.namaCrew));
+    },
+
+    /**
+     * Filtered crew list inside the dropdown based on search and active module
+     */
+    get filteredDropdownCrews() {
+      const q = (this.crewDropdownSearch || '').toUpperCase().trim();
+      let list = this.allAvailableCrews;
+
+      if (this.selectedModul && this.selectedModul !== 'ALL') {
+        if (this.selectedModul.length === 2) {
+          list = list.filter(c => c.modul.startsWith(this.selectedModul));
+        } else {
+          list = list.filter(c => c.modul === this.selectedModul);
+        }
+      }
+
+      if (q) {
+        list = list.filter(c => c.upper.includes(q) || c.kodeCrew.toUpperCase().includes(q) || c.modul.includes(q));
+      }
+      return list;
+    },
+
+    /**
+     * Staged Multi-Select Crew Dropdown Helpers (Zero-Lag, Applies only on "Done")
+     */
+    openCrewDropdown() {
+      this.tempSelectedCrews = [...(this.selectedCrews || [])];
+      this.crewDropdownSearch = '';
+      this.crewDropdownOpen = true;
+    },
+
+    toggleCrewTempSelection(crewName) {
+      if (!crewName) return;
+      const upper = crewName.toUpperCase().trim();
+      const idx = this.tempSelectedCrews.findIndex(c => c.toUpperCase().trim() === upper);
+      if (idx >= 0) {
+        this.tempSelectedCrews.splice(idx, 1);
+      } else {
+        this.tempSelectedCrews.push(crewName);
+      }
+    },
+
+    isCrewTempSelected(crewName) {
+      if (!crewName || !this.tempSelectedCrews) return false;
+      const upper = crewName.toUpperCase().trim();
+      return this.tempSelectedCrews.some(c => c.toUpperCase().trim() === upper);
+    },
+
+    selectAllFilteredTempCrews() {
+      const currentFiltered = this.filteredDropdownCrews;
+      const toAdd = currentFiltered.map(c => c.namaCrew);
+      const set = new Set(this.tempSelectedCrews);
+      toAdd.forEach(name => set.add(name));
+      this.tempSelectedCrews = Array.from(set);
+    },
+
+    clearAllTempCrews() {
+      this.tempSelectedCrews = [];
+      this.crewDropdownSearch = '';
+    },
+
+    applyCrewSelection() {
+      this.selectedCrews = [...(this.tempSelectedCrews || [])];
+      this.crewDropdownOpen = false;
+      this.selectedCrew = '';
+
+      // Tampilkan animasi overlay loading agar transisi terasa responsif & visual WOW
+      this.isLoading = true;
+      const count = this.selectedCrews.length;
+      this.loadingMessage = count > 0 
+        ? `Memfilter & Menyiapkan Data ${count} MDS Terpilih...` 
+        : 'Memuat Semua Data Monitoring...';
+      this.loadingStage = 3;
+
+      setTimeout(() => {
+        this.isLoading = false;
+        this.$nextTick(() => {
+          if (window.lucide) window.lucide.createIcons();
+          if (this.initCharts) this.initCharts();
+        });
+      }, 400);
+    },
+
+    clearAllSelectedCrews() {
+      this.selectedCrews = [];
+      this.tempSelectedCrews = [];
+      this.selectedCrew = '';
+      this.crewDropdownSearch = '';
+    },
+
+    toggleCrewCardExpand(crewKey) {
+      this.expandedCrews[crewKey] = !this.expandedCrews[crewKey];
+    },
+
+    expandAllCrewCards() {
+      (this.crewMonitoringCards || []).forEach(c => {
+        this.expandedCrews[c.key] = true;
+      });
+    },
+
+    collapseAllCrewCards() {
+      this.expandedCrews = {};
+    },
+
+    /**
+     * Detailed Real-time Monitoring Cards Data Structure (Expandable per MDS)
+     */
+    get crewMonitoringCards() {
+      const compList = this.filteredComplianceList || [];
+      const normKey = (str) => {
+        if (!str) return '';
+        return String(str).toUpperCase()
+          .replace(/[\.\,\-\_\(\)\/]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .replace(/SULISTIYO/g, 'SULISTIO')
+          .trim();
+      };
+
+      // Map visits by crew + store
+      const visitsByCrew = {};
+      (this.filteredVisits || []).forEach(v => {
+        const cKey = normKey(v.namaCrew) || normKey(v.kodeCrew);
+        if (!cKey) return;
+        if (!visitsByCrew[cKey]) visitsByCrew[cKey] = [];
+        visitsByCrew[cKey].push(v);
+      });
+
+      // Map attendance by crew
+      const absensiByCrew = {};
+      (this.filteredAbsensi || []).forEach(a => {
+        const cKey = normKey(a.namaCrew) || normKey(a.kodeCrew);
+        if (!cKey) return;
+        absensiByCrew[cKey] = a;
+      });
+
+      // Map master toko by crew
+      const targetDate = this.getActiveTargetDate();
+      const masterByCrew = {};
+      (this.masterToko || []).forEach(m => {
+        const cKey = normKey(m.namaCrew) || normKey(m.kodeCrew);
+        if (!cKey) return;
+        if (!masterByCrew[cKey]) {
+          masterByCrew[cKey] = { allRoutes: new Set(), stores: [] };
+        }
+        if (m.rute) masterByCrew[cKey].allRoutes.add(String(m.rute).trim().toUpperCase());
+        masterByCrew[cKey].stores.push(m);
+      });
+
+      return compList.map(c => {
+        const cKey = normKey(c.namaCrew) || normKey(c.kodeCrew);
+        const crewVisits = visitsByCrew[cKey] || [];
+        const crewAbsen = absensiByCrew[cKey] || null;
+        const crewMaster = masterByCrew[cKey] || { allRoutes: new Set(), stores: [] };
+
+        // Determine today's target routes
+        const targetRouteSet = this.getCrewTargetRouteSet(crewMaster.allRoutes, targetDate);
+
+        // Map visits lookup by store key
+        const visitMap = new Map();
+        crewVisits.forEach(v => {
+          const sKey = normKey(v.kodeToko) || normKey(v.namaToko);
+          if (sKey && !visitMap.has(sKey)) {
+            visitMap.set(sKey, v);
+          }
+        });
+
+        // Build target stores list for today
+        const targetStoresList = [];
+        const seenStoreKeys = new Set();
+
+        crewMaster.stores.forEach(m => {
+          const ruteStr = String(m.rute || '').toUpperCase().trim();
+          if (this.isRouteMatched(ruteStr, targetRouteSet)) {
+            const sKey = normKey(m.kodeToko) || normKey(m.namaToko);
+            if (sKey && !seenStoreKeys.has(sKey)) {
+              seenStoreKeys.add(sKey);
+              const visitRecord = visitMap.get(sKey);
+              targetStoresList.push({
+                kodeToko: m.kodeToko || '-',
+                namaToko: m.namaToko || 'Nama Toko Tidak Tersedia',
+                account: m.account || 'ALFAMART',
+                alamat: m.alamat || '-',
+                rute: m.rute || '-',
+                isVisited: !!visitRecord,
+                visitTime: visitRecord ? (visitRecord.jam || visitRecord.waktu || visitRecord.time || '-') : null,
+                foto: visitRecord ? (visitRecord.foto || visitRecord.fotoDisplay || visitRecord.image || null) : null,
+                catatan: visitRecord ? (visitRecord.catatan || visitRecord.keterangan || null) : null,
+                rawVisit: visitRecord || null
+              });
+            }
+          }
+        });
+
+        // Extra visits (visited stores not on today's target route)
+        const extraVisits = [];
+        crewVisits.forEach(v => {
+          const sKey = normKey(v.kodeToko) || normKey(v.namaToko);
+          if (sKey && !seenStoreKeys.has(sKey)) {
+            extraVisits.push({
+              kodeToko: v.kodeToko || '-',
+              namaToko: v.namaToko || 'Toko Luar Rute',
+              account: v.account || 'LAINNYA',
+              alamat: v.alamat || '-',
+              isVisited: true,
+              isExtra: true,
+              visitTime: v.jam || v.waktu || v.time || '-',
+              foto: v.foto || v.fotoDisplay || v.image || null,
+              rawVisit: v
+            });
+          }
+        });
+
+        // Sort target stores: visited first, then by name
+        targetStoresList.sort((a, b) => {
+          if (a.isVisited && !b.isVisited) return -1;
+          if (!a.isVisited && b.isVisited) return 1;
+          return a.namaToko.localeCompare(b.namaToko);
+        });
+
+        // Last visit time
+        let lastVisitTime = '-';
+        if (crewVisits.length > 0) {
+          const lastV = crewVisits[0];
+          lastVisitTime = lastV.jam || lastV.waktu || lastV.time || '-';
+        }
+
+        return {
+          ...c,
+          key: cKey,
+          isExpanded: !!this.expandedCrews[cKey],
+          visits: crewVisits,
+          targetStoresList,
+          extraVisits,
+          lastVisitTime,
+          absenInfo: crewAbsen ? {
+            status: crewAbsen.status || 'HADIR',
+            jamMasuk: crewAbsen.jamMasuk || crewAbsen.jam || '-',
+            jamPulang: crewAbsen.jamPulang || '-',
+            fotoMasuk: crewAbsen.fotoMasuk || crewAbsen.foto || null,
+            catatan: crewAbsen.catatan || ''
+          } : null
+        };
       });
     },
 
@@ -3393,6 +3764,31 @@ function dashboardApp() {
     },
 
     /**
+     * Apply Search Query for Report Table
+     */
+    applyReportSearch() {
+      const f = this.reportTableFilter;
+      f.searchQuery = (f.searchInput || '').trim();
+      f.page = 1;
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+
+    /**
+     * Clear Search Query for Report Table
+     */
+    clearReportSearch() {
+      const f = this.reportTableFilter;
+      f.searchInput = '';
+      f.searchQuery = '';
+      f.page = 1;
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+
+    /**
      * Active Date Label for Report Table
      */
     get reportActiveDateLabel() {
@@ -3406,11 +3802,10 @@ function dashboardApp() {
         return latestIso ? `Data Terkini (${this.formatIndoDate(latestIso)})` : 'Data Terkini';
       }
       if (dFilter === 'TODAY') {
-        return `Hari Ini (${this.formatIndoDate(new Date().toISOString().slice(0, 10))})`;
+        return `Hari Ini (${this.formatIndoDate(this.getTodayIso())})`;
       }
       if (dFilter === 'YESTERDAY') {
-        const yDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        return `Kemarin (${this.formatIndoDate(yDate)})`;
+        return `Kemarin (${this.formatIndoDate(this.getYesterdayIso())})`;
       }
       if (dFilter === '7_DAYS') {
         return `7 Hari Terakhir (${f.startDate} s/d ${f.endDate})`;
@@ -3440,10 +3835,10 @@ function dashboardApp() {
           data = data.filter(v => (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === latestIso);
         }
       } else if (dFilter === 'TODAY') {
-        const todayIso = new Date().toISOString().slice(0, 10);
+        const todayIso = f.startDate || this.getTodayIso();
         data = data.filter(v => (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === todayIso);
       } else if (dFilter === 'YESTERDAY') {
-        const yIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const yIso = f.startDate || this.getYesterdayIso();
         data = data.filter(v => (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === yIso);
       } else if ((dFilter === 'CUSTOM' || dFilter === '7_DAYS' || dFilter === 'THIS_MONTH') && f.startDate && f.endDate) {
         data = data.filter(v => {
@@ -3473,10 +3868,10 @@ function dashboardApp() {
           data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === latestIso);
         }
       } else if (dFilter === 'TODAY') {
-        const todayIso = new Date().toISOString().slice(0, 10);
+        const todayIso = f.startDate || this.getTodayIso();
         data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === todayIso);
       } else if (dFilter === 'YESTERDAY') {
-        const yIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const yIso = f.startDate || this.getYesterdayIso();
         data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === yIso);
       } else if ((dFilter === 'CUSTOM' || dFilter === '7_DAYS' || dFilter === 'THIS_MONTH') && f.startDate && f.endDate) {
         data = data.filter(a => {
@@ -3589,6 +3984,7 @@ function dashboardApp() {
             namaCrew: rawName.trim().toUpperCase(),
             kodeCrew: (rawId || '-').trim().toUpperCase(),
             modul: mod,
+            allRoutes: new Set(),
             targetStores: new Set(),
             allStores: new Set(),
             visitedStores: new Set(),
@@ -3606,17 +4002,26 @@ function dashboardApp() {
         return key && crewMap[key] ? crewMap[key] : null;
       };
 
-      const routeMatchSet = this.getActiveRouteMatchList();
+      // Pass 1: Collect all assigned routes for each official crew
+      this.masterToko.forEach(m => {
+        const crewObj = findOfficialCrew(m.namaCrew, m.kodeCrew);
+        if (!crewObj) return;
+        if (m.rute) crewObj.allRoutes.add(String(m.rute).trim().toUpperCase());
+      });
 
+      // Pass 2: Map Target Stores based on crew's specific schedule pattern
+      const targetDate = this.getActiveTargetDate();
       this.masterToko.forEach(m => {
         const crewObj = findOfficialCrew(m.namaCrew, m.kodeCrew);
         if (!crewObj) return;
 
-        if (m.kodeToko) {
-          crewObj.allStores.add(m.kodeToko);
+        const storeKey = normKey(m.kodeToko) || normKey(m.namaToko);
+        if (storeKey) {
+          crewObj.allStores.add(storeKey);
           const ruteStr = String(m.rute || '').toUpperCase().trim();
-          if (!routeMatchSet || routeMatchSet.has(ruteStr) || Array.from(routeMatchSet).some(target => ruteStr.endsWith(' ' + target) || ruteStr.endsWith('-' + target))) {
-            crewObj.targetStores.add(m.kodeToko);
+          const crewTargetRoutes = this.getCrewTargetRouteSet(crewObj.allRoutes, targetDate);
+          if (this.isRouteMatched(ruteStr, crewTargetRoutes)) {
+            crewObj.targetStores.add(storeKey);
           }
         }
       });
@@ -3626,7 +4031,8 @@ function dashboardApp() {
         if (!crewObj) return;
 
         crewObj.totalVisits++;
-        if (v.kodeToko) crewObj.visitedStores.add(v.kodeToko);
+        const visitStoreKey = normKey(v.kodeToko) || normKey(v.namaToko);
+        if (visitStoreKey) crewObj.visitedStores.add(visitStoreKey);
       });
 
       return Object.values(crewMap).map(c => {
@@ -3727,7 +4133,7 @@ function dashboardApp() {
       const tuntasCount = data.filter(c => c.status === 'TUNTAS').length;
       const onProgressCount = data.filter(c => c.status === 'ON_PROGRESS').length;
       const belumJalanCount = data.filter(c => c.status === 'BELUM_JALAN' || c.status === 'BELUM_INPUT').length;
-      const avgAchievement = totalCrew > 0 ? Math.round(data.reduce((acc, c) => acc + (c.achievementRate || 0), 0) / totalCrew) : 0;
+      const avgAchievement = totalTarget > 0 ? Math.min(100, Math.round((totalVisited / totalTarget) * 100)) : (totalVisited > 0 ? 100 : 0);
 
       return { totalCrew, totalTarget, totalVisited, tuntasCount, onProgressCount, belumJalanCount, avgAchievement };
     },
@@ -3762,7 +4168,8 @@ function dashboardApp() {
             accountCounts: {}
           };
         }
-        if (m.kodeToko) crewStoreMap[key].stores.add(m.kodeToko);
+        const storeKey = normKey(m.kodeToko) || normKey(m.namaToko);
+        if (storeKey) crewStoreMap[key].stores.add(storeKey);
         if (m.rute) crewStoreMap[key].routes.add(String(m.rute).trim());
         if (m.account) {
           const acc = m.account.toUpperCase().trim();
@@ -3778,11 +4185,12 @@ function dashboardApp() {
         const cleanName = normKey(m.namaCrew);
         const cleanId = normKey(m.kodeCrew);
         const key = cleanName || cleanId;
-        if (!key || !m.kodeToko) return;
+        const storeKey = normKey(m.kodeToko) || normKey(m.namaToko);
+        if (!key || !storeKey) return;
         const ruteStr = String(m.rute || '').toUpperCase().trim();
-        if (!routeMatchSet || routeMatchSet.has(ruteStr) || Array.from(routeMatchSet).some(target => ruteStr.endsWith(' ' + target) || ruteStr.endsWith('-' + target))) {
+        if (this.isRouteMatched(ruteStr, routeMatchSet)) {
           if (!todayTargetMap[key]) todayTargetMap[key] = new Set();
-          todayTargetMap[key].add(m.kodeToko);
+          todayTargetMap[key].add(storeKey);
         }
       });
 
@@ -4027,14 +4435,12 @@ function dashboardApp() {
       this.masterUser.forEach(u => {
         const cleanN = normKey(u.nama);
         const cleanId = normKey(u.id);
-        if (cleanN && !uniqueMasterUsers.has(cleanN)) {
-          uniqueMasterUsers.set(cleanN, u);
-          if (u.telepon || u.phone) userPhoneMap[cleanN] = u.telepon || u.phone;
+        const primaryKey = cleanN || cleanId;
+        if (primaryKey && !uniqueMasterUsers.has(primaryKey)) {
+          uniqueMasterUsers.set(primaryKey, u);
         }
-        if (cleanId && !uniqueMasterUsers.has(cleanId)) {
-          uniqueMasterUsers.set(cleanId, u);
-          if (u.telepon || u.phone) userPhoneMap[cleanId] = u.telepon || u.phone;
-        }
+        if (cleanN && (u.telepon || u.phone)) userPhoneMap[cleanN] = u.telepon || u.phone;
+        if (cleanId && (u.telepon || u.phone)) userPhoneMap[cleanId] = u.telepon || u.phone;
       });
 
       const absenMasukMap = {};
@@ -4047,25 +4453,27 @@ function dashboardApp() {
       const visitDcList = [];
 
       fAbsensi.forEach(a => {
-        const rawName = (a.namaCrew || a.kodeCrew || '').trim();
-        if (!rawName) return;
+        const rawName = (a.namaCrew || '').trim();
+        const rawCode = (a.kodeCrew || '').trim();
+        if (!rawName && !rawCode) return;
         const cleanN = normKey(rawName);
-        const cleanId = normKey(a.kodeCrew);
+        const cleanId = normKey(rawCode);
         const statusUpper = (a.status || '').toUpperCase().trim();
         const catatanUpper = (a.catatan || '').toUpperCase().trim();
         const combined = `${statusUpper} ${catatanUpper}`;
 
+        const entryMasuk = {
+          namaCrew: rawName || rawCode,
+          kodeCrew: rawCode || '-',
+          modul: a._officialModul || this.getCrewOfficialModul(rawName, a.modul || '-'),
+          waktuMasuk: a.waktu || '-',
+          fotoMasuk: a.fotoSelfie || a.foto || '',
+          noWa: userPhoneMap[cleanN] || (cleanId ? userPhoneMap[cleanId] : '') || ''
+        };
+
         if (statusUpper.includes('MASUK') || statusUpper.includes('HADIR') || statusUpper.includes('IN')) {
-          if (!absenMasukMap[cleanN]) {
-            absenMasukMap[cleanN] = {
-              namaCrew: rawName,
-              kodeCrew: a.kodeCrew || '-',
-              modul: a._officialModul || this.getCrewOfficialModul(rawName, a.modul || '-'),
-              waktuMasuk: a.waktu || '-',
-              fotoMasuk: a.fotoSelfie || a.foto || '',
-              noWa: userPhoneMap[cleanN] || (cleanId ? userPhoneMap[cleanId] : '') || ''
-            };
-          }
+          if (cleanN && !absenMasukMap[cleanN]) absenMasukMap[cleanN] = entryMasuk;
+          if (cleanId && !absenMasukMap[cleanId]) absenMasukMap[cleanId] = entryMasuk;
 
           if (a.waktu) {
             const parts = String(a.waktu).split(':');
@@ -4073,8 +4481,8 @@ function dashboardApp() {
               const minutes = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
               if (minutes > 8 * 60) {
                 terlambatList.push({
-                  namaCrew: rawName,
-                  kodeCrew: a.kodeCrew || '-',
+                  namaCrew: rawName || rawCode,
+                  kodeCrew: rawCode || '-',
                   modul: a._officialModul || this.getCrewOfficialModul(rawName, a.modul || '-'),
                   waktuMasuk: a.waktu,
                   lateMinutes: minutes - 480,
@@ -4086,50 +4494,57 @@ function dashboardApp() {
         }
 
         if (statusUpper.includes('PULANG') || statusUpper.includes('OUT')) {
-          if (!absenPulangMap[cleanN]) {
-            absenPulangMap[cleanN] = {
-              namaCrew: rawName,
-              kodeCrew: a.kodeCrew || '-',
-              modul: a._officialModul || this.getCrewOfficialModul(rawName, a.modul || '-'),
-              waktuPulang: a.waktu || '-'
-            };
-          }
+          const entryPulang = {
+            namaCrew: rawName || rawCode,
+            kodeCrew: rawCode || '-',
+            modul: a._officialModul || this.getCrewOfficialModul(rawName, a.modul || '-'),
+            waktuPulang: a.waktu || '-'
+          };
+          if (cleanN && !absenPulangMap[cleanN]) absenPulangMap[cleanN] = entryPulang;
+          if (cleanId && !absenPulangMap[cleanId]) absenPulangMap[cleanId] = entryPulang;
         }
 
         if (a.outOfRadius || a.isOutOfRadius || (a.distance && a.distance > 100)) {
           gpsIssueList.push({
-            namaCrew: rawName,
-            kodeCrew: a.kodeCrew || '-',
+            namaCrew: rawName || rawCode,
+            kodeCrew: rawCode || '-',
             modul: a._officialModul || this.getCrewOfficialModul(rawName, a.modul || '-'),
             reason: `Absen di luar radius toko (Jarak: ${Math.round(a.distance || 120)} meter)`,
             noWa: userPhoneMap[cleanN] || (cleanId ? userPhoneMap[cleanId] : '') || ''
           });
         }
 
-        if (combined.includes('SAKIT')) sakitList.push({ namaCrew: rawName, kodeCrew: a.kodeCrew, modul: a.modul, status: 'SAKIT', catatan: a.catatan });
-        else if (combined.includes('IZIN')) izinList.push({ namaCrew: rawName, kodeCrew: a.kodeCrew, modul: a.modul, status: 'IZIN', catatan: a.catatan });
-        else if (combined.includes('CUTI')) cutiList.push({ namaCrew: rawName, kodeCrew: a.kodeCrew, modul: a.modul, status: 'CUTI', catatan: a.catatan });
-        else if (combined.includes('DC') || combined.includes('OFFICE')) visitDcList.push({ namaCrew: rawName, kodeCrew: a.kodeCrew, modul: a.modul, status: 'VISIT DC', isDc: true, catatan: a.catatan });
+        if (combined.includes('SAKIT')) sakitList.push({ namaCrew: rawName, kodeCrew: rawCode, modul: a.modul, status: 'SAKIT', catatan: a.catatan });
+        else if (combined.includes('IZIN')) izinList.push({ namaCrew: rawName, kodeCrew: rawCode, modul: a.modul, status: 'IZIN', catatan: a.catatan });
+        else if (combined.includes('CUTI')) cutiList.push({ namaCrew: rawName, kodeCrew: rawCode, modul: a.modul, status: 'CUTI', catatan: a.catatan });
+        else if (combined.includes('DC') || combined.includes('OFFICE')) visitDcList.push({ namaCrew: rawName, kodeCrew: rawCode, modul: a.modul, status: 'VISIT DC', isDc: true, catatan: a.catatan });
       });
 
       const visitMap = {};
       fVisits.forEach(v => {
-        const rawName = (v.namaCrew || v.kodeCrew || '').trim();
-        if (!rawName) return;
+        const rawName = (v.namaCrew || '').trim();
+        const rawCode = (v.kodeCrew || '').trim();
+        if (!rawName && !rawCode) return;
         const cleanN = normKey(rawName);
-        if (!visitMap[cleanN]) {
-          visitMap[cleanN] = {
-            namaCrew: rawName,
-            kodeCrew: v.kodeCrew || '-',
+        const cleanId = normKey(rawCode);
+        const vKey = cleanN || cleanId;
+
+        if (!visitMap[vKey]) {
+          visitMap[vKey] = {
+            namaCrew: rawName || rawCode,
+            kodeCrew: rawCode || '-',
             modul: v._officialModul || this.getCrewOfficialModul(rawName, v.modul || '-'),
             visitCount: 0,
             stores: new Set(),
             firstVisitTime: v.time || v.waktu || '',
-            noWa: userPhoneMap[cleanN] || ''
+            noWa: userPhoneMap[cleanN] || (cleanId ? userPhoneMap[cleanId] : '') || ''
           };
         }
-        visitMap[cleanN].visitCount++;
-        if (v.kodeToko) visitMap[cleanN].stores.add(v.kodeToko);
+        visitMap[vKey].visitCount++;
+        if (v.kodeToko) visitMap[vKey].stores.add(v.kodeToko);
+
+        if (cleanN) visitMap[cleanN] = visitMap[vKey];
+        if (cleanId) visitMap[cleanId] = visitMap[vKey];
       });
 
       const anomalies = [];
@@ -4236,20 +4651,28 @@ function dashboardApp() {
       });
 
       // 6. Alpha
-      uniqueMasterUsers.forEach((u, cleanN) => {
+      uniqueMasterUsers.forEach(u => {
+        const cleanN = normKey(u.nama);
         const cleanId = normKey(u.id);
-        const hasMasuk = absenMasukMap[cleanN] || (cleanId && absenMasukMap[cleanId]);
-        const hasVisit = visitMap[cleanN] || (cleanId && visitMap[cleanId]);
-        const hasIzin = sakitList.some(x => normKey(x.namaCrew) === cleanN) || izinList.some(x => normKey(x.namaCrew) === cleanN) || cutiList.some(x => normKey(x.namaCrew) === cleanN) || visitDcList.some(x => normKey(x.namaCrew) === cleanN);
+        const hasMasuk = (cleanN && absenMasukMap[cleanN]) || (cleanId && absenMasukMap[cleanId]);
+        const hasVisit = (cleanN && visitMap[cleanN]) || (cleanId && visitMap[cleanId]);
+        const hasIzin = (cleanN && sakitList.some(x => normKey(x.namaCrew) === cleanN)) ||
+                        (cleanId && sakitList.some(x => normKey(x.kodeCrew) === cleanId)) ||
+                        (cleanN && izinList.some(x => normKey(x.namaCrew) === cleanN)) ||
+                        (cleanId && izinList.some(x => normKey(x.kodeCrew) === cleanId)) ||
+                        (cleanN && cutiList.some(x => normKey(x.namaCrew) === cleanN)) ||
+                        (cleanId && cutiList.some(x => normKey(x.kodeCrew) === cleanId)) ||
+                        (cleanN && visitDcList.some(x => normKey(x.namaCrew) === cleanN)) ||
+                        (cleanId && visitDcList.some(x => normKey(x.kodeCrew) === cleanId));
 
         if (!hasMasuk && !hasVisit && !hasIzin) {
           anomalies.push({
-            id: `ANOM_F_${u.nama}`,
+            id: `ANOM_F_${u.id || u.nama}`,
             namaCrew: u.nama,
             kodeCrew: u.id || '-',
             modul: u.modul || this.getCrewOfficialModul(u.nama, '-'),
             regional: this.getRegionFromModul(u.modul),
-            telepon: u.telepon || userPhoneMap[cleanN] || '',
+            telepon: u.telepon || (cleanN ? userPhoneMap[cleanN] : '') || (cleanId ? userPhoneMap[cleanId] : '') || '',
             type: 'ALPHA',
             typeLabel: 'Alpha / Tanpa Aktivitas',
             severity: 'KRITIS',
@@ -4283,6 +4706,24 @@ function dashboardApp() {
           (c.modul || '').toLowerCase().includes(query) ||
           (c.detail || '').toLowerCase().includes(query)
         );
+
+        // Developer tracking output
+        console.log(`%c[Tracking Personil: "${query}"]%c Ditemukan ${list.length} anomali pada periode ${this.reportActiveDateLabel}`, 'background:#d97706;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#fcd34d;');
+        uniqueMasterUsers.forEach(u => {
+          if ((u.nama || '').toLowerCase().includes(query) || (u.id || '').toLowerCase().includes(query)) {
+            const cleanN = normKey(u.nama);
+            const cleanId = normKey(u.id);
+            const hasMasuk = (cleanN && absenMasukMap[cleanN]) || (cleanId && absenMasukMap[cleanId]);
+            const hasPulang = (cleanN && absenPulangMap[cleanN]) || (cleanId && absenPulangMap[cleanId]);
+            const hasVisit = (cleanN && visitMap[cleanN]) || (cleanId && visitMap[cleanId]);
+            console.log(`  🔍 Personil: ${u.nama} (${u.id} - ${u.modul})`, {
+              'Absen Masuk': hasMasuk ? `✅ Jam ${hasMasuk.waktuMasuk}` : '❌ Tidak Ada',
+              'Absen Pulang': hasPulang ? `✅ Jam ${hasPulang.waktuPulang}` : '❌ Tidak Ada',
+              'Kunjungan Toko': hasVisit ? `✅ ${hasVisit.visitCount} Toko` : '❌ 0 Toko',
+              'Hasil Evaluasi': (!hasMasuk && !hasVisit) ? '🚨 ALPHA' : '✅ HADIR AKTIF'
+            });
+          }
+        });
       }
 
       // Sort
