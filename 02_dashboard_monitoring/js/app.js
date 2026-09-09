@@ -832,6 +832,23 @@ function dashboardApp() {
     },
 
     /**
+     * Helper: Format ISO YYYY-MM-DD to Indonesian Date String (e.g. "8 Sep 2026")
+     */
+    formatIndoDate(isoStr) {
+      if (!isoStr) return '';
+      const iso = this.normalizeIsoDate(isoStr);
+      if (!iso || !iso.includes('-')) return isoStr;
+      const parts = iso.split('-');
+      if (parts.length !== 3) return isoStr;
+      const y = parts[0];
+      const mIdx = parseInt(parts[1], 10) - 1;
+      const d = parseInt(parts[2], 10);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      const monthName = months[mIdx] || parts[1];
+      return `${d} ${monthName} ${y}`;
+    },
+
+    /**
      * Build Fast Hash Map for O(1) Instant Crew-to-Modul Lookup
      */
     updateCrewModulMap() {
