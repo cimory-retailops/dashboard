@@ -62,7 +62,14 @@ function galleryApp() {
       photoUrl: '',
       photoType: '',
       reviewInfo: null,
-      visitInfo: null
+      visitInfo: null,
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      rotation: 0,
+      isDragging: false,
+      dragStartX: 0,
+      dragStartY: 0
     },
 
     /**
@@ -761,6 +768,7 @@ function galleryApp() {
      * Modal Openers
      */
     async openPreviewModal(item) {
+      this.resetPreviewZoom();
       let url = item.hdUrl || item.photoUrl;
       if (!url.startsWith('http')) {
         url = this.resolvedImagesMap[item.photoUrl] || await ApiService.resolveImage(item.photoUrl);
@@ -772,8 +780,99 @@ function galleryApp() {
         photoUrl: url,
         photoType: item.type,
         reviewInfo: item.review,
-        visitInfo: item
+        visitInfo: item,
+        zoom: 1,
+        panX: 0,
+        panY: 0,
+        rotation: 0,
+        isDragging: false,
+        dragStartX: 0,
+        dragStartY: 0
       };
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
+    closePreviewModal() {
+      this.previewModal.isOpen = false;
+      this.resetPreviewZoom();
+    },
+
+    zoomInPreview() {
+      const newZoom = Math.min(5, Math.round((this.previewModal.zoom + 0.3) * 10) / 10);
+      this.previewModal.zoom = newZoom;
+    },
+
+    zoomOutPreview() {
+      const newZoom = Math.max(1, Math.round((this.previewModal.zoom - 0.3) * 10) / 10);
+      this.previewModal.zoom = newZoom;
+      if (newZoom === 1) {
+        this.previewModal.panX = 0;
+        this.previewModal.panY = 0;
+      }
+    },
+
+    resetPreviewZoom() {
+      this.previewModal.zoom = 1;
+      this.previewModal.panX = 0;
+      this.previewModal.panY = 0;
+      this.previewModal.rotation = 0;
+      this.previewModal.isDragging = false;
+    },
+
+    rotatePreview() {
+      this.previewModal.rotation = (this.previewModal.rotation + 90) % 360;
+    },
+
+    togglePreviewZoom() {
+      if (this.previewModal.zoom > 1) {
+        this.resetPreviewZoom();
+      } else {
+        this.previewModal.zoom = 2.2;
+      }
+    },
+
+    handlePreviewWheel(e) {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.25 : -0.25;
+      const newZoom = Math.min(5, Math.max(1, Math.round((this.previewModal.zoom + delta) * 10) / 10));
+      this.previewModal.zoom = newZoom;
+      if (newZoom === 1) {
+        this.previewModal.panX = 0;
+        this.previewModal.panY = 0;
+      }
+    },
+
+    startPreviewDrag(e) {
+      if (this.previewModal.zoom <= 1) return;
+      this.previewModal.isDragging = true;
+      const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+      const clientY = e.clientY ?? (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+      this.previewModal.dragStartX = clientX - this.previewModal.panX;
+      this.previewModal.dragStartY = clientY - this.previewModal.panY;
+    },
+
+    onPreviewDrag(e) {
+      if (!this.previewModal.isDragging || this.previewModal.zoom <= 1) return;
+      const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : null);
+      const clientY = e.clientY ?? (e.touches && e.touches[0] ? e.touches[0].clientY : null);
+      if (clientX === null || clientY === null) return;
+      this.previewModal.panX = clientX - this.previewModal.dragStartX;
+      this.previewModal.panY = clientY - this.previewModal.dragStartY;
+    },
+
+    endPreviewDrag() {
+      this.previewModal.isDragging = false;
+    },
+
+    downloadPreviewPhoto() {
+      if (!this.previewModal.photoUrl) return;
+      const a = document.createElement('a');
+      a.href = this.previewModal.photoUrl;
+      a.target = '_blank';
+      a.download = `Foto_Pajangan_${(this.previewModal.title || 'Foto').replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     },
 
     async openReviewModal(item) {

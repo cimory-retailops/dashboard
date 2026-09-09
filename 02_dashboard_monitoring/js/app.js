@@ -86,7 +86,23 @@ function dashboardApp() {
     tokoNasionalSuggestions: [],
     showTokoNasionalSuggestions: false,
 
-    // 5. Centralized Reporting Tab State (Tab 5: Pusat Laporan & Broadcast WA)
+    // 5. Centralized Reporting Tab & Multi-Dimensional Analytics Table State
+    reportViewMode: 'TABLE', // 'TABLE' | 'BROADCAST'
+    reportTableSubTab: 'rute', // 'rute' | 'jadwal' | 'absen' | 'anomali'
+    reportTableFilter: {
+      searchQuery: '',
+      region: 'ALL', // 'ALL' | 'JABODETABEK' | 'JABAR' | 'JATENG' | 'JATIM_BALI' | 'LUAR_JAWA'
+      statusCategory: 'ALL',
+      dateFilter: 'LATEST_DAY', // 'LATEST_DAY' | 'TODAY' | 'YESTERDAY' | '7_DAYS' | 'THIS_MONTH' | 'CUSTOM'
+      startDate: '',
+      endDate: '',
+      customStartInput: '',
+      customEndInput: '',
+      page: 1,
+      pageSize: 25,
+      sortCol: 'namaCrew',
+      sortAsc: true
+    },
     reportTab: {
       selectedRegion: 'JABODETABEK',
       reportType: 'ROUTE_ONLY', // 'ROUTE_ONLY' | 'FULL_OPS' | 'INFOGRAPHIC' | 'ANOMALY' | 'REMINDER'
@@ -112,7 +128,14 @@ function dashboardApp() {
       photoAfter: [],
       activePhotoUrl: '',
       activePhotoLabel: '',
-      visitInfo: null
+      visitInfo: null,
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      rotation: 0,
+      isDragging: false,
+      dragStartX: 0,
+      dragStartY: 0
     },
 
     auditModal: {
@@ -3257,9 +3280,1143 @@ function dashboardApp() {
     },
 
     /**
+     * ==============================================================================
+     * PUSAT LAPORAN - MULTI-DIMENSIONAL ANALYTICS TABLE ENGINE (TABEL ANALISA)
+     * ==============================================================================
+     */
+
+    /**
+     * Switch SubTab in Analytics Table
+     */
+    setReportTableSubTab(tab) {
+      this.reportTableSubTab = tab;
+      this.reportTableFilter.page = 1;
+      this.reportTableFilter.statusCategory = 'ALL';
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+
+    /**
+     * Column Sorter for Analytics Tables
+     */
+    sortReportTable(col) {
+      if (this.reportTableFilter.sortCol === col) {
+        this.reportTableFilter.sortAsc = !this.reportTableFilter.sortAsc;
+      } else {
+        this.reportTableFilter.sortCol = col;
+        this.reportTableFilter.sortAsc = true;
+      }
+      this.reportTableFilter.page = 1;
+    },
+
+    /**
+     * Handle Date Filter Change for Report Table
+     */
+    onReportDateFilterChange() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const todayIso = `${yyyy}-${mm}-${dd}`;
+
+      const f = this.reportTableFilter;
+
+      if (f.dateFilter === 'TODAY') {
+        f.startDate = todayIso;
+        f.endDate = todayIso;
+      } else if (f.dateFilter === 'YESTERDAY') {
+        const yDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const y_yyyy = yDate.getFullYear();
+        const y_mm = String(yDate.getMonth() + 1).padStart(2, '0');
+        const y_dd = String(yDate.getDate()).padStart(2, '0');
+        f.startDate = `${y_yyyy}-${y_mm}-${y_dd}`;
+        f.endDate = `${y_yyyy}-${y_mm}-${y_dd}`;
+      } else if (f.dateFilter === '7_DAYS') {
+        const past7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        f.startDate = past7.toISOString().split('T')[0];
+        f.endDate = todayIso;
+      } else if (f.dateFilter === 'THIS_MONTH') {
+        f.startDate = `${yyyy}-${mm}-01`;
+        f.endDate = todayIso;
+      } else if (f.dateFilter === 'LATEST_DAY') {
+        f.startDate = '';
+        f.endDate = '';
+      } else if (f.dateFilter === 'CUSTOM') {
+        f.customStartInput = f.startDate || todayIso;
+        f.customEndInput = f.endDate || todayIso;
+        return;
+      }
+
+      f.page = 1;
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+
+    /**
+     * Apply Custom Date Range for Report Table
+     */
+    applyReportCustomDates() {
+      const f = this.reportTableFilter;
+      if (!f.customStartInput || !f.customEndInput) {
+        alert('Mohon pilih tanggal awal dan tanggal akhir terlebih dahulu.');
+        return;
+      }
+      if (f.customStartInput > f.customEndInput) {
+        alert(`⚠️ Tanggal Awal (${f.customStartInput}) tidak boleh melebihi Tanggal Akhir (${f.customEndInput})!`);
+        f.customEndInput = f.customStartInput;
+      }
+      f.startDate = f.customStartInput;
+      f.endDate = f.customEndInput;
+      f.page = 1;
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+
+    /**
+     * Active Date Label for Report Table
+     */
+    get reportActiveDateLabel() {
+      const f = this.reportTableFilter;
+      const dFilter = f.dateFilter || 'LATEST_DAY';
+
+      if (dFilter === 'LATEST_DAY') {
+        const latestIso = (this.visits && this.visits.length > 0 && this.visits[0]._iso)
+          ? this.visits[0]._iso
+          : (this.absensi && this.absensi.length > 0 ? (this.absensi[0]._iso || this.normalizeIsoDate(this.absensi[0].tanggal)) : '');
+        return latestIso ? `Data Terkini (${this.formatIndoDate(latestIso)})` : 'Data Terkini';
+      }
+      if (dFilter === 'TODAY') {
+        return `Hari Ini (${this.formatIndoDate(new Date().toISOString().slice(0, 10))})`;
+      }
+      if (dFilter === 'YESTERDAY') {
+        const yDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        return `Kemarin (${this.formatIndoDate(yDate)})`;
+      }
+      if (dFilter === '7_DAYS') {
+        return `7 Hari Terakhir (${f.startDate} s/d ${f.endDate})`;
+      }
+      if (dFilter === 'THIS_MONTH') {
+        return `Bulan Ini (${f.startDate} s/d ${f.endDate})`;
+      }
+      if (dFilter === 'CUSTOM') {
+        return `${f.startDate} s/d ${f.endDate}`;
+      }
+      return 'Semua Periode';
+    },
+
+    /**
+     * Filtered Visits Scoped for Pusat Laporan Date Range
+     */
+    get reportFilteredVisits() {
+      let data = this.visits;
+      if (!data || data.length === 0) return [];
+
+      const f = this.reportTableFilter;
+      const dFilter = f.dateFilter || 'LATEST_DAY';
+
+      if (dFilter === 'LATEST_DAY') {
+        const latestIso = data[0]._iso || this.normalizeIsoDate(data[0].dateIso || data[0].date || data[0].tanggal);
+        if (latestIso) {
+          data = data.filter(v => (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === latestIso);
+        }
+      } else if (dFilter === 'TODAY') {
+        const todayIso = new Date().toISOString().slice(0, 10);
+        data = data.filter(v => (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === todayIso);
+      } else if (dFilter === 'YESTERDAY') {
+        const yIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        data = data.filter(v => (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === yIso);
+      } else if ((dFilter === 'CUSTOM' || dFilter === '7_DAYS' || dFilter === 'THIS_MONTH') && f.startDate && f.endDate) {
+        data = data.filter(v => {
+          const vIso = v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
+          return vIso && vIso >= f.startDate && vIso <= f.endDate;
+        });
+      }
+
+      return data;
+    },
+
+    /**
+     * Filtered Absensi Scoped for Pusat Laporan Date Range
+     */
+    get reportFilteredAbsensi() {
+      let data = this.absensi;
+      if (!data || data.length === 0) return [];
+
+      const f = this.reportTableFilter;
+      const dFilter = f.dateFilter || 'LATEST_DAY';
+
+      if (dFilter === 'LATEST_DAY') {
+        const latestIso = (this.visits && this.visits.length > 0 && this.visits[0]._iso)
+          ? this.visits[0]._iso
+          : (data[0]._iso || this.normalizeIsoDate(data[0].tanggal || data[0].dateIso || data[0].date));
+        if (latestIso) {
+          data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === latestIso);
+        }
+      } else if (dFilter === 'TODAY') {
+        const todayIso = new Date().toISOString().slice(0, 10);
+        data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === todayIso);
+      } else if (dFilter === 'YESTERDAY') {
+        const yIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === yIso);
+      } else if ((dFilter === 'CUSTOM' || dFilter === '7_DAYS' || dFilter === 'THIS_MONTH') && f.startDate && f.endDate) {
+        data = data.filter(a => {
+          const aIso = a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date);
+          return aIso && aIso >= f.startDate && aIso <= f.endDate;
+        });
+      }
+
+      return data;
+    },
+
+    /**
+     * Computed Daily Consolidated Absensi Scoped for Report Table
+     */
+    get reportGroupedAbsensi() {
+      const raw = this.reportFilteredAbsensi || [];
+      if (raw.length === 0) return [];
+
+      const map = new Map();
+
+      raw.forEach(a => {
+        const iso = a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date);
+        const crewName = (a.namaCrew || '').trim();
+        const crewCode = (a.kodeCrew || '').trim();
+        if (!iso || !crewName) return;
+
+        const key = `${iso}_${crewName.toUpperCase()}`;
+
+        if (!map.has(key)) {
+          map.set(key, {
+            key: key,
+            tanggal: a.tanggal || iso,
+            iso: iso,
+            modul: a._officialModul || this.getCrewOfficialModul(crewName, a.modul) || a.modul || '',
+            namaCrew: crewName,
+            kodeCrew: crewCode,
+            namaToko: a.namaToko || '',
+            masuk: null,
+            pulang: null,
+            otherLogs: [],
+            durasiKerja: '-'
+          });
+        }
+
+        const entry = map.get(key);
+        const statusUpper = (a.status || '').toUpperCase().trim();
+
+        if (statusUpper.includes('MASUK') || statusUpper.includes('HADIR') || statusUpper.includes('IN')) {
+          if (!entry.masuk || (a.waktu && a.waktu < entry.masuk.waktu)) {
+            entry.masuk = a;
+          }
+        } else if (statusUpper.includes('PULANG') || statusUpper.includes('OUT')) {
+          if (!entry.pulang || (a.waktu && a.waktu > entry.pulang.waktu)) {
+            entry.pulang = a;
+          }
+        } else {
+          entry.otherLogs.push(a);
+        }
+      });
+
+      return Array.from(map.values()).map(entry => {
+        let durasiStr = '-';
+        if (entry.masuk && entry.pulang && entry.masuk.waktu && entry.pulang.waktu) {
+          const tMasuk = String(entry.masuk.waktu).split(':');
+          const tPulang = String(entry.pulang.waktu).split(':');
+          if (tMasuk.length >= 2 && tPulang.length >= 2) {
+            const minMasuk = parseInt(tMasuk[0], 10) * 60 + parseInt(tMasuk[1], 10);
+            const minPulang = parseInt(tPulang[0], 10) * 60 + parseInt(tPulang[1], 10);
+            const diffMin = minPulang - minMasuk;
+            if (diffMin > 0) {
+              const h = Math.floor(diffMin / 60);
+              const m = diffMin % 60;
+              durasiStr = `${h}j ${m > 0 ? m + 'm' : ''}`.trim();
+            }
+          }
+        } else if (entry.masuk && !entry.pulang) {
+          durasiStr = 'Sedang Bertugas';
+        }
+        return { ...entry, durasiKerja: durasiStr };
+      });
+    },
+
+    /**
+     * Computed Compliance Scoped for Report Active Date Range
+     */
+    get reportComplianceList() {
+      const normKey = (str) => {
+        if (!str) return '';
+        return String(str).toUpperCase()
+          .replace(/[\.\,\-\_\(\)\/]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .replace(/SULISTIYO/g, 'SULISTIO')
+          .trim();
+      };
+
+      const crewMap = {};
+      const idToKeyMap = {};
+
+      this.masterUser.forEach(u => {
+        const rawName = u.nama || '';
+        const rawId = u.id || '';
+        const cleanName = normKey(rawName);
+        const cleanId = normKey(rawId);
+        const key = cleanName || cleanId;
+        if (!key) return;
+
+        if (!crewMap[key]) {
+          const mod = (u.modul || this.getCrewOfficialModul(rawName, '-')).trim().toUpperCase();
+          crewMap[key] = {
+            namaCrew: rawName.trim().toUpperCase(),
+            kodeCrew: (rawId || '-').trim().toUpperCase(),
+            modul: mod,
+            targetStores: new Set(),
+            allStores: new Set(),
+            visitedStores: new Set(),
+            totalVisits: 0
+          };
+        }
+        if (cleanName) idToKeyMap[cleanName] = key;
+        if (cleanId) idToKeyMap[cleanId] = key;
+      });
+
+      const findOfficialCrew = (rawName, rawId) => {
+        const cleanName = normKey(rawName);
+        const cleanId = normKey(rawId);
+        const key = (cleanName && idToKeyMap[cleanName]) || (cleanId && idToKeyMap[cleanId]) || null;
+        return key && crewMap[key] ? crewMap[key] : null;
+      };
+
+      const routeMatchSet = this.getActiveRouteMatchList();
+
+      this.masterToko.forEach(m => {
+        const crewObj = findOfficialCrew(m.namaCrew, m.kodeCrew);
+        if (!crewObj) return;
+
+        if (m.kodeToko) {
+          crewObj.allStores.add(m.kodeToko);
+          const ruteStr = String(m.rute || '').toUpperCase().trim();
+          if (!routeMatchSet || routeMatchSet.has(ruteStr) || Array.from(routeMatchSet).some(target => ruteStr.endsWith(' ' + target) || ruteStr.endsWith('-' + target))) {
+            crewObj.targetStores.add(m.kodeToko);
+          }
+        }
+      });
+
+      (this.reportFilteredVisits || []).forEach(v => {
+        const crewObj = findOfficialCrew(v.namaCrew, v.kodeCrew);
+        if (!crewObj) return;
+
+        crewObj.totalVisits++;
+        if (v.kodeToko) crewObj.visitedStores.add(v.kodeToko);
+      });
+
+      return Object.values(crewMap).map(c => {
+        const targetCount = c.targetStores.size;
+        const visitedCount = c.visitedStores.size;
+        const allStoreCount = c.allStores.size;
+        const achievementRate = targetCount > 0 ? Math.min(100, Math.round((visitedCount / targetCount) * 100)) : (visitedCount > 0 ? 100 : 0);
+
+        let status = 'OFF_SCHEDULE';
+        if (allStoreCount === 0) {
+          status = 'BELUM_INPUT';
+        } else if (targetCount > 0) {
+          if (visitedCount >= targetCount) status = 'TUNTAS';
+          else if (visitedCount > 0) status = 'ON_PROGRESS';
+          else status = 'BELUM_JALAN';
+        } else if (visitedCount > 0) {
+          status = 'ON_PROGRESS';
+        }
+
+        return {
+          namaCrew: c.namaCrew,
+          kodeCrew: c.kodeCrew,
+          modul: c.modul,
+          targetCount,
+          visitedCount,
+          totalVisits: c.totalVisits,
+          achievementRate,
+          status,
+          isDc: false
+        };
+      });
+    },
+
+    /**
+     * Map Modul Prefix to Group Region
+     */
+    getRegionFromModul(modulStr) {
+      const m = (modulStr || '').toUpperCase().trim();
+      if (m.startsWith('DK') || m.includes('JABODETABEK')) return 'JABODETABEK';
+      if (m === 'LK1' || m === 'LK2' || m.includes('JABAR') || m.includes('BANDUNG') || m.includes('BOGOR') || m.includes('CIREBON')) return 'JABAR';
+      if (m === 'LK3' || m.includes('JATENG') || m.includes('SEMARANG') || m.includes('SOLO') || m.includes('JOGJA') || m.includes('DIY')) return 'JATENG';
+      if (m === 'LK4' || m === 'LK5' || m.includes('JATIM') || m.includes('SURABAYA') || m.includes('BALI') || m.includes('NUSRA') || m.includes('MALANG')) return 'JATIM_BALI';
+      if (m.startsWith('LP') || m.includes('SUMATERA') || m.includes('KALIMANTAN') || m.includes('SULAWESI') || m.includes('MEDAN') || m.includes('MAKASSAR') || m.includes('PALEMBANG')) return 'LUAR_JAWA';
+      return 'ALL';
+    },
+
+    /**
+     * 1. DATASET: Analisis Realisasi Rute
+     */
+    get analysisRouteTableData() {
+      let list = this.reportComplianceList || [];
+      const query = (this.reportTableFilter.searchQuery || '').toLowerCase().trim();
+      const reg = this.reportTableFilter.region;
+      const statusCat = this.reportTableFilter.statusCategory;
+
+      // Filter by Region
+      if (reg && reg !== 'ALL') {
+        list = list.filter(c => this.getRegionFromModul(c.modul) === reg);
+      }
+
+      // Filter by Status Category
+      if (statusCat && statusCat !== 'ALL') {
+        list = list.filter(c => c.status === statusCat);
+      }
+
+      // Filter by Search Query
+      if (query) {
+        list = list.filter(c => 
+          (c.namaCrew || '').toLowerCase().includes(query) ||
+          (c.kodeCrew || '').toLowerCase().includes(query) ||
+          (c.modul || '').toLowerCase().includes(query)
+        );
+      }
+
+      // Sort
+      const col = this.reportTableFilter.sortCol || 'namaCrew';
+      const asc = this.reportTableFilter.sortAsc;
+
+      return [...list].sort((a, b) => {
+        let valA = a[col] ?? '';
+        let valB = b[col] ?? '';
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        if (valA < valB) return asc ? -1 : 1;
+        if (valA > valB) return asc ? 1 : -1;
+        return 0;
+      });
+    },
+
+    /**
+     * Summary Metrics for Route Analysis Table
+     */
+    get analysisRouteSummary() {
+      const data = this.analysisRouteTableData;
+      const totalCrew = data.length;
+      const totalTarget = data.reduce((acc, c) => acc + (c.targetCount || 0), 0);
+      const totalVisited = data.reduce((acc, c) => acc + (c.visitedCount || 0), 0);
+      const tuntasCount = data.filter(c => c.status === 'TUNTAS').length;
+      const onProgressCount = data.filter(c => c.status === 'ON_PROGRESS').length;
+      const belumJalanCount = data.filter(c => c.status === 'BELUM_JALAN' || c.status === 'BELUM_INPUT').length;
+      const avgAchievement = totalCrew > 0 ? Math.round(data.reduce((acc, c) => acc + (c.achievementRate || 0), 0) / totalCrew) : 0;
+
+      return { totalCrew, totalTarget, totalVisited, tuntasCount, onProgressCount, belumJalanCount, avgAchievement };
+    },
+
+    /**
+     * 2. DATASET: Analisis Input Jadwal & Coverage Rute
+     */
+    get analysisScheduleTableData() {
+      const normKey = (str) => {
+        if (!str) return '';
+        return String(str).toUpperCase()
+          .replace(/[\.\,\-\_\(\)\/]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .replace(/SULISTIYO/g, 'SULISTIO')
+          .trim();
+      };
+
+      // Map stores assigned per crew from masterToko
+      const crewStoreMap = {};
+      (this.masterToko || []).forEach(m => {
+        const rawName = m.namaCrew || '';
+        const cleanName = normKey(rawName);
+        const cleanId = normKey(m.kodeCrew);
+        const key = cleanName || cleanId;
+        if (!key) return;
+
+        if (!crewStoreMap[key]) {
+          crewStoreMap[key] = {
+            stores: new Set(),
+            routes: new Set(),
+            accounts: new Set(),
+            accountCounts: {}
+          };
+        }
+        if (m.kodeToko) crewStoreMap[key].stores.add(m.kodeToko);
+        if (m.rute) crewStoreMap[key].routes.add(String(m.rute).trim());
+        if (m.account) {
+          const acc = m.account.toUpperCase().trim();
+          crewStoreMap[key].accounts.add(acc);
+          crewStoreMap[key].accountCounts[acc] = (crewStoreMap[key].accountCounts[acc] || 0) + 1;
+        }
+      });
+
+      // Today route target helper
+      const routeMatchSet = this.getActiveRouteMatchList();
+      const todayTargetMap = {};
+      (this.masterToko || []).forEach(m => {
+        const cleanName = normKey(m.namaCrew);
+        const cleanId = normKey(m.kodeCrew);
+        const key = cleanName || cleanId;
+        if (!key || !m.kodeToko) return;
+        const ruteStr = String(m.rute || '').toUpperCase().trim();
+        if (!routeMatchSet || routeMatchSet.has(ruteStr) || Array.from(routeMatchSet).some(target => ruteStr.endsWith(' ' + target) || ruteStr.endsWith('-' + target))) {
+          if (!todayTargetMap[key]) todayTargetMap[key] = new Set();
+          todayTargetMap[key].add(m.kodeToko);
+        }
+      });
+
+      // Map each official masterUser
+      let list = (this.masterUser || []).map(u => {
+        const rawName = u.nama || '';
+        const rawId = u.id || '';
+        const cleanName = normKey(rawName);
+        const cleanId = normKey(rawId);
+        const key = cleanName || cleanId;
+        const sInfo = crewStoreMap[key] || { stores: new Set(), routes: new Set(), accounts: new Set(), accountCounts: {} };
+        const totalStores = sInfo.stores.size;
+        const uniqueRoutes = sInfo.routes.size;
+        const avgPerRoute = uniqueRoutes > 0 ? (totalStores / uniqueRoutes).toFixed(1) : '0';
+        const todayTarget = (todayTargetMap[key] ? todayTargetMap[key].size : 0);
+
+        let inputStatus = 'BELUM_INPUT';
+        let statusLabel = 'Belum Input Jadwal';
+        if (totalStores >= 15) {
+          inputStatus = 'LENGKAP';
+          statusLabel = 'Jadwal Lengkap';
+        } else if (totalStores > 0) {
+          inputStatus = 'PARSIAL';
+          statusLabel = 'Input Sebagian';
+        }
+
+        const topAccounts = Object.entries(sInfo.accountCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([acc, cnt]) => `${acc} (${cnt})`)
+          .join(', ') || '-';
+
+        return {
+          namaCrew: rawName,
+          kodeCrew: rawId || '-',
+          modul: u.modul || this.getCrewOfficialModul(rawName, '-'),
+          regional: this.getRegionFromModul(u.modul),
+          telepon: u.telepon || u.phone || '',
+          totalStores,
+          uniqueRoutes,
+          avgPerRoute,
+          todayTarget,
+          inputStatus,
+          statusLabel,
+          topAccounts
+        };
+      });
+
+      // Filter by Region
+      const reg = this.reportTableFilter.region;
+      if (reg && reg !== 'ALL') {
+        list = list.filter(c => c.regional === reg);
+      }
+
+      // Filter by Status Category
+      const statusCat = this.reportTableFilter.statusCategory;
+      if (statusCat && statusCat !== 'ALL') {
+        list = list.filter(c => c.inputStatus === statusCat);
+      }
+
+      // Filter by Search Query
+      const query = (this.reportTableFilter.searchQuery || '').toLowerCase().trim();
+      if (query) {
+        list = list.filter(c => 
+          (c.namaCrew || '').toLowerCase().includes(query) ||
+          (c.kodeCrew || '').toLowerCase().includes(query) ||
+          (c.modul || '').toLowerCase().includes(query) ||
+          (c.topAccounts || '').toLowerCase().includes(query)
+        );
+      }
+
+      // Sort
+      const col = this.reportTableFilter.sortCol || 'namaCrew';
+      const asc = this.reportTableFilter.sortAsc;
+
+      return list.sort((a, b) => {
+        let valA = a[col] ?? '';
+        let valB = b[col] ?? '';
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        if (valA < valB) return asc ? -1 : 1;
+        if (valA > valB) return asc ? 1 : -1;
+        return 0;
+      });
+    },
+
+    /**
+     * Summary Metrics for Schedule Analysis Table
+     */
+    get analysisScheduleSummary() {
+      const data = this.analysisScheduleTableData;
+      const totalCrew = data.length;
+      const lengkapCount = data.filter(c => c.inputStatus === 'LENGKAP').length;
+      const parsialCount = data.filter(c => c.inputStatus === 'PARSIAL').length;
+      const belumInputCount = data.filter(c => c.inputStatus === 'BELUM_INPUT').length;
+      const totalStoresPlot = data.reduce((acc, c) => acc + c.totalStores, 0);
+      const avgStores = totalCrew > 0 ? (totalStoresPlot / totalCrew).toFixed(1) : 0;
+
+      return { totalCrew, lengkapCount, parsialCount, belumInputCount, totalStoresPlot, avgStores };
+    },
+
+    /**
+     * 3. DATASET: Analisis Rekap Absensi Tim
+     */
+    get analysisAttendanceTableData() {
+      let list = (this.reportGroupedAbsensi || []).map(g => {
+        const masukWaktu = g.masuk ? g.masuk.waktu : '-';
+        const pulangWaktu = g.pulang ? g.pulang.waktu : '-';
+        
+        let statusMasuk = 'TIDAK_ABSEN';
+        let lateMin = 0;
+        if (g.masuk && g.masuk.waktu) {
+          const parts = String(g.masuk.waktu).split(':');
+          if (parts.length >= 2) {
+            const min = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+            if (min > 8 * 60) {
+              statusMasuk = 'TERLAMBAT';
+              lateMin = min - 480;
+            } else {
+              statusMasuk = 'TEPAT_WAKTU';
+            }
+          }
+        }
+
+        let kehadiranCat = 'HADIR_LENGKAP';
+        if (g.masuk && !g.pulang) kehadiranCat = 'HADIR_MASUK_ONLY';
+        else if (!g.masuk && g.pulang) kehadiranCat = 'HADIR_PULANG_ONLY';
+        else if (!g.masuk && !g.pulang) kehadiranCat = 'ALPHA';
+
+        const otherText = (g.otherLogs || []).map(o => `${o.status || ''} ${o.catatan || ''}`).join(' ').toUpperCase();
+        if (otherText.includes('SAKIT')) kehadiranCat = 'SAKIT';
+        else if (otherText.includes('IZIN')) kehadiranCat = 'IZIN';
+        else if (otherText.includes('CUTI')) kehadiranCat = 'CUTI';
+        else if (otherText.includes('DC')) kehadiranCat = 'VISIT_DC';
+
+        const rawCatatan = (g.masuk && g.masuk.catatan) || (g.pulang && g.pulang.catatan) || (g.otherLogs && g.otherLogs[0] && g.otherLogs[0].catatan) || '-';
+
+        const latMasuk = g.masuk ? (g.masuk.lat || g.masuk.latitude) : null;
+        const lngMasuk = g.masuk ? (g.masuk.lng || g.masuk.longitude) : null;
+        const outOfRadius = g.masuk ? (g.masuk.outOfRadius || g.masuk.isOutOfRadius || (g.masuk.distance && g.masuk.distance > 100)) : false;
+
+        return {
+          key: g.key,
+          tanggal: g.tanggal,
+          iso: g.iso,
+          namaCrew: g.namaCrew,
+          kodeCrew: g.kodeCrew,
+          modul: g.modul,
+          regional: this.getRegionFromModul(g.modul),
+          masukWaktu,
+          pulangWaktu,
+          durasiKerja: g.durasiKerja || '-',
+          statusMasuk,
+          lateMin,
+          kehadiranCat,
+          outOfRadius,
+          hasCoords: !!(latMasuk && lngMasuk),
+          lat: latMasuk,
+          lng: lngMasuk,
+          fotoMasuk: g.masuk ? (g.masuk.foto || g.masuk.fotoSelfie) : null,
+          fotoPulang: g.pulang ? (g.pulang.foto || g.pulang.fotoSelfie) : null,
+          catatan: rawCatatan
+        };
+      });
+
+      // Filter by Region
+      const reg = this.reportTableFilter.region;
+      if (reg && reg !== 'ALL') {
+        list = list.filter(c => c.regional === reg);
+      }
+
+      // Filter by Status Category
+      const statusCat = this.reportTableFilter.statusCategory;
+      if (statusCat && statusCat !== 'ALL') {
+        if (statusCat === 'TEPAT_WAKTU') list = list.filter(c => c.statusMasuk === 'TEPAT_WAKTU');
+        else if (statusCat === 'TERLAMBAT') list = list.filter(c => c.statusMasuk === 'TERLAMBAT');
+        else if (statusCat === 'HADIR_MASUK_ONLY') list = list.filter(c => c.kehadiranCat === 'HADIR_MASUK_ONLY');
+        else if (statusCat === 'IZIN_SAKIT') list = list.filter(c => c.kehadiranCat === 'IZIN' || c.kehadiranCat === 'SAKIT' || c.kehadiranCat === 'CUTI' || c.kehadiranCat === 'VISIT_DC');
+        else if (statusCat === 'ALPHA') list = list.filter(c => c.kehadiranCat === 'ALPHA');
+        else if (statusCat === 'OUT_OF_RADIUS') list = list.filter(c => c.outOfRadius);
+      }
+
+      // Filter by Search Query
+      const query = (this.reportTableFilter.searchQuery || '').toLowerCase().trim();
+      if (query) {
+        list = list.filter(c => 
+          (c.namaCrew || '').toLowerCase().includes(query) ||
+          (c.kodeCrew || '').toLowerCase().includes(query) ||
+          (c.modul || '').toLowerCase().includes(query) ||
+          (c.catatan || '').toLowerCase().includes(query)
+        );
+      }
+
+      // Sort
+      const col = this.reportTableFilter.sortCol || 'namaCrew';
+      const asc = this.reportTableFilter.sortAsc;
+
+      return list.sort((a, b) => {
+        let valA = a[col] ?? '';
+        let valB = b[col] ?? '';
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        if (valA < valB) return asc ? -1 : 1;
+        if (valA > valB) return asc ? 1 : -1;
+        return 0;
+      });
+    },
+
+    /**
+     * Summary Metrics for Attendance Analysis Table
+     */
+    get analysisAttendanceSummary() {
+      const data = this.analysisAttendanceTableData;
+      const totalLogs = data.length;
+      const tepatWaktuCount = data.filter(c => c.statusMasuk === 'TEPAT_WAKTU').length;
+      const terlambatCount = data.filter(c => c.statusMasuk === 'TERLAMBAT').length;
+      const belumPulangCount = data.filter(c => c.kehadiranCat === 'HADIR_MASUK_ONLY').length;
+      const izinSakitCount = data.filter(c => c.kehadiranCat === 'IZIN' || c.kehadiranCat === 'SAKIT' || c.kehadiranCat === 'CUTI' || c.kehadiranCat === 'VISIT_DC').length;
+      const outOfRadiusCount = data.filter(c => c.outOfRadius).length;
+
+      return { totalLogs, tepatWaktuCount, terlambatCount, belumPulangCount, izinSakitCount, outOfRadiusCount };
+    },
+
+    /**
+     * 4. DATASET: Analisis Audit Anomali & Rekonsiliasi (Scoped by Active Date Filter)
+     */
+    get analysisAnomalyTableData() {
+      const fVisits = this.reportFilteredVisits || [];
+      const fAbsensi = this.reportFilteredAbsensi || [];
+
+      const normKey = (str) => {
+        if (!str) return '';
+        return String(str).toUpperCase()
+          .replace(/[\.\,\-\_\(\)\/]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .replace(/SULISTIYO/g, 'SULISTIO')
+          .trim();
+      };
+
+      const uniqueMasterUsers = new Map();
+      const userPhoneMap = {};
+      this.masterUser.forEach(u => {
+        const cleanN = normKey(u.nama);
+        const cleanId = normKey(u.id);
+        if (cleanN && !uniqueMasterUsers.has(cleanN)) {
+          uniqueMasterUsers.set(cleanN, u);
+          if (u.telepon || u.phone) userPhoneMap[cleanN] = u.telepon || u.phone;
+        }
+        if (cleanId && !uniqueMasterUsers.has(cleanId)) {
+          uniqueMasterUsers.set(cleanId, u);
+          if (u.telepon || u.phone) userPhoneMap[cleanId] = u.telepon || u.phone;
+        }
+      });
+
+      const absenMasukMap = {};
+      const absenPulangMap = {};
+      const terlambatList = [];
+      const gpsIssueList = [];
+      const sakitList = [];
+      const izinList = [];
+      const cutiList = [];
+      const visitDcList = [];
+
+      fAbsensi.forEach(a => {
+        const rawName = (a.namaCrew || a.kodeCrew || '').trim();
+        if (!rawName) return;
+        const cleanN = normKey(rawName);
+        const cleanId = normKey(a.kodeCrew);
+        const statusUpper = (a.status || '').toUpperCase().trim();
+        const catatanUpper = (a.catatan || '').toUpperCase().trim();
+        const combined = `${statusUpper} ${catatanUpper}`;
+
+        if (statusUpper.includes('MASUK') || statusUpper.includes('HADIR') || statusUpper.includes('IN')) {
+          if (!absenMasukMap[cleanN]) {
+            absenMasukMap[cleanN] = {
+              namaCrew: rawName,
+              kodeCrew: a.kodeCrew || '-',
+              modul: a._officialModul || this.getCrewOfficialModul(rawName, a.modul || '-'),
+              waktuMasuk: a.waktu || '-',
+              fotoMasuk: a.fotoSelfie || a.foto || '',
+              noWa: userPhoneMap[cleanN] || (cleanId ? userPhoneMap[cleanId] : '') || ''
+            };
+          }
+
+          if (a.waktu) {
+            const parts = String(a.waktu).split(':');
+            if (parts.length >= 2) {
+              const minutes = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+              if (minutes > 8 * 60) {
+                terlambatList.push({
+                  namaCrew: rawName,
+                  kodeCrew: a.kodeCrew || '-',
+                  modul: a._officialModul || this.getCrewOfficialModul(rawName, a.modul || '-'),
+                  waktuMasuk: a.waktu,
+                  lateMinutes: minutes - 480,
+                  noWa: userPhoneMap[cleanN] || (cleanId ? userPhoneMap[cleanId] : '') || ''
+                });
+              }
+            }
+          }
+        }
+
+        if (statusUpper.includes('PULANG') || statusUpper.includes('OUT')) {
+          if (!absenPulangMap[cleanN]) {
+            absenPulangMap[cleanN] = {
+              namaCrew: rawName,
+              kodeCrew: a.kodeCrew || '-',
+              modul: a._officialModul || this.getCrewOfficialModul(rawName, a.modul || '-'),
+              waktuPulang: a.waktu || '-'
+            };
+          }
+        }
+
+        if (a.outOfRadius || a.isOutOfRadius || (a.distance && a.distance > 100)) {
+          gpsIssueList.push({
+            namaCrew: rawName,
+            kodeCrew: a.kodeCrew || '-',
+            modul: a._officialModul || this.getCrewOfficialModul(rawName, a.modul || '-'),
+            reason: `Absen di luar radius toko (Jarak: ${Math.round(a.distance || 120)} meter)`,
+            noWa: userPhoneMap[cleanN] || (cleanId ? userPhoneMap[cleanId] : '') || ''
+          });
+        }
+
+        if (combined.includes('SAKIT')) sakitList.push({ namaCrew: rawName, kodeCrew: a.kodeCrew, modul: a.modul, status: 'SAKIT', catatan: a.catatan });
+        else if (combined.includes('IZIN')) izinList.push({ namaCrew: rawName, kodeCrew: a.kodeCrew, modul: a.modul, status: 'IZIN', catatan: a.catatan });
+        else if (combined.includes('CUTI')) cutiList.push({ namaCrew: rawName, kodeCrew: a.kodeCrew, modul: a.modul, status: 'CUTI', catatan: a.catatan });
+        else if (combined.includes('DC') || combined.includes('OFFICE')) visitDcList.push({ namaCrew: rawName, kodeCrew: a.kodeCrew, modul: a.modul, status: 'VISIT DC', isDc: true, catatan: a.catatan });
+      });
+
+      const visitMap = {};
+      fVisits.forEach(v => {
+        const rawName = (v.namaCrew || v.kodeCrew || '').trim();
+        if (!rawName) return;
+        const cleanN = normKey(rawName);
+        if (!visitMap[cleanN]) {
+          visitMap[cleanN] = {
+            namaCrew: rawName,
+            kodeCrew: v.kodeCrew || '-',
+            modul: v._officialModul || this.getCrewOfficialModul(rawName, v.modul || '-'),
+            visitCount: 0,
+            stores: new Set(),
+            firstVisitTime: v.time || v.waktu || '',
+            noWa: userPhoneMap[cleanN] || ''
+          };
+        }
+        visitMap[cleanN].visitCount++;
+        if (v.kodeToko) visitMap[cleanN].stores.add(v.kodeToko);
+      });
+
+      const anomalies = [];
+
+      // 1. Absen Masuk tapi 0 Kunjungan
+      Object.keys(absenMasukMap).forEach(cleanN => {
+        const isDc = visitDcList.some(d => normKey(d.namaCrew) === cleanN);
+        if (!isDc && (!visitMap[cleanN] || visitMap[cleanN].visitCount === 0)) {
+          const c = absenMasukMap[cleanN];
+          anomalies.push({
+            id: `ANOM_A_${c.namaCrew}`,
+            namaCrew: c.namaCrew,
+            kodeCrew: c.kodeCrew || '-',
+            modul: c.modul,
+            regional: this.getRegionFromModul(c.modul),
+            telepon: c.noWa || '',
+            type: 'ABSEN_NO_VISIT',
+            typeLabel: 'Absen Masuk 0 Kunjungan',
+            severity: 'TINGGI',
+            detail: `Telah absen masuk pukul ${c.waktuMasuk || '-'}, tetapi belum ada kunjungan toko terekam.`,
+            waktu: c.waktuMasuk || '-',
+            affectedCount: 0
+          });
+        }
+      });
+
+      // 2. Kunjungan Selesai tapi Belum Absen Masuk
+      Object.keys(visitMap).forEach(cleanN => {
+        if (!absenMasukMap[cleanN]) {
+          const vObj = visitMap[cleanN];
+          anomalies.push({
+            id: `ANOM_B_${vObj.namaCrew}`,
+            namaCrew: vObj.namaCrew,
+            kodeCrew: vObj.kodeCrew,
+            modul: vObj.modul,
+            regional: this.getRegionFromModul(vObj.modul),
+            telepon: vObj.noWa || '',
+            type: 'VISIT_NO_ABSEN',
+            typeLabel: 'Kunjungan Belum Absen Masuk',
+            severity: 'TINGGI',
+            detail: `Telah menyelesaikan ${vObj.visitCount} kunjungan toko (pertama ${vObj.firstVisitTime || '-'}), namun belum absen masuk.`,
+            waktu: vObj.firstVisitTime || '-',
+            affectedCount: vObj.visitCount || 0
+          });
+        }
+      });
+
+      // 3. Terlambat Masuk
+      terlambatList.forEach(c => {
+        anomalies.push({
+          id: `ANOM_C_${c.namaCrew}`,
+          namaCrew: c.namaCrew,
+          kodeCrew: c.kodeCrew || '-',
+          modul: c.modul,
+          regional: this.getRegionFromModul(c.modul),
+          telepon: c.noWa || '',
+          type: 'TERLAMBAT',
+          typeLabel: 'Terlambat Absen Masuk',
+          severity: 'SEDANG',
+          detail: `Absen masuk pada pukul ${c.waktuMasuk || '-'} (Terlambat ${c.lateMinutes || 0} menit).`,
+          waktu: c.waktuMasuk || '-',
+          affectedCount: 0
+        });
+      });
+
+      // 4. Belum Absen Pulang
+      Object.keys(absenMasukMap).forEach(cleanN => {
+        if (!absenPulangMap[cleanN]) {
+          const c = absenMasukMap[cleanN];
+          const vCount = visitMap[cleanN] ? visitMap[cleanN].visitCount : 0;
+          anomalies.push({
+            id: `ANOM_D_${c.namaCrew}`,
+            namaCrew: c.namaCrew,
+            kodeCrew: c.kodeCrew || '-',
+            modul: c.modul,
+            regional: this.getRegionFromModul(c.modul),
+            telepon: c.noWa || '',
+            type: 'LUPA_PULANG',
+            typeLabel: 'Belum Absen Pulang',
+            severity: 'SEDANG',
+            detail: `Sudah menyelesaikan ${vCount} kunjungan toko, tetapi belum melakukan absensi pulang.`,
+            waktu: c.waktuMasuk || '-',
+            affectedCount: vCount
+          });
+        }
+      });
+
+      // 5. GPS Issue
+      gpsIssueList.forEach(c => {
+        anomalies.push({
+          id: `ANOM_E_${c.namaCrew}`,
+          namaCrew: c.namaCrew,
+          kodeCrew: c.kodeCrew || '-',
+          modul: c.modul,
+          regional: this.getRegionFromModul(c.modul),
+          telepon: c.noWa || '',
+          type: 'GPS_ISSUE',
+          typeLabel: 'GPS di Luar Radius Toko',
+          severity: 'TINGGI',
+          detail: c.reason || 'Posisi koordinat absensi di luar radius batas toleransi toko.',
+          waktu: '-',
+          affectedCount: 0
+        });
+      });
+
+      // 6. Alpha
+      uniqueMasterUsers.forEach((u, cleanN) => {
+        const cleanId = normKey(u.id);
+        const hasMasuk = absenMasukMap[cleanN] || (cleanId && absenMasukMap[cleanId]);
+        const hasVisit = visitMap[cleanN] || (cleanId && visitMap[cleanId]);
+        const hasIzin = sakitList.some(x => normKey(x.namaCrew) === cleanN) || izinList.some(x => normKey(x.namaCrew) === cleanN) || cutiList.some(x => normKey(x.namaCrew) === cleanN) || visitDcList.some(x => normKey(x.namaCrew) === cleanN);
+
+        if (!hasMasuk && !hasVisit && !hasIzin) {
+          anomalies.push({
+            id: `ANOM_F_${u.nama}`,
+            namaCrew: u.nama,
+            kodeCrew: u.id || '-',
+            modul: u.modul || this.getCrewOfficialModul(u.nama, '-'),
+            regional: this.getRegionFromModul(u.modul),
+            telepon: u.telepon || userPhoneMap[cleanN] || '',
+            type: 'ALPHA',
+            typeLabel: 'Alpha / Tanpa Aktivitas',
+            severity: 'KRITIS',
+            detail: 'Belum ada rekaman absensi masuk maupun kunjungan toko pada periode ini.',
+            waktu: '-',
+            affectedCount: 0
+          });
+        }
+      });
+
+      let list = anomalies;
+
+      // Filter by Region
+      const reg = this.reportTableFilter.region;
+      if (reg && reg !== 'ALL') {
+        list = list.filter(c => c.regional === reg);
+      }
+
+      // Filter by Anomaly Type
+      const statusCat = this.reportTableFilter.statusCategory;
+      if (statusCat && statusCat !== 'ALL') {
+        list = list.filter(c => c.type === statusCat);
+      }
+
+      // Filter by Search Query
+      const query = (this.reportTableFilter.searchQuery || '').toLowerCase().trim();
+      if (query) {
+        list = list.filter(c => 
+          (c.namaCrew || '').toLowerCase().includes(query) ||
+          (c.kodeCrew || '').toLowerCase().includes(query) ||
+          (c.modul || '').toLowerCase().includes(query) ||
+          (c.detail || '').toLowerCase().includes(query)
+        );
+      }
+
+      // Sort
+      const col = this.reportTableFilter.sortCol || 'severity';
+      const asc = this.reportTableFilter.sortAsc;
+
+      return list.sort((a, b) => {
+        let valA = a[col] ?? '';
+        let valB = b[col] ?? '';
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        if (valA < valB) return asc ? -1 : 1;
+        if (valA > valB) return asc ? 1 : -1;
+        return 0;
+      });
+    },
+
+    /**
+     * Summary Metrics for Anomaly Analysis Table
+     */
+    get analysisAnomalySummary() {
+      const data = this.analysisAnomalyTableData;
+      const totalAnomalies = data.length;
+      const kritisCount = data.filter(c => c.severity === 'KRITIS').length;
+      const tinggiCount = data.filter(c => c.severity === 'TINGGI').length;
+      const sedangCount = data.filter(c => c.severity === 'SEDANG').length;
+      const absen0VisitCount = data.filter(c => c.type === 'ABSEN_NO_VISIT').length;
+      const visitNoAbsenCount = data.filter(c => c.type === 'VISIT_NO_ABSEN').length;
+      const terlambatCount = data.filter(c => c.type === 'TERLAMBAT').length;
+      const alphaCount = data.filter(c => c.type === 'ALPHA').length;
+
+      return { totalAnomalies, kritisCount, tinggiCount, sedangCount, absen0VisitCount, visitNoAbsenCount, terlambatCount, alphaCount };
+    },
+
+    /**
+     * Paginated Data Slice for Active Table
+     */
+    getPaginatedReportData(dataList) {
+      if (!dataList || !Array.isArray(dataList)) return [];
+      const size = this.reportTableFilter.pageSize;
+      if (size === 'ALL' || size >= dataList.length) return dataList;
+      const start = (this.reportTableFilter.page - 1) * size;
+      return dataList.slice(start, start + size);
+    },
+
+    /**
+     * Total Pages Calculator
+     */
+    getReportTableTotalPages(dataList) {
+      if (!dataList || !Array.isArray(dataList)) return 1;
+      const size = this.reportTableFilter.pageSize;
+      if (size === 'ALL' || size <= 0) return 1;
+      return Math.max(1, Math.ceil(dataList.length / size));
+    },
+
+    /**
+     * EXPORT TO EXCEL (.XLSX) FOR ALL 4 ANALYTICS TABLES
+     */
+    exportAnalysisTableExcel(subTab = null) {
+      const activeTabKey = subTab || this.reportTableSubTab || 'rute';
+      if (typeof XLSX === 'undefined') {
+        alert('Library XLSX belum siap, silakan refresh halaman.');
+        return;
+      }
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      let rows = [];
+      let sheetName = 'Analisa';
+      let fileName = `Analisis_${dateStr}.xlsx`;
+
+      if (activeTabKey === 'rute') {
+        sheetName = 'Realisasi Rute';
+        fileName = `Analisis_Realisasi_Rute_MDS_${dateStr}.xlsx`;
+        rows = this.analysisRouteTableData.map((c, idx) => ({
+          'No': idx + 1,
+          'Nama MDS': c.namaCrew,
+          'Kode MDS': c.kodeCrew,
+          'Modul': c.modul,
+          'Grup Wilayah': this.getRegionFromModul(c.modul),
+          'Target Toko': c.targetCount || 0,
+          'Kunjungan Selesai': c.visitedCount || 0,
+          'Capaian %': `${c.achievementRate || 0}%`,
+          'Status Rute': c.status === 'TUNTAS' ? 'Tuntas 100%' : (c.status === 'ON_PROGRESS' ? 'Sedang Berjalan' : (c.status === 'BELUM_JALAN' ? 'Belum Ada Kunjungan' : 'Belum Input Jadwal'))
+        }));
+      } else if (activeTabKey === 'jadwal') {
+        sheetName = 'Input Jadwal';
+        fileName = `Analisis_Input_Jadwal_MDS_${dateStr}.xlsx`;
+        rows = this.analysisScheduleTableData.map((c, idx) => ({
+          'No': idx + 1,
+          'Nama MDS': c.namaCrew,
+          'Kode MDS': c.kodeCrew,
+          'Modul': c.modul,
+          'Grup Wilayah': c.regional,
+          'Total Toko Terplot': c.totalStores,
+          'Jumlah Rute/Hari Terisi': c.uniqueRoutes,
+          'Rata-Rata Toko/Rute': c.avgPerRoute,
+          'Target Toko Hari Ini': c.todayTarget,
+          'Status Input': c.statusLabel,
+          'Distribusi Account Utama': c.topAccounts
+        }));
+      } else if (activeTabKey === 'absen') {
+        sheetName = 'Rekap Absensi';
+        fileName = `Analisis_Rekap_Absensi_MDS_${dateStr}.xlsx`;
+        rows = this.analysisAttendanceTableData.map((c, idx) => ({
+          'No': idx + 1,
+          'Tanggal': c.tanggal,
+          'Nama MDS': c.namaCrew,
+          'Kode MDS': c.kodeCrew,
+          'Modul': c.modul,
+          'Grup Wilayah': c.regional,
+          'Jam Masuk': c.masukWaktu,
+          'Status Masuk': c.statusMasuk === 'TEPAT_WAKTU' ? 'Tepat Waktu' : (c.statusMasuk === 'TERLAMBAT' ? `Terlambat ${c.lateMin}m` : 'Tidak Absen'),
+          'Jam Pulang': c.pulangWaktu,
+          'Durasi Kerja': c.durasiKerja,
+          'Kategori Kehadiran': c.kehadiranCat,
+          'Status Radius GPS': c.outOfRadius ? 'Di Luar Radius (>100m)' : 'Valid / Dalam Radius',
+          'Catatan / Keterangan': c.catatan
+        }));
+      } else if (activeTabKey === 'anomali') {
+        sheetName = 'Audit Anomali';
+        fileName = `Analisis_Audit_Anomali_MDS_${dateStr}.xlsx`;
+        rows = this.analysisAnomalyTableData.map((c, idx) => ({
+          'No': idx + 1,
+          'Nama MDS': c.namaCrew,
+          'Kode MDS': c.kodeCrew,
+          'Modul': c.modul,
+          'Grup Wilayah': c.regional,
+          'Tipe Anomali': c.typeLabel,
+          'Tingkat Urgensi': c.severity,
+          'Jam/Waktu Terkait': c.waktu,
+          'Detail Temuan': c.detail,
+          'Jumlah Toko Terdampak': c.affectedCount || 0
+        }));
+      }
+
+      if (rows.length === 0) {
+        alert('Tidak ada baris data untuk diexport pada filter saat ini.');
+        return;
+      }
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      XLSX.writeFile(wb, fileName);
+    },
+
+    /**
      * Modal: Open Photo Viewer
      */
     async openPhotoModal(visit) {
+      this.resetPhotoZoom();
       this.photoModal.visitInfo = visit;
       this.photoModal.title = `Foto Kunjungan: ${visit.namaToko || 'Toko'} (${visit.account || ''})`;
       this.photoModal.photoSelfie = visit.fotoSelfie ? await ApiService.resolveImage(visit.fotoSelfie) : '';
@@ -3274,6 +4431,7 @@ function dashboardApp() {
       this.photoModal.activePhotoUrl = this.photoModal.photoSelfie || (this.photoModal.photoBefore[0] || '');
       this.photoModal.activePhotoLabel = this.photoModal.photoSelfie ? 'Foto Selfie Depan Toko' : 'Foto Display';
       this.photoModal.isOpen = true;
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     /**
@@ -3283,6 +4441,7 @@ function dashboardApp() {
       const target = type === 'masuk' ? entry.masuk : entry.pulang;
       if (!target) return;
 
+      this.resetPhotoZoom();
       const photoRaw = target.foto || target.fotoSelfie || target.fotoSurat || '';
       const photoUrl = photoRaw ? await ApiService.resolveImage(photoRaw) : '';
 
@@ -3299,15 +4458,98 @@ function dashboardApp() {
       this.photoModal.activePhotoUrl = photoUrl;
       this.photoModal.activePhotoLabel = `Foto Selfie Absensi ${type === 'masuk' ? 'Masuk (' + (target.waktu || '') + ')' : 'Pulang (' + (target.waktu || '') + ')'}`;
       this.photoModal.isOpen = true;
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     setActivePhoto(url, label) {
+      this.resetPhotoZoom();
       this.photoModal.activePhotoUrl = url;
       this.photoModal.activePhotoLabel = label;
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     closePhotoModal() {
       this.photoModal.isOpen = false;
+      this.resetPhotoZoom();
+    },
+
+    // Zoom & Pan Actions for Photo Modal
+    zoomInPhoto() {
+      const newZoom = Math.min(5, Math.round((this.photoModal.zoom + 0.3) * 10) / 10);
+      this.photoModal.zoom = newZoom;
+    },
+
+    zoomOutPhoto() {
+      const newZoom = Math.max(1, Math.round((this.photoModal.zoom - 0.3) * 10) / 10);
+      this.photoModal.zoom = newZoom;
+      if (newZoom === 1) {
+        this.photoModal.panX = 0;
+        this.photoModal.panY = 0;
+      }
+    },
+
+    resetPhotoZoom() {
+      this.photoModal.zoom = 1;
+      this.photoModal.panX = 0;
+      this.photoModal.panY = 0;
+      this.photoModal.rotation = 0;
+      this.photoModal.isDragging = false;
+    },
+
+    rotatePhoto() {
+      this.photoModal.rotation = (this.photoModal.rotation + 90) % 360;
+    },
+
+    togglePhotoZoom() {
+      if (this.photoModal.zoom > 1) {
+        this.resetPhotoZoom();
+      } else {
+        this.photoModal.zoom = 2.2;
+      }
+    },
+
+    handlePhotoWheel(e) {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.25 : -0.25;
+      const newZoom = Math.min(5, Math.max(1, Math.round((this.photoModal.zoom + delta) * 10) / 10));
+      this.photoModal.zoom = newZoom;
+      if (newZoom === 1) {
+        this.photoModal.panX = 0;
+        this.photoModal.panY = 0;
+      }
+    },
+
+    startPhotoDrag(e) {
+      if (this.photoModal.zoom <= 1) return;
+      this.photoModal.isDragging = true;
+      const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+      const clientY = e.clientY ?? (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+      this.photoModal.dragStartX = clientX - this.photoModal.panX;
+      this.photoModal.dragStartY = clientY - this.photoModal.panY;
+    },
+
+    onPhotoDrag(e) {
+      if (!this.photoModal.isDragging || this.photoModal.zoom <= 1) return;
+      const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : null);
+      const clientY = e.clientY ?? (e.touches && e.touches[0] ? e.touches[0].clientY : null);
+      if (clientX === null || clientY === null) return;
+      this.photoModal.panX = clientX - this.photoModal.dragStartX;
+      this.photoModal.panY = clientY - this.photoModal.dragStartY;
+    },
+
+    endPhotoDrag() {
+      this.photoModal.isDragging = false;
+    },
+
+    downloadActivePhoto() {
+      if (!this.photoModal.activePhotoUrl) return;
+      const a = document.createElement('a');
+      a.href = this.photoModal.activePhotoUrl;
+      a.target = '_blank';
+      a.download = `Foto_${(this.photoModal.title || 'MDS').replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     },
 
     /**

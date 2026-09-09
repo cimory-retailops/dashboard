@@ -813,10 +813,15 @@
           </div>
         </template>
 
-        <!-- Photo Preview -->
+        <!-- Photo Preview (Clickable to open Zoom HD) -->
         <template x-if="reviewModal.photoItem">
-          <div class="relative aspect-video rounded-2xl overflow-hidden bg-slate-950 border border-slate-700 shadow-inner">
-            <img :src="reviewModal.photoItem.previewUrl || getPhotoSrc(reviewModal.photoItem)" class="w-full h-full object-contain">
+          <div class="relative aspect-video rounded-2xl overflow-hidden bg-slate-950 border border-slate-700 shadow-inner cursor-pointer group"
+            @click="openPreviewModal(reviewModal.photoItem)" title="Klik untuk Buka Full Zoom & Rotasi">
+            <img :src="reviewModal.photoItem.previewUrl || getPhotoSrc(reviewModal.photoItem)" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all text-white text-xs font-semibold gap-1.5 backdrop-blur-[2px]">
+              <i data-lucide="zoom-in" class="w-4 h-4"></i>
+              <span>Klik untuk Zoom & Rotasi Foto HD</span>
+            </div>
           </div>
         </template>
 
@@ -880,36 +885,111 @@
   </div>
 
   <!-- ============================================================================== -->
-  <!-- 5. MODAL ZOOM FOTO RESOLUSI PENUH (HD PREVIEW) -->
+  <!-- 5. MODAL ZOOM FOTO RESOLUSI PENUH (HD PREVIEW) WITH INTERACTIVE ZOOM & PAN -->
   <!-- ============================================================================== -->
   <div x-show="previewModal.isOpen" x-cloak
     class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/90 backdrop-blur-xl transition-all">
-    <div class="max-w-4xl w-full rounded-3xl overflow-hidden flex flex-col max-h-[96vh] relative"
-      @click.away="previewModal.isOpen = false">
+    <div class="max-w-5xl w-full rounded-3xl overflow-hidden flex flex-col max-h-[96vh] relative glass-card border border-slate-700 shadow-2xl"
+      @click.away="closePreviewModal()">
       
-      <!-- Close Top Right -->
-      <button type="button" @click="previewModal.isOpen = false"
-        class="absolute top-3 right-3 z-10 p-2 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-slate-700 shadow-lg cursor-pointer">
-        <i data-lucide="x" class="w-5 h-5"></i>
-      </button>
+      <!-- Top Bar: Title & Controls -->
+      <div class="px-4 sm:px-5 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/80 gap-2">
+        <div class="min-w-0 flex-1">
+          <h4 class="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate" x-text="previewModal.title"></h4>
+          <p class="text-slate-400 text-[11px] truncate" x-text="previewModal.subtitle"></p>
+        </div>
+        
+        <div class="flex items-center space-x-2 flex-shrink-0">
+          <!-- Floating Zoom Controls Bar -->
+          <div class="flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-1 shadow-sm space-x-1">
+            <button type="button" @click="zoomOutPreview()" :disabled="previewModal.zoom <= 1"
+              class="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/70 disabled:opacity-30 disabled:hover:bg-transparent transition-all cursor-pointer"
+              title="Zoom Out (-)">
+              <i data-lucide="zoom-out" class="w-4 h-4"></i>
+            </button>
+            <button type="button" @click="resetPreviewZoom()"
+              class="px-2 py-0.5 rounded-lg text-[11px] font-mono font-bold text-indigo-400 hover:bg-slate-700/70 transition-all cursor-pointer"
+              title="Reset Zoom (100%)">
+              <span x-text="`${Math.round(previewModal.zoom * 100)}%`"></span>
+            </button>
+            <button type="button" @click="zoomInPreview()" :disabled="previewModal.zoom >= 5"
+              class="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/70 disabled:opacity-30 disabled:hover:bg-transparent transition-all cursor-pointer"
+              title="Zoom In (+)">
+              <i data-lucide="zoom-in" class="w-4 h-4"></i>
+            </button>
+            <div class="h-4 w-px bg-slate-700 mx-0.5"></div>
+            <button type="button" @click="rotatePreview()"
+              class="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/70 transition-all cursor-pointer"
+              title="Putar 90°">
+              <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+            </button>
+            <button type="button" @click="downloadPreviewPhoto()"
+              class="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/70 transition-all cursor-pointer"
+              title="Download Foto">
+              <i data-lucide="download" class="w-4 h-4"></i>
+            </button>
+            <template x-if="previewModal.photoUrl">
+              <a :href="previewModal.photoUrl" target="_blank"
+                class="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/70 transition-all cursor-pointer"
+                title="Buka Ukuran Penuh di Tab Baru">
+                <i data-lucide="external-link" class="w-4 h-4"></i>
+              </a>
+            </template>
+          </div>
 
-      <!-- Image Area -->
-      <div class="flex-1 bg-black flex items-center justify-center p-2 min-h-[300px] overflow-hidden">
-        <img :src="previewModal.photoUrl" :alt="previewModal.title" class="max-h-[80vh] w-auto object-contain rounded-xl">
+          <button type="button" @click="closePreviewModal()"
+            class="p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 shadow-lg cursor-pointer">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
       </div>
 
-      <!-- Caption Bar -->
-      <div class="glass-card p-3 sm:p-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-        <div>
-          <h4 class="font-bold text-slate-900 dark:text-white" x-text="previewModal.title"></h4>
-          <p class="text-slate-500 dark:text-slate-400 text-[11px]" x-text="previewModal.subtitle"></p>
+      <!-- Image Viewport Area -->
+      <div class="flex-1 bg-slate-950 flex items-center justify-center p-2 min-h-[360px] max-h-[70vh] h-[60vh] overflow-hidden relative select-none"
+        @wheel.prevent="handlePreviewWheel($event)"
+        @mousedown="startPreviewDrag($event)"
+        @mousemove="onPreviewDrag($event)"
+        @mouseup="endPreviewDrag()"
+        @mouseleave="endPreviewDrag()"
+        @touchstart="startPreviewDrag($event)"
+        @touchmove="onPreviewDrag($event)"
+        @touchend="endPreviewDrag()"
+        @dblclick="togglePreviewZoom()">
+        
+        <template x-if="previewModal.photoUrl">
+          <img :src="previewModal.photoUrl" :alt="previewModal.title"
+            class="max-h-full max-w-full object-contain rounded-xl select-none pointer-events-none"
+            :style="`transform: translate(${previewModal.panX}px, ${previewModal.panY}px) scale(${previewModal.zoom}) rotate(${previewModal.rotation}deg); transition: ${previewModal.isDragging ? 'none' : 'transform 0.15s ease-out'}; cursor: ${previewModal.zoom > 1 ? (previewModal.isDragging ? 'grabbing' : 'grab') : 'zoom-in'};`">
+        </template>
+        <template x-if="!previewModal.photoUrl">
+          <div class="text-center text-slate-500 p-8">
+            <i data-lucide="image-off" class="w-10 h-10 mx-auto mb-2 opacity-50"></i>
+            <p class="text-xs">Foto belum tersedia.</p>
+          </div>
+        </template>
+
+        <!-- Hint Overlay at bottom -->
+        <div class="absolute bottom-2 left-1/2 transform -translate-x-1/2 px-3 py-1 rounded-full bg-black/70 backdrop-blur-md border border-slate-700/60 text-[10px] text-slate-300 flex items-center space-x-2 pointer-events-none whitespace-nowrap shadow-lg">
+          <span>💡 Scroll / Tombol +/- untuk zoom</span>
+          <span class="opacity-40">•</span>
+          <span>Drag untuk geser</span>
+          <span class="opacity-40">•</span>
+          <span>Klik 2x untuk zoom cepat</span>
+        </div>
+      </div>
+
+      <!-- Caption & Action Bar -->
+      <div class="glass-card p-3 sm:p-4 border-t border-slate-800 flex items-center justify-between text-xs bg-slate-900/80">
+        <div class="flex items-center space-x-3 text-slate-400 text-xs">
+          <span class="px-2.5 py-0.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 font-mono" x-text="`Zoom: ${Math.round(previewModal.zoom * 100)}%`"></span>
+          <span x-show="previewModal.rotation > 0" class="px-2.5 py-0.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 font-mono" x-text="`Rotasi: ${previewModal.rotation}°`"></span>
         </div>
         <div class="flex items-center space-x-2">
           <template x-if="previewModal.visitInfo">
-            <button type="button" @click="openReviewModal(previewModal.visitInfo); previewModal.isOpen = false"
-              class="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer">
+            <button type="button" @click="openReviewModal(previewModal.visitInfo); closePreviewModal()"
+              class="px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer">
               <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
-              <span>Detail Audit</span>
+              <span>Detail Audit SPV</span>
             </button>
           </template>
         </div>
@@ -919,10 +999,10 @@
   </div>
 
   <!-- Scripts -->
-  <script src="./js/config.js?v=20260907_10"></script>
-  <script src="./js/db.js?v=20260907_10"></script>
-  <script src="./js/api.js?v=20260907_10"></script>
-  <script src="./js/app.js?v=20260907_10"></script>
+  <script src="./js/config.js?v=20260909_01"></script>
+  <script src="./js/db.js?v=20260909_01"></script>
+  <script src="./js/api.js?v=20260909_01"></script>
+  <script src="./js/app.js?v=20260909_01"></script>
 
   <!-- Failsafe auto-dismiss preloader -->
   <script>
