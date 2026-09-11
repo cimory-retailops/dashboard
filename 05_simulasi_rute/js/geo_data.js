@@ -4,19 +4,6 @@
  */
 const MDS_PERSONNEL_DATA = [
     {
-        "id": "3.4473",
-        "nama": "TITI SRIYATI",
-        "jabatan": "Merchandiser",
-        "account": "ALFAMART",
-        "modul": "DK3",
-        "alamat": "Jl. Pengadegan Utara IV RT 006/RW 007, Kel. Pengadegan",
-        "kecamatan": "Pancoran",
-        "kota": "Jakarta Selatan",
-        "region": "JABODETABEK",
-        "lat": -6.250793,
-        "lng": 106.847702
-    },
-    {
         "id": "3.5623",
         "nama": "MUHAMMAD FEBRIMA NURSA",
         "jabatan": "Merchandiser",
@@ -36,11 +23,11 @@ const MDS_PERSONNEL_DATA = [
         "account": "ALFAMART",
         "modul": "DK1",
         "alamat": "Jl. Raya Ciruas, Kp. Pasar, RT 003/RW 001, Desa Nyapah",
-        "kecamatan": "Walantaka",
-        "kota": "Kota Serang",
+        "kecamatan": "Karawaci",
+        "kota": "Kota Tangerang",
         "region": "JABODETABEK",
-        "lat": -6.114294,
-        "lng": 106.15005
+        "lat": -6.195022,
+        "lng": 106.615045
     },
     {
         "id": "3.6584",
@@ -893,12 +880,12 @@ const MDS_PERSONNEL_DATA = [
         "jabatan": "Merchandiser",
         "account": "ALFAMART",
         "modul": "LP3",
-        "alamat": "Simpar 012/005 ds,simpar",
-        "kecamatan": "cipunagara",
-        "kota": "subang",
-        "region": "PULAU JAWA",
-        "lat": -6.565,
-        "lng": 107.755
+        "alamat": "Jl. Zam Zam Djailani, Guntung Luar, Kel. Kemuning",
+        "kecamatan": "Banjarbaru Selatan",
+        "kota": "Kota Banjarbaru",
+        "region": "LUAR PULAU",
+        "lat": -3.454122,
+        "lng": 114.832459
     },
     {
         "id": "3.7149",

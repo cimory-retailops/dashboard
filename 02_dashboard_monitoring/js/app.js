@@ -9,7 +9,7 @@ function dashboardApp() {
     // UI & System State
     theme: localStorage.getItem('mds_theme') || 'dark',
     role: localStorage.getItem('mds_role') || 'admin', // 'admin' | 'mds'
-    activeTab: 'kunjungan', // 'kunjungan' | 'absensi' | 'jadwal' | 'audit'
+    activeTab: 'kunjungan', // 'kunjungan' | 'absensi' | 'jadwal' | 'audit' | 'control_panel'
     showAppMenu: false, // Dropdown switcher for 5 app modules
     showCategoryMenu: false, // Flyout Mega Menu (Alfagift style)
     activeMegaCategory: 'operasional', // 'operasional' | 'evaluasi' | 'master' | 'laporan' | 'modul'
@@ -17,6 +17,50 @@ function dashboardApp() {
     isLoading: true,
     loadingMessage: 'Menghubungkan ke Database Central...',
     loadingStage: 1, // 1: Connecting, 2: Fetching, 3: Processing
+
+    // Firebase & RBAC Authentication State
+    currentUser: null, // { uid, email, displayName, role, isSuperAdmin }
+    isLoginModalOpen: false,
+    loginEmail: '',
+    loginPassword: '',
+    loginLoading: false,
+    loginError: '',
+    loginForm: { email: '', password: '', isLoading: false, error: '' }, // backward compatibility
+    rbacUsers: [], // Array of user objects for x-for & filtering in matrix table
+    rbacMatrix: {}, // { [email]: userObj }
+    rbacSearch: '',
+    rbacSearchText: '', // alias
+    rbacFilterRole: 'ALL', // 'ALL' | 'SUPERADMIN' | 'SPV' | 'MDS'
+    rbacRoleFilter: 'ALL', // alias
+    rbacFilterModul: 'ALL',
+    rbacModulFilter: 'ALL', // alias
+    rbacIsSaving: false,
+    isSavingRbac: false, // alias
+    unauthorizedModalOpen: false,
+    unauthorizedTargetTab: '',
+    unauthorizedAttemptTab: '', // alias
+    userDropdownOpen: false,
+    showAddUserModal: false,
+    showSubTabConfigModal: false,
+    activeSubTabConfigUser: null,
+    showSpvTeamModal: false,
+    activeSpvTeamUser: null,
+    spvMdsSearch: '',
+    newUserForm: {
+      name: '',
+      email: '',
+      modul: 'ALL',
+      role: 'MDS',
+      jabatan: 'Merchandiser',
+      permissions: {
+        kunjungan: true,
+        absensi: true,
+        jadwal: false,
+        tokonasional: false,
+        laporan: false,
+        evaluasi: false
+      }
+    },
     
     // Period & Archive
     selectedPeriod: 'LIVE', // 'LIVE' or fileId of monthly backup
@@ -336,6 +380,9 @@ function dashboardApp() {
       this.setDefaultDates();
       this.dismissPreloader();
 
+      // Inisialisasi Firebase Auth & RBAC Permissions Matrix
+      await this.initRbac();
+
       // Check if session can be restored instantly from IndexedDB (< 15ms) - Zero Loading Screen!
       const restored = await this.restoreSessionState();
 
@@ -487,6 +534,20 @@ function dashboardApp() {
     },
 
     get matchingCrewSuggestions() {
+      if (this.currentUser && this.currentUser.role === 'MDS') {
+        const mdsCrew = this.getCurrentMdsCrewName();
+        if (mdsCrew) {
+          const mdsCrewUpper = mdsCrew.toUpperCase().trim();
+          return [{
+            namaCrew: mdsCrew,
+            kodeCrew: '',
+            modul: this.currentUser.modul || '',
+            account: '',
+            visitCount: (this.visits || []).filter(v => (v.namaCrew || '').toUpperCase().trim() === mdsCrewUpper).length
+          }];
+        }
+      }
+
       const q = (this.searchInputText || this.searchQuery || '').trim().toUpperCase();
       if (!q || q.length < 2) return [];
 
@@ -1015,6 +1076,39 @@ function dashboardApp() {
       let data = this.visits;
       if (!data || data.length === 0) return [];
 
+      // 0. Row-Level Security / Role-Based Scoping
+      if (this.currentUser) {
+        if (this.currentUser.role === 'MDS') {
+          const mdsCrew = this.getCurrentMdsCrewName();
+          if (mdsCrew) {
+            const mdsCrewUpper = mdsCrew.toUpperCase().trim();
+            data = data.filter(v => {
+              const cName = (v.namaCrew || '').toUpperCase().trim();
+              const cCode = (v.kodeCrew || '').toUpperCase().trim();
+              return cName === mdsCrewUpper || cCode === mdsCrewUpper;
+            });
+          }
+        } else if (this.currentUser.role === 'SPV') {
+          // Prioritas 1: managedMds (crew yang di-assign Super Admin ke SPV ini)
+          const crews = this.getSpvManagedCrews();
+          if (crews.length > 0) {
+            const crewsUpper = crews.map(c => c.toUpperCase().trim());
+            data = data.filter(v => {
+              const cName = (v.namaCrew || '').toUpperCase().trim();
+              const cCode = (v.kodeCrew || '').toUpperCase().trim();
+              return crewsUpper.some(c => c === cName || c === cCode);
+            });
+          } else if (this.currentUser.modul && this.currentUser.modul !== 'ALL') {
+            // Fallback lama: filter by modul prefix jika belum ada managedMds
+            const spvMod = this.currentUser.modul.toUpperCase().trim();
+            data = data.filter(v => {
+              const vMod = (v._officialModul || (this.getCrewOfficialModul ? this.getCrewOfficialModul(v.namaCrew || v.kodeCrew, v.modul) : v.modul) || '').toUpperCase().trim();
+              return vMod && vMod.startsWith(spvMod);
+            });
+          }
+        }
+      }
+
       // 1. Smart Date Filtering
       if (this.dateFilter === 'LATEST_DAY') {
         const latestIso = data[0]._iso || this.normalizeIsoDate(data[0].dateIso || data[0].date || data[0].tanggal);
@@ -1103,6 +1197,38 @@ function dashboardApp() {
     get filteredAbsensi() {
       let data = this.absensi;
       if (!data || data.length === 0) return [];
+
+      // 0. Row-Level Security / Role-Based Scoping
+      if (this.currentUser) {
+        if (this.currentUser.role === 'MDS') {
+          const mdsCrew = this.getCurrentMdsCrewName();
+          if (mdsCrew) {
+            const mdsCrewUpper = mdsCrew.toUpperCase().trim();
+            data = data.filter(a => {
+              const cName = (a.namaCrew || '').toUpperCase().trim();
+              const cCode = (a.kodeCrew || '').toUpperCase().trim();
+              return cName === mdsCrewUpper || cCode === mdsCrewUpper;
+            });
+          }
+        } else if (this.currentUser.role === 'SPV') {
+          // Prioritas 1: managedMds
+          const crews = this.getSpvManagedCrews();
+          if (crews.length > 0) {
+            const crewsUpper = crews.map(c => c.toUpperCase().trim());
+            data = data.filter(a => {
+              const cName = (a.namaCrew || '').toUpperCase().trim();
+              const cCode = (a.kodeCrew || '').toUpperCase().trim();
+              return crewsUpper.some(c => c === cName || c === cCode);
+            });
+          } else if (this.currentUser.modul && this.currentUser.modul !== 'ALL') {
+            const spvMod = this.currentUser.modul.toUpperCase().trim();
+            data = data.filter(a => {
+              const aMod = (a._officialModul || (this.getCrewOfficialModul ? this.getCrewOfficialModul(a.namaCrew || a.kodeCrew, a.modul) : a.modul) || '').toUpperCase().trim();
+              return aMod && aMod.startsWith(spvMod);
+            });
+          }
+        }
+      }
 
       const f = this.filterAbsensi || {};
       const dFilter = f.dateFilter || 'LATEST_DAY';
@@ -1351,6 +1477,36 @@ function dashboardApp() {
       let data = this.masterToko;
       if (!data || data.length === 0) return [];
 
+      // 0. Row-Level Security / Role-Based Scoping
+      if (this.currentUser && this.currentUser.role === 'MDS') {
+        const mdsCrew = this.getCurrentMdsCrewName();
+        if (mdsCrew) {
+          const mdsCrewUpper = mdsCrew.toUpperCase().trim();
+          data = data.filter(m => {
+            const cName = (m.namaCrew || '').toUpperCase().trim();
+            const cCode = (m.kodeCrew || '').toUpperCase().trim();
+            return cName === mdsCrewUpper || cCode === mdsCrewUpper || (cName && (cName.includes(mdsCrewUpper) || mdsCrewUpper.includes(cName)));
+          });
+        }
+      } else if (this.currentUser && this.currentUser.role === 'SPV') {
+        // Prioritas 1: managedMds
+        const crews = this.getSpvManagedCrews();
+        if (crews.length > 0) {
+          const crewsUpper = crews.map(c => c.toUpperCase().trim());
+          data = data.filter(m => {
+            const cName = (m.namaCrew || '').toUpperCase().trim();
+            const cCode = (m.kodeCrew || '').toUpperCase().trim();
+            return crewsUpper.some(c => c === cName || c === cCode);
+          });
+        } else if (this.currentUser.modul && this.currentUser.modul !== 'ALL') {
+          const spvMod = this.currentUser.modul.toUpperCase().trim();
+          data = data.filter(m => {
+            const mMod = (m._officialModul || (this.getCrewOfficialModul ? this.getCrewOfficialModul(m.namaCrew || m.kodeCrew, m.modul) : m.modul) || '').toUpperCase().trim();
+            return mMod && mMod.startsWith(spvMod);
+          });
+        }
+      }
+
       const f = this.filterJadwal || {};
 
       // 1. Filter MDS / Personil Crew (PRIORITAS: Jika memilih MDS spesifik, cari langsung nama MDS tersebut)
@@ -1463,6 +1619,14 @@ function dashboardApp() {
       });
 
       const list = Array.from(crewSet.values()).sort((a, b) => a.name.localeCompare(b.name));
+      if (this.currentUser && this.currentUser.role === 'MDS') {
+        const mdsCrew = this.getCurrentMdsCrewName();
+        if (mdsCrew) {
+          const mdsCrewUpper = mdsCrew.toUpperCase().trim();
+          const single = list.filter(c => c.upper === mdsCrewUpper || c.upper.includes(mdsCrewUpper) || mdsCrewUpper.includes(c.upper));
+          return single.length > 0 ? single : [{ name: mdsCrew, upper: mdsCrewUpper, modul: this.currentUser.modul || '' }];
+        }
+      }
       this._cachedCrewListByModul.set(selMod, list);
       return list;
     },
@@ -2244,16 +2408,27 @@ function dashboardApp() {
      * All official available crew list for multi-select dropdown
      */
     get allAvailableCrews() {
+      if (this.currentUser && this.currentUser.role === 'MDS') {
+        const mdsCrew = this.getCurrentMdsCrewName();
+        if (mdsCrew) {
+          return [{
+            namaCrew: mdsCrew,
+            kodeCrew: '-',
+            modul: this.currentUser.modul || '',
+            upper: mdsCrew.toUpperCase().trim()
+          }];
+        }
+      }
       const seen = new Set();
       const list = [];
       (this.masterUser || []).forEach(u => {
-        const rawName = (u.nama || '').trim();
-        const rawId = (u.id || '').trim();
+        const rawName = (u.nama || u.NAMA || u.Nama || '').trim();
+        const rawId = (u.id || u.ID || u.kode || u.KODE || u.kodeCrew || '').trim();
         if (!rawName) return;
         const upper = rawName.toUpperCase();
         if (!seen.has(upper)) {
           seen.add(upper);
-          const mod = (u.modul || this.getCrewOfficialModul(rawName, '-')).trim().toUpperCase();
+          const mod = (u.modul || u.MODUL || (this.getCrewOfficialModul ? this.getCrewOfficialModul(rawName, '-') : '-')).trim().toUpperCase();
           list.push({
             namaCrew: rawName,
             kodeCrew: rawId || '-',
@@ -2269,6 +2444,9 @@ function dashboardApp() {
      * Filtered crew list inside the dropdown based on search and active module
      */
     get filteredDropdownCrews() {
+      if (this.currentUser && this.currentUser.role === 'MDS') {
+        return this.allAvailableCrews;
+      }
       const q = (this.crewDropdownSearch || '').toUpperCase().trim();
       let list = this.allAvailableCrews;
 
@@ -3154,6 +3332,9 @@ function dashboardApp() {
      * Anomaly Tab / View Controls (Centralized in Tab 5)
      */
     openAnomalyModal(subTab = null) {
+      if (!this.checkTabAccess('laporan')) {
+        return;
+      }
       this.activeTab = 'laporan';
       this.setReportTabType('ANOMALY');
       if (subTab) {
@@ -3748,6 +3929,12 @@ function dashboardApp() {
      * Switch SubTab in Analytics Table
      */
     setReportTableSubTab(tab) {
+      if (!this.canAccessSubTab('laporan', tab)) {
+        this.unauthorizedTargetTab = `Laporan: Sub-Tab ${String(tab).toUpperCase()}`;
+        this.unauthorizedAttemptTab = this.unauthorizedTargetTab;
+        this.unauthorizedModalOpen = true;
+        return;
+      }
       this.reportTableSubTab = tab;
       this.reportTableFilter.page = 1;
       this.reportTableFilter.statusCategory = 'ALL';
@@ -6482,8 +6669,697 @@ function dashboardApp() {
       }
     },
 
+    /**
+     * ==============================================================================
+     * FIREBASE AUTH & RBAC PERMISSIONS CONTROLLER METHODS
+     * ==============================================================================
+     */
+    populateRbacUsers() {
+      const list = Object.values(this.rbacMatrix || {})
+        .filter(u => u && typeof u === 'object')
+        .map((u, idx) => {
+          if (!u.id || String(u.id).includes('undefined')) {
+            u.id = `USER_${idx + 1}_${(u.email || 'usr').replace(/[^a-zA-Z0-9]/g, '_')}`;
+          }
+          if (!u.role) u.role = 'MDS';
+          if (u.linkedCrew === undefined) u.linkedCrew = '';
+          if (!u.permissions) {
+            const preset = window.RBAC_ROLE_PRESETS && window.RBAC_ROLE_PRESETS[u.role]
+              ? window.RBAC_ROLE_PRESETS[u.role].permissions
+              : { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false };
+            u.permissions = { ...preset };
+          }
+          if (!u.permissions.subTabs) {
+            u.permissions.subTabs = window.getDefaultSubTabsForRole
+              ? window.getDefaultSubTabsForRole(u.role)
+              : { laporan: { rute: true, jadwal: true, absen: true, anomali: false }, evaluasi: { TOKO: true, DC: true } };
+          }
+          return u;
+        });
+      this.rbacUsers = list;
+    },
+
+    async initRbac() {
+      if (window.FirebaseAuthService) {
+        await window.FirebaseAuthService.init();
+        window.FirebaseAuthService.onAuthStateChanged((user) => {
+          this.currentUser = user;
+          if (user && (user.isSuperAdmin || user.role === 'SUPERADMIN' || user.role === 'MANAGER')) {
+            this.role = 'admin';
+          } else if (user && user.role === 'SPV') {
+            this.role = 'admin';
+            if (user.modul && user.modul !== 'ALL') {
+              this.selectedModul = user.modul;
+              if (this.filterAbsensi) this.filterAbsensi.modul = user.modul;
+              if (this.filterJadwal) this.filterJadwal.modul = user.modul;
+            }
+          } else if (user && user.role === 'MDS') {
+            this.role = 'mds';
+            const mdsCrew = this.getCurrentMdsCrewName();
+            if (mdsCrew) {
+              this.selectedCrew = mdsCrew;
+              this.selectedCrews = [mdsCrew];
+              if (this.filterJadwal) {
+                this.filterJadwal.selectedCrew = mdsCrew;
+                this.filterJadwal.appliedSelectedCrew = mdsCrew;
+              }
+            }
+            if (user.modul && user.modul !== 'ALL') {
+              this.selectedModul = user.modul;
+              if (this.filterAbsensi) this.filterAbsensi.modul = user.modul;
+              if (this.filterJadwal) this.filterJadwal.modul = user.modul;
+            }
+          } else {
+            this.role = 'mds';
+          }
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        });
+
+        this.rbacMatrix = await window.FirebaseAuthService.loadPermissionsMatrix(this.masterUser || []);
+        this.populateRbacUsers();
+      }
+    },
+
+    syncRbacMatrixFromUsers() {
+      const map = {};
+      (this.rbacUsers || []).forEach(u => {
+        if (u && u.email) {
+          map[u.email.toLowerCase()] = u;
+        }
+      });
+      this.rbacMatrix = map;
+    },
+
+    openLoginModal() {
+      this.userDropdownOpen = false;
+      window.location.replace('../index.html');
+    },
+
+    closeLoginModal() {
+      this.isLoginModalOpen = false;
+      this.loginError = '';
+    },
+
+    async performFirebaseLogin() {
+      if (!this.loginEmail) {
+        this.loginError = 'Silakan masukkan email atau nama pengguna.';
+        return;
+      }
+      this.loginLoading = true;
+      this.loginError = '';
+
+      try {
+        const res = await window.FirebaseAuthService.login(this.loginEmail, this.loginPassword);
+        if (res.success) {
+          this.currentUser = res.user;
+          this.isLoginModalOpen = false;
+          if (res.user.role === 'SUPERADMIN' || res.user.isSuperAdmin || res.user.role === 'MANAGER') {
+            this.role = 'admin';
+          } else if (res.user.role === 'SPV') {
+            this.role = 'admin';
+          } else {
+            this.role = 'mds';
+          }
+          if (!this.canAccessTab(this.activeTab)) {
+            this.navigateToTab(this.getFirstAllowedTab());
+          }
+        } else {
+          this.loginError = res.error || 'Login gagal. Periksa kembali email dan kata sandi.';
+        }
+      } catch (err) {
+        this.loginError = err.message || 'Terjadi kesalahan pada sistem otentikasi.';
+      } finally {
+        this.loginLoading = false;
+      }
+    },
+
+    async submitLogin() {
+      // Alias for performFirebaseLogin
+      return this.performFirebaseLogin();
+    },
+
+    async quickLoginUser(type) {
+      this.loginLoading = true;
+      this.loginError = '';
+      try {
+        let t = type;
+        if (type === 'superadmin') t = 'BU_OCI';
+        else if (type === 'spv') t = 'SPV_IBNU';
+        else if (type === 'mds') t = 'MDS_GHOZALI';
+
+        const res = await window.FirebaseAuthService.quickLogin(t);
+        if (res.success) {
+          this.currentUser = res.user;
+          this.isLoginModalOpen = false;
+          this.userDropdownOpen = false;
+          if (res.user.role === 'SUPERADMIN' || res.user.isSuperAdmin || res.user.role === 'MANAGER') {
+            this.role = 'admin';
+          } else if (res.user.role === 'SPV') {
+            this.role = 'admin';
+          } else {
+            this.role = 'mds';
+          }
+          if (!this.canAccessTab(this.activeTab)) {
+            this.navigateToTab(this.getFirstAllowedTab());
+          }
+        }
+      } finally {
+        this.loginLoading = false;
+      }
+    },
+
+    async performLogout() {
+      if (window.FirebaseAuthService) {
+        await window.FirebaseAuthService.logout();
+      }
+      localStorage.removeItem('cimory_portal_active_session');
+      localStorage.removeItem('cimory_mock_user');
+      this.currentUser = null;
+      this.userDropdownOpen = false;
+      // Langsung arahkan kembali ke halaman login portal utama
+      window.location.replace('../index.html');
+    },
+
+    isSuperAdmin() {
+      return window.FirebaseAuthService ? window.FirebaseAuthService.isSuperAdmin(this.currentUser ? this.currentUser.email : '') : false;
+    },
+
+    canAccessTab(tabId) {
+      if (tabId === 'rbac' || tabId === 'control_panel') {
+        return this.currentUser && (this.currentUser.role === 'SUPERADMIN' || this.currentUser.isSuperAdmin || this.currentUser.role === 'MANAGER');
+      }
+      if (!this.currentUser) return false;
+      if (this.currentUser.role === 'SUPERADMIN' || this.currentUser.isSuperAdmin) return true;
+      if (this.currentUser.role === 'MANAGER' || this.currentUser.role === 'SPV') return true;
+      if (this.currentUser.permissions && this.currentUser.permissions[tabId] !== undefined) {
+        return Boolean(this.currentUser.permissions[tabId]);
+      }
+      return window.FirebaseAuthService ? window.FirebaseAuthService.hasAccessToTab(this.currentUser, tabId) : false;
+    },
+
+    canAccessSubTab(parentTab, subTabId) {
+      if (!this.currentUser) return false;
+      if (this.currentUser.role === 'SUPERADMIN' || this.currentUser.isSuperAdmin || this.currentUser.role === 'MANAGER') return true;
+
+      // 1. Cek izin parent tab dulu
+      if (!this.canAccessTab(parentTab)) return false;
+
+      // 2. Cek izin sub-tab spesifik jika ada di permissions.subTabs
+      const perms = this.currentUser.permissions;
+      if (perms && perms.subTabs && perms.subTabs[parentTab]) {
+        if (perms.subTabs[parentTab][subTabId] !== undefined) {
+          return Boolean(perms.subTabs[parentTab][subTabId]);
+        }
+      }
+
+      // Fallback: anomali tertutup bagi MDS secara default
+      if (parentTab === 'laporan' && subTabId === 'anomali') {
+        return this.currentUser.role !== 'MDS';
+      }
+
+      return true;
+    },
+
+    getFirstAllowedReportSubTab() {
+      const tabs = ['rute', 'jadwal', 'absen', 'anomali'];
+      for (const t of tabs) {
+        if (this.canAccessSubTab('laporan', t)) return t;
+      }
+      return 'rute';
+    },
+
+    checkTabAccess(tabId) {
+      if (!this.canAccessTab(tabId)) {
+        this.unauthorizedTargetTab = tabId;
+        this.unauthorizedAttemptTab = tabId;
+        this.unauthorizedModalOpen = true;
+        return false;
+      }
+      return true;
+    },
+
+    getFirstAllowedTab() {
+      const tabs = ['kunjungan', 'absensi', 'jadwal', 'tokonasional', 'laporan', 'evaluasi'];
+      for (const t of tabs) {
+        if (this.canAccessTab(t)) return t;
+      }
+      return 'kunjungan';
+    },
+
+    // RBAC Control Panel Table Management
+    get filteredRbacUsers() {
+      let list = (this.rbacUsers || []).filter(u => u && typeof u === 'object');
+
+      const roleFilter = this.rbacFilterRole || this.rbacRoleFilter || 'ALL';
+      if (roleFilter !== 'ALL') {
+        list = list.filter(u => u && u.role === roleFilter);
+      }
+
+      const modulFilter = this.rbacFilterModul || this.rbacModulFilter || 'ALL';
+      if (modulFilter !== 'ALL') {
+        list = list.filter(u => u && u.modul === modulFilter);
+      }
+
+      const searchQuery = (this.rbacSearch || this.rbacSearchText || '').trim().toLowerCase();
+      if (searchQuery) {
+        list = list.filter(u => 
+          u && (
+            (u.name && String(u.name).toLowerCase().includes(searchQuery)) ||
+            (u.email && String(u.email).toLowerCase().includes(searchQuery)) ||
+            (u.modul && String(u.modul).toLowerCase().includes(searchQuery)) ||
+            (u.jabatan && String(u.jabatan).toLowerCase().includes(searchQuery))
+          )
+        );
+      }
+
+      // Sort: Superadmin first, then Manager, then SPV, then MDS, alphabetically by name
+      const rolePriority = { SUPERADMIN: 1, MANAGER: 2, SPV: 3, MDS: 4, CUSTOM: 5 };
+      return [...list].sort((a, b) => {
+        const pA = (a && a.role && rolePriority[a.role]) || 99;
+        const pB = (b && b.role && rolePriority[b.role]) || 99;
+        if (pA !== pB) return pA - pB;
+        return String((a && a.name) || '').localeCompare(String((b && b.name) || ''));
+      });
+    },
+
+    changeUserRole(userId, newRole) {
+      const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
+      if (!u) return;
+      u.role = newRole;
+      const preset = window.RBAC_ROLE_PRESETS && window.RBAC_ROLE_PRESETS[newRole];
+      if (preset && preset.permissions) {
+        u.permissions = { ...preset.permissions };
+      }
+      if (newRole === 'MDS' && !u.linkedCrew) {
+        const exactMatch = (this.availableOfficialCrews || []).find(c => c.name.toUpperCase() === (u.name || '').toUpperCase().trim());
+        if (exactMatch) {
+          u.linkedCrew = exactMatch.name;
+          if (exactMatch.modul && exactMatch.modul !== '-') u.modul = exactMatch.modul;
+        }
+      }
+      this.syncRbacMatrixFromUsers();
+    },
+
+    changeUserLinkedCrew(userId, crewName) {
+      const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
+      if (!u) return;
+      u.linkedCrew = (crewName || '').trim();
+
+      // Jika crew personil dipilih dan punya modul resmi, sinkronkan ke modul akun
+      if (u.linkedCrew) {
+        const found = (this.availableOfficialCrews || []).find(c => c.name.toUpperCase() === u.linkedCrew.toUpperCase());
+        if (found && found.modul && found.modul !== '-' && (!u.modul || u.modul === 'ALL')) {
+          u.modul = found.modul;
+        }
+      }
+      this.syncRbacMatrixFromUsers();
+    },
+
+    getCurrentMdsCrewName() {
+      if (!this.currentUser) return '';
+      // 1. Linked crew from Super Admin RBAC binding
+      if (this.currentUser.linkedCrew && this.currentUser.linkedCrew.trim()) {
+        return this.currentUser.linkedCrew.trim();
+      }
+      // 2. Check in rbacMatrix
+      if (this.rbacMatrix && this.currentUser.email) {
+        const m = this.rbacMatrix[this.currentUser.email.toLowerCase()];
+        if (m && m.linkedCrew && m.linkedCrew.trim()) {
+          return m.linkedCrew.trim();
+        }
+      }
+      // 3. Fallback to displayName or name
+      return (this.currentUser.displayName || this.currentUser.name || '').trim();
+    },
+
+    get availableOfficialCrews() {
+      const crewMap = new Map();
+      const nonMdsKeywords = ['VACANT', 'OPEN', 'RESIGN', 'ADMIN', 'EMPTY', 'LEADER', 'CIMORY', 'TEST', '-'];
+
+      // 1. Dari masterUser
+      if (Array.isArray(this.masterUser)) {
+        this.masterUser.forEach(u => {
+          const rawName = (u.nama || u.NAMA || u.Nama || '').trim();
+          const rawCode = (u.id || u.ID || u.kode || u.KODE || u.kodeCrew || '').trim();
+          const rawMod = (u.modul || u.MODUL || '').trim().toUpperCase();
+          if (!rawName) return;
+          const upper = rawName.toUpperCase();
+          if (nonMdsKeywords.some(kw => upper.includes(kw))) return;
+
+          if (!crewMap.has(upper)) {
+            const finalMod = rawMod || (this.getCrewOfficialModul ? this.getCrewOfficialModul(rawName, '-') : '') || '';
+            crewMap.set(upper, {
+              name: rawName,
+              code: rawCode,
+              modul: finalMod,
+              label: `${rawName}${rawCode ? ' (' + rawCode + ')' : ''}${finalMod ? ' - ' + finalMod : ''}`
+            });
+          }
+        });
+      }
+
+      // 2. Dari visits
+      if (Array.isArray(this.visits)) {
+        this.visits.forEach(v => {
+          const rawName = (v.namaCrew || '').trim();
+          const rawCode = (v.kodeCrew || '').trim();
+          const rawMod = (v._officialModul || v.modul || '').trim().toUpperCase();
+          if (!rawName) return;
+          const upper = rawName.toUpperCase();
+          if (nonMdsKeywords.some(kw => upper.includes(kw))) return;
+
+          if (!crewMap.has(upper)) {
+            const finalMod = rawMod || (this.getCrewOfficialModul ? this.getCrewOfficialModul(rawName, '-') : '') || '';
+            crewMap.set(upper, {
+              name: rawName,
+              code: rawCode,
+              modul: finalMod,
+              label: `${rawName}${rawCode ? ' (' + rawCode + ')' : ''}${finalMod ? ' - ' + finalMod : ''}`
+            });
+          } else {
+            const cur = crewMap.get(upper);
+            if (!cur.code && rawCode) cur.code = rawCode;
+            if (!cur.modul && rawMod) cur.modul = rawMod;
+          }
+        });
+      }
+
+      // 3. Dari absensi
+      if (Array.isArray(this.absensi)) {
+        this.absensi.forEach(a => {
+          const rawName = (a.namaCrew || '').trim();
+          const rawCode = (a.kodeCrew || '').trim();
+          const rawMod = (a._officialModul || a.modul || '').trim().toUpperCase();
+          if (!rawName) return;
+          const upper = rawName.toUpperCase();
+          if (nonMdsKeywords.some(kw => upper.includes(kw))) return;
+
+          if (!crewMap.has(upper)) {
+            const finalMod = rawMod || (this.getCrewOfficialModul ? this.getCrewOfficialModul(rawName, '-') : '') || '';
+            crewMap.set(upper, {
+              name: rawName,
+              code: rawCode,
+              modul: finalMod,
+              label: `${rawName}${rawCode ? ' (' + rawCode + ')' : ''}${finalMod ? ' - ' + finalMod : ''}`
+            });
+          }
+        });
+      }
+
+      return Array.from(crewMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    },
+
+    toggleUserPerm(userId, permKey) {
+      const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
+      if (!u) return;
+      if (!u.permissions) u.permissions = {};
+      u.permissions[permKey] = !u.permissions[permKey];
+      this.syncRbacMatrixFromUsers();
+    },
+
+    setUserAllPerms(userId, state) {
+      const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
+      if (!u) return;
+      if (!u.permissions) u.permissions = {};
+      ['kunjungan', 'absensi', 'jadwal', 'tokonasional', 'laporan', 'evaluasi'].forEach(tab => {
+        u.permissions[tab] = Boolean(state);
+      });
+      this.syncRbacMatrixFromUsers();
+    },
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SUB-TAB CONFIG MODAL
+    // ─────────────────────────────────────────────────────────────────────────
+
+    openSubTabConfig(userId) {
+      const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
+      if (!u) return;
+      // Pastikan permissions.subTabs ada sebelum buka modal
+      if (!u.permissions) u.permissions = {};
+      if (!u.permissions.subTabs) {
+        u.permissions.subTabs = window.getDefaultSubTabsForRole
+          ? window.getDefaultSubTabsForRole(u.role)
+          : { laporan: { rute: true, jadwal: true, absen: true, anomali: false }, evaluasi: { TOKO: true, DC: true } };
+      }
+      this.activeSubTabConfigUser = u;
+      this.showSubTabConfigModal = true;
+    },
+
+    closeSubTabConfig() {
+      this.showSubTabConfigModal = false;
+      this.activeSubTabConfigUser = null;
+    },
+
+    toggleUserSubTabPerm(parentTab, subTabId) {
+      const u = this.activeSubTabConfigUser;
+      if (!u) return;
+      if (!u.permissions) u.permissions = {};
+      if (!u.permissions.subTabs) u.permissions.subTabs = {};
+      if (!u.permissions.subTabs[parentTab]) u.permissions.subTabs[parentTab] = {};
+      u.permissions.subTabs[parentTab][subTabId] = !u.permissions.subTabs[parentTab][subTabId];
+      // Sync ke rbacUsers agar perubahan tercermin di tabel utama juga
+      const idx = (this.rbacUsers || []).findIndex(x => x && (x.id === u.id || x.email === u.email));
+      if (idx >= 0) this.rbacUsers[idx] = { ...u };
+      this.syncRbacMatrixFromUsers();
+    },
+
+    // ── SPV TEAM MANAGEMENT ────────────────────────────────────────────────
+
+    /**
+     * Helper: kembalikan array linkedCrew dari managedMds milik currentUser (SPV)
+     * Dipakai oleh semua RLS filter getters.
+     */
+    getSpvManagedCrews() {
+      if (!this.currentUser || this.currentUser.role !== 'SPV') return [];
+      return Array.isArray(this.currentUser.managedMds) ? this.currentUser.managedMds : [];
+    },
+
+    openSpvTeamConfig(userId) {
+      let u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId || (x.email && userId && x.email.toLowerCase() === String(userId).toLowerCase())));
+      if (!u && this.currentUser && (this.currentUser.id === userId || this.currentUser.email === userId || (this.currentUser.email && userId && this.currentUser.email.toLowerCase() === String(userId).toLowerCase()))) {
+        u = this.currentUser;
+      }
+      if (!u) return;
+      if (!Array.isArray(u.managedMds)) u.managedMds = [];
+      this.activeSpvTeamUser = u;
+      this.showSpvTeamModal = true;
+    },
+
+    closeSpvTeamModal() {
+      this.showSpvTeamModal = false;
+      this.activeSpvTeamUser = null;
+      this.spvMdsSearch = '';
+    },
+
+    toggleSpvMdsMember(crewName) {
+      const u = this.activeSpvTeamUser;
+      if (!u || !crewName) return;
+      if (!Array.isArray(u.managedMds)) u.managedMds = [];
+      const idx = u.managedMds.indexOf(crewName);
+      if (idx >= 0) {
+        u.managedMds.splice(idx, 1);
+      } else {
+        u.managedMds.push(crewName);
+      }
+      // Jika yang diedit adalah currentUser (SPV login), update currentUser langsung
+      if (this.currentUser && (this.currentUser.id === u.id || (this.currentUser.email && u.email && this.currentUser.email.toLowerCase() === u.email.toLowerCase()))) {
+        this.currentUser.managedMds = [...u.managedMds];
+      }
+      // Sync ke rbacUsers & rbacMatrix
+      const userIdx = (this.rbacUsers || []).findIndex(x => x && (x.id === u.id || (x.email && u.email && x.email.toLowerCase() === u.email.toLowerCase())));
+      if (userIdx >= 0) this.rbacUsers[userIdx] = { ...u };
+      this.syncRbacMatrixFromUsers();
+    },
+
+    async saveSpvTeam() {
+      const u = this.activeSpvTeamUser;
+      if (u && this.currentUser && (this.currentUser.id === u.id || (this.currentUser.email && u.email && this.currentUser.email.toLowerCase() === u.email.toLowerCase()))) {
+        this.currentUser.managedMds = [...(u.managedMds || [])];
+        const rawSession = localStorage.getItem('cimory_portal_active_session');
+        if (rawSession) {
+          try {
+            const s = JSON.parse(rawSession);
+            s.managedMds = this.currentUser.managedMds;
+            localStorage.setItem('cimory_portal_active_session', JSON.stringify(s));
+          } catch(e) {}
+        }
+      }
+      await this.saveRbacChanges();
+      this.closeSpvTeamModal();
+    },
+
+    /** MDS yang bisa di-assign ke SPV: gabungan dari master official crews + akun MDS RBAC */
+    get assignableMdsList() {
+      const map = new Map();
+
+      // 1. Dari master official crews (seluruh personil MDS di rute/jadwal)
+      if (Array.isArray(this.availableOfficialCrews)) {
+        this.availableOfficialCrews.forEach(c => {
+          if (!c || !c.name) return;
+          const k = c.name.toUpperCase().trim();
+          map.set(k, {
+            id: c.name,
+            name: c.name,
+            linkedCrew: c.name,
+            code: c.code || '',
+            modul: c.modul || ''
+          });
+        });
+      }
+
+      // 2. Dari rbacUsers yang punya linkedCrew
+      if (Array.isArray(this.rbacUsers)) {
+        this.rbacUsers.forEach(u => {
+          if (!u || u.role !== 'MDS' || !u.linkedCrew) return;
+          const k = u.linkedCrew.toUpperCase().trim();
+          if (!map.has(k)) {
+            map.set(k, {
+              id: u.id || u.linkedCrew,
+              name: u.name || u.linkedCrew,
+              linkedCrew: u.linkedCrew,
+              code: '',
+              modul: u.modul || ''
+            });
+          }
+        });
+      }
+
+      let list = Array.from(map.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+      // Filter pencarian
+      if (this.spvMdsSearch && this.spvMdsSearch.trim()) {
+        const q = this.spvMdsSearch.toUpperCase().trim();
+        list = list.filter(m =>
+          (m.name || '').toUpperCase().includes(q) ||
+          (m.linkedCrew || '').toUpperCase().includes(q) ||
+          (m.code || '').toUpperCase().includes(q) ||
+          (m.modul || '').toUpperCase().includes(q)
+        );
+      }
+
+      return list;
+    },
+
+    deleteUser(userId) {
+      const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
+      if (!u) return;
+      if (confirm(`Yakin ingin menghapus personil ${u.name} dari matriks hak akses?`)) {
+        this.rbacUsers = (this.rbacUsers || []).filter(x => x && x.id !== userId && x.email !== userId);
+        this.syncRbacMatrixFromUsers();
+      }
+    },
+
+    resetRbacToDefault() {
+      if (confirm('Bersihkan seluruh akun auto-seed dan hanya tampilkan akun Super Admin serta user terdaftar/approved?')) {
+        const matrix = {};
+        if (window.FirebaseAuthService) {
+          window.FirebaseAuthService._syncWithPortalApprovedUsers(matrix);
+          window.FirebaseAuthService._ensureSuperAdminsInMatrix(matrix);
+        }
+        this.rbacMatrix = matrix;
+        this.populateRbacUsers();
+        localStorage.setItem('cimory_rbac_matrix', JSON.stringify(matrix));
+        alert('✅ Matriks berhasil dibersihkan! Hanya akun sah/approved yang ditampilkan.');
+      }
+    },
+
+    async saveRbacChanges() {
+      this.rbacIsSaving = true;
+      this.isSavingRbac = true;
+      try {
+        this.syncRbacMatrixFromUsers();
+        if (window.FirebaseAuthService) {
+          await window.FirebaseAuthService.savePermissions(this.rbacMatrix);
+        }
+        alert('✅ Matriks hak akses berhasil disimpan ke Firebase & Cache Lokal!');
+      } catch (err) {
+        alert('❌ Gagal menyimpan hak akses: ' + err.message);
+      } finally {
+        this.rbacIsSaving = false;
+        this.isSavingRbac = false;
+      }
+    },
+
+    onNewUserRolePresetChange() {
+      const preset = window.RBAC_ROLE_PRESETS && window.RBAC_ROLE_PRESETS[this.newUserForm.role];
+      if (preset && preset.permissions) {
+        this.newUserForm.permissions = { ...preset.permissions };
+      }
+    },
+
+    submitAddUser() {
+      if (!this.newUserForm.name || !this.newUserForm.email) {
+        alert('Nama dan Email personil wajib diisi!');
+        return;
+      }
+      const emailKey = this.newUserForm.email.toLowerCase().trim();
+      const existing = (this.rbacUsers || []).find(x => x && x.email && x.email.toLowerCase() === emailKey);
+      if (existing) {
+        alert('Email personil sudah terdaftar di matriks!');
+        return;
+      }
+      const newUser = {
+        id: 'USER_' + Date.now(),
+        name: this.newUserForm.name.trim(),
+        email: emailKey,
+        modul: this.newUserForm.modul,
+        jabatan: this.newUserForm.role === 'MANAGER' ? 'Manager' : (this.newUserForm.role === 'SPV' ? 'Supervisor' : (this.newUserForm.role === 'SUPERADMIN' ? 'Super Admin' : 'Merchandiser')),
+        role: this.newUserForm.role,
+        linkedCrew: this.newUserForm.linkedCrew || '',
+        permissions: { ...(this.newUserForm.permissions || {}) },
+        updatedAt: new Date().toISOString(),
+        updatedBy: this.currentUser ? this.currentUser.displayName : 'Super Admin'
+      };
+      this.rbacUsers.unshift(newUser);
+      this.syncRbacMatrixFromUsers();
+      this.showAddUserModal = false;
+      this.newUserForm = {
+        name: '',
+        email: '',
+        modul: 'ALL',
+        role: 'MDS',
+        linkedCrew: '',
+        jabatan: 'Merchandiser',
+        permissions: {
+          kunjungan: true,
+          absensi: true,
+          jadwal: false,
+          tokonasional: false,
+          laporan: false,
+          evaluasi: false
+        }
+      };
+      alert('✅ Personil baru berhasil ditambahkan ke matriks hak akses!');
+    },
+
+    addNewUserToMatrix() {
+      return this.submitAddUser();
+    },
+
     navigateToTab(tabName, subTab = null) {
+      // Security Check: Gate tab access based on RBAC permissions
+      if (!this.canAccessTab(tabName)) {
+        this.unauthorizedTargetTab = tabName;
+        this.unauthorizedAttemptTab = tabName;
+        this.unauthorizedModalOpen = true;
+        this.showCategoryMenu = false;
+        return;
+      }
+
       this.activeTab = tabName;
+      if (tabName === 'rbac') {
+        if (!this.rbacUsers || this.rbacUsers.length === 0) {
+          if (this.masterUser && this.masterUser.length > 0 && window.FirebaseAuthService) {
+            window.FirebaseAuthService.loadPermissionsMatrix(this.masterUser).then(matrix => {
+              this.rbacMatrix = matrix;
+              this.populateRbacUsers();
+              this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+            });
+          } else {
+            this.populateRbacUsers();
+          }
+        }
+      }
       if (tabName === 'laporan' && subTab) {
         this.reportTableSubTab = subTab;
         if (subTab === 'anomali' && this.anomalyModal) {

@@ -1,22 +1,66 @@
 <!DOCTYPE html>
-<html lang="id" class="min-h-full scroll-smooth" :class="theme === 'dark' ? 'dark' : ''" x-data="routeSimulatorApp()" x-init="initApp()">
+<html lang="id" class="min-h-full scroll-smooth" :class="theme === 'dark' ? 'dark' : ''" x-data="routeSimulatorApp()"
+  x-init="initApp()">
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Cimory Retail Ops - Smart Route & Manpower Simulator</title>
-  <meta name="description" content="Simulasi Alokasi Rute & Beban Kerja MDS Berdasarkan Alamat Rumah, Waktu Tempuh Max 1 Jam, dan Skema 25 Hari Kerja.">
+  <meta name="description"
+    content="Simulasi Alokasi Rute & Beban Kerja MDS Berdasarkan Alamat Rumah, Waktu Tempuh Max 1 Jam, dan Skema 25 Hari Kerja.">
+
+  <!-- ======================================================== -->
+  <!-- CIMORY MDS PORTAL - AUTH GATEKEEPER & ACCESS CONTROL    -->
+  <!-- ======================================================== -->
+  <script>
+    (function () {
+      const MODULE_KEY = 'simulasi';
+      const MODULE_TITLE = '05. Simulasi Rute MDS';
+      try {
+        const raw = localStorage.getItem('cimory_portal_active_session');
+        if (!raw) {
+          alert('⛔ Akses Ditolak: Anda belum login ke Cimory MDS Portal.\nSilakan masuk melalui portal utama terlebih dahulu.');
+          window.location.replace('../index.html');
+          return;
+        }
+        const user = JSON.parse(raw);
+        const isSuperAdmin = user.role === 'SUPERADMIN' || user.isSuperAdmin === true;
+
+        if (!isSuperAdmin) {
+          if (user.status !== 'APPROVED') {
+            alert('⏳ Akses Ditolak: Akun Anda masih Menunggu Persetujuan (Pending) dari Atasan.');
+            window.location.replace('../index.html');
+            return;
+          }
+          if (!user.permissions || !user.permissions[MODULE_KEY]) {
+            alert('🔒 Akses Ditolak: Akun Anda tidak memiliki izin untuk membuka ' + MODULE_TITLE + '.\nHubungi Atasan untuk mendapatkan akses.');
+            window.location.replace('../index.html');
+            return;
+          }
+        }
+        window.PORTAL_ACTIVE_USER = user;
+        window.canAccessPortalModule = function (key) {
+          if (!window.PORTAL_ACTIVE_USER) return false;
+          if (window.PORTAL_ACTIVE_USER.isSuperAdmin || window.PORTAL_ACTIVE_USER.role === 'SUPERADMIN') return true;
+          return !!(window.PORTAL_ACTIVE_USER.permissions && window.PORTAL_ACTIVE_USER.permissions[key]);
+        };
+      } catch (err) {
+        window.location.replace('../index.html');
+      }
+    })();
+  </script>
 
   <!-- Google Fonts: Inter & Outfit -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap"
+    rel="stylesheet">
 
   <!-- Tailwind CSS CDN -->
   <script>
-    (function() {
+    (function () {
       const origWarn = console.warn;
-      console.warn = function(...args) {
+      console.warn = function (...args) {
         if (typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
         origWarn.apply(console, args);
       };
@@ -59,17 +103,22 @@
   <link rel="stylesheet" href="./css/style.css">
 
   <style>
-    [x-cloak] { display: none !important; }
+    [x-cloak] {
+      display: none !important;
+    }
   </style>
 </head>
 
-<body class="min-h-screen w-full antialiased font-sans flex flex-col bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-200">
+<body
+  class="min-h-screen w-full antialiased font-sans flex flex-col bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-200">
 
   <!-- ============================================================================== -->
   <!-- 0. PRELOADER -->
   <!-- ============================================================================== -->
-  <div x-show="isLoading" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm text-white">
-    <div class="glass-card rounded-2xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl border border-slate-700 bg-slate-900/90">
+  <div x-show="isLoading" x-cloak
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm text-white">
+    <div
+      class="glass-card rounded-2xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl border border-slate-700 bg-slate-900/90">
       <div class="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
       <div>
         <h3 class="font-display font-bold text-base text-white">Route Optimization Engine</h3>
@@ -81,18 +130,23 @@
   <!-- ============================================================================== -->
   <!-- 1. HEADER & NAVIGATION (FIXED VIEWPORT PINNED) -->
   <!-- ============================================================================== -->
-  <header class="fixed top-0 inset-x-0 z-40 glass-header bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors shadow-sm">
+  <header
+    class="fixed top-0 inset-x-0 z-40 glass-header bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors shadow-sm">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
-      
+
       <!-- Brand Logo & Title -->
       <div class="flex items-center space-x-3 min-w-0">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20 flex-shrink-0">
+        <div
+          class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20 flex-shrink-0">
           <i data-lucide="map-pin" class="w-5 h-5"></i>
         </div>
         <div class="min-w-0">
           <div class="flex items-center space-x-2">
-            <h1 class="font-display font-extrabold text-sm sm:text-base text-slate-900 dark:text-white truncate">Cimory Smart Route Simulator</h1>
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20">25 HARI KERJA</span>
+            <h1 class="font-display font-extrabold text-sm sm:text-base text-slate-900 dark:text-white truncate">Cimory
+              Smart Route Simulator</h1>
+            <span
+              class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20">25
+              HARI KERJA</span>
           </div>
           <p class="text-[11px] text-slate-500 dark:text-slate-400 truncate">
             Alokasi Rute Berdasarkan Alamat Rumah &bull; 21 Hari Toko (20 Toko/Hari) &bull; 4 Hari DC
@@ -102,34 +156,37 @@
 
       <!-- Right Controls -->
       <div class="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
-        
+
         <!-- Universal 5-Module App Switcher Dropdown -->
         <div class="relative" @click.away="showAppMenu = false">
-          <button type="button" @click="showAppMenu = !showAppMenu; $nextTick(() => { if (window.lucide) lucide.createIcons(); })"
+          <button type="button"
+            @click="showAppMenu = !showAppMenu; $nextTick(() => { if (window.lucide) lucide.createIcons(); })"
             class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm">
             <i data-lucide="layout-grid" class="w-3.5 h-3.5 text-brand-500"></i>
             <span class="hidden sm:inline">Pindah Modul</span>
-            <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400 transition-transform duration-200" :class="showAppMenu ? 'rotate-180' : ''"></i>
+            <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400 transition-transform duration-200"
+              :class="showAppMenu ? 'rotate-180' : ''"></i>
           </button>
 
           <!-- Dropdown Menu -->
-          <div x-show="showAppMenu" x-cloak
-            x-transition:enter="transition ease-out duration-200"
+          <div x-show="showAppMenu" x-cloak x-transition:enter="transition ease-out duration-200"
             x-transition:enter-start="opacity-0 scale-95 -translate-y-1"
             x-transition:enter-end="opacity-100 scale-100 translate-y-0"
             x-transition:leave="transition ease-in duration-150"
             x-transition:leave-start="opacity-100 scale-100 translate-y-0"
             x-transition:leave-end="opacity-0 scale-95 -translate-y-1"
             class="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-2 z-50 space-y-1 text-xs">
-            
-            <div class="px-2.5 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+
+            <div
+              class="px-2.5 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
               Pusat Navigasi Modul Cimory
             </div>
 
             <!-- 0. Portal Hub -->
             <a href="../index.html"
               class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
-              <div class="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+              <div
+                class="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
                 🏠
               </div>
               <div class="min-w-0">
@@ -140,8 +197,10 @@
 
             <!-- 1. Web Absen -->
             <a href="../01_web_absen/index.html"
+              x-show="window.canAccessPortalModule ? window.canAccessPortalModule('absen') : true"
               class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
-              <div class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+              <div
+                class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
                 📱
               </div>
               <div class="min-w-0">
@@ -152,8 +211,10 @@
 
             <!-- 2. Dashboard Monitoring -->
             <a href="../02_dashboard_monitoring/index.html"
+              x-show="window.canAccessPortalModule ? window.canAccessPortalModule('dashboard') : true"
               class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
-              <div class="w-7 h-7 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+              <div
+                class="w-7 h-7 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
                 📊
               </div>
               <div class="min-w-0">
@@ -164,8 +225,10 @@
 
             <!-- 4. Galeri Pajangan -->
             <a href="../04_galeri_pajangan/index.html"
+              x-show="window.canAccessPortalModule ? window.canAccessPortalModule('galeri') : true"
               class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
-              <div class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+              <div
+                class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
                 🖼️
               </div>
               <div class="min-w-0">
@@ -175,8 +238,10 @@
             </a>
 
             <!-- 5. Simulasi Rute (Active) -->
-            <div class="flex items-center gap-2.5 p-2 rounded-xl bg-brand-500/10 border border-brand-500/20 text-brand-600 dark:text-brand-400 font-bold">
-              <div class="w-7 h-7 rounded-lg bg-brand-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+            <div
+              class="flex items-center gap-2.5 p-2 rounded-xl bg-brand-500/10 border border-brand-500/20 text-brand-600 dark:text-brand-400 font-bold">
+              <div
+                class="w-7 h-7 rounded-lg bg-brand-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
                 🗺️
               </div>
               <div class="min-w-0">
@@ -184,7 +249,8 @@
                   <span>05. Simulasi Rute MDS</span>
                   <span class="px-1.5 py-0.2 rounded text-[9px] font-black bg-brand-500 text-white">AKTIF</span>
                 </div>
-                <div class="text-[10px] text-brand-600 dark:text-brand-400 truncate">Simulasi 25 hari kerja & perdin</div>
+                <div class="text-[10px] text-brand-600 dark:text-brand-400 truncate">Simulasi 25 hari kerja & perdin
+                </div>
               </div>
             </div>
 
@@ -200,11 +266,21 @@
         </button>
 
         <!-- Export Google Earth 3D (.KML) -->
-        <button type="button" @click="exportGoogleEarthKml(true)" title="Download File Google Earth 3D (.kml) untuk Analisa Satelit"
+        <button type="button" @click="exportGoogleEarthKml(true)"
+          title="Download File Google Earth 3D (.kml) untuk Analisa Satelit"
           class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all cursor-pointer active:scale-95">
           <i data-lucide="globe" class="w-4 h-4"></i>
           <span class="hidden sm:inline">Google Earth (.kml)</span>
           <span class="sm:hidden">Earth</span>
+        </button>
+
+        <!-- Live Sync Google Sheets Button (Direct to IndexedDB) -->
+        <button type="button" @click="syncGoogleSheets()" :disabled="isSyncing"
+          :title="syncMeta?.dateString ? `Sync Terakhir: ${syncMeta.dateString} (${(syncMeta.count || 0).toLocaleString('id-ID')} Toko di IndexedDB)` : 'Tarik data toko terbaru dari Google Sheets ke IndexedDB'"
+          class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-wait">
+          <i data-lucide="refresh-cw" class="w-4 h-4" :class="isSyncing ? 'animate-spin' : ''"></i>
+          <span class="hidden md:inline" x-text="isSyncing ? 'Menyinkronkan...' : 'Sync GSheet'"></span>
+          <span class="md:hidden" x-text="isSyncing ? 'Sync...' : 'GSheet'"></span>
         </button>
 
         <!-- Recalculate Simulation -->
@@ -232,21 +308,31 @@
     <!-- A. EXECUTIVE KPI & COVERAGE RATIO RESUME BANNER -->
     <template x-if="simulationResult">
       <div class="glass-card rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-        
+
         <!-- Header & Live Percentage Badge + Scope Switcher -->
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200/70 dark:border-slate-800 pb-3.5">
+        <div
+          class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200/70 dark:border-slate-800 pb-3.5">
           <div>
             <div class="flex items-center gap-2">
               <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
               <h2 class="font-display font-extrabold text-base sm:text-lg text-slate-900 dark:text-white"
-                  x-text="`Resume Realtime: Simulasi Rute & Manpower (${selectedScope === 'JAWA' ? 'Khusus Pulau Jawa' : (selectedScope === 'LUAR_PULAU' ? 'Luar Pulau' : 'Nasional')})`"></h2>
+                x-text="`Resume Realtime: Simulasi Rute & Manpower (${selectedScope === 'JAWA' ? 'Khusus Pulau Jawa' : (selectedScope === 'LUAR_PULAU' ? 'Luar Pulau' : 'Nasional')})`">
+              </h2>
             </div>
             <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5"
-               x-text="`Analisa perbandingan master toko vs kapasitas personil MDS (${selectedScope === 'JAWA' ? 'Fokus 32.400 Toko Pulau Jawa' : (selectedScope === 'LUAR_PULAU' ? 'Fokus 15.700 Toko Luar Jawa' : 'Full 48.150 Toko Seluruh Indonesia')})`"></p>
+              x-text="`Analisa perbandingan master toko vs kapasitas personil MDS (${selectedScope === 'JAWA' ? 'Fokus 32.400 Toko Pulau Jawa' : (selectedScope === 'LUAR_PULAU' ? 'Fokus 15.700 Toko Luar Jawa' : 'Full 48.150 Toko Seluruh Indonesia')})`">
+            </p>
+            <div class="flex items-center gap-2 mt-1.5">
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[10.5px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/80">
+                <i data-lucide="database" class="w-3 h-3 text-amber-500"></i>
+                <span x-text="syncMeta?.dateString ? `Data: Google Sheet (Sync ${syncMeta.dateString}) • ${(syncMeta.count || rawStores.length).toLocaleString('id-ID')} Toko di IndexedDB` : `Database: ${(rawStores?.length || 0).toLocaleString('id-ID')} Toko Aktif`"></span>
+              </span>
+            </div>
           </div>
 
           <!-- Scope Switcher Tabs (Jawa vs Luar Pulau vs Nasional) -->
-          <div class="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 rounded-xl border border-slate-200 dark:border-slate-700/80 flex-shrink-0 self-start md:self-auto">
+          <div
+            class="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 rounded-xl border border-slate-200 dark:border-slate-700/80 flex-shrink-0 self-start md:self-auto">
             <button type="button" @click="setScope('JAWA')"
               :class="selectedScope === 'JAWA' ? 'bg-brand-600 text-white shadow-sm font-extrabold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium'"
               class="px-3 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 cursor-pointer">
@@ -269,66 +355,82 @@
         </div>
 
         <!-- EXECUTIVE HIGHLIGHT BANNER: KEBUTUHAN MDS FULL COVER -->
-        <div class="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-indigo-500/30 shadow-lg relative overflow-hidden">
-          <div class="absolute -right-8 -bottom-8 w-44 h-44 bg-brand-500/15 rounded-full blur-2xl pointer-events-none"></div>
-          
+        <div
+          class="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-indigo-500/30 shadow-lg relative overflow-hidden">
+          <div class="absolute -right-8 -bottom-8 w-44 h-44 bg-brand-500/15 rounded-full blur-2xl pointer-events-none">
+          </div>
+
           <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
-            
+
             <!-- Left Header & Scope Details -->
             <div class="space-y-1.5 min-w-0">
               <div class="flex flex-wrap items-center gap-2">
-                <span class="px-2.5 py-0.5 rounded-md text-[10px] font-black tracking-wider uppercase bg-emerald-500 text-slate-950 shadow-xs">
+                <span
+                  class="px-2.5 py-0.5 rounded-md text-[10px] font-black tracking-wider uppercase bg-emerald-500 text-slate-950 shadow-xs">
                   🎯 ANALISA KEBUTUHAN FULL COVERAGE (100% TOKO)
                 </span>
                 <span class="text-xs text-indigo-300 font-bold flex items-center gap-1">
                   <span>Wilayah:</span>
-                  <b class="text-white" x-text="selectedScope === 'JAWA' ? 'Pulau Jawa' : (selectedScope === 'LUAR_PULAU' ? 'Luar Pulau (Nasional Non-Jawa)' : 'Seluruh Indonesia (Nasional)')"></b>
+                  <b class="text-white"
+                    x-text="selectedScope === 'JAWA' ? 'Pulau Jawa' : (selectedScope === 'LUAR_PULAU' ? 'Luar Pulau (Nasional Non-Jawa)' : 'Seluruh Indonesia (Nasional)')"></b>
                 </span>
               </div>
-              
+
               <h3 class="font-display font-extrabold text-base sm:text-lg text-white flex flex-wrap items-center gap-2">
                 <span>Kebutuhan Manpower MDS Full Cover:</span>
-                <span class="text-emerald-400 font-black px-2 py-0.5 bg-emerald-500/20 border border-emerald-400/30 rounded-lg"
-                      x-text="`${Math.ceil(simulationResult.summary.regularStoresCount / (params.storesPerDay * params.regularDays || 420))} Personil MDS`"></span>
+                <span
+                  class="text-emerald-400 font-black px-2 py-0.5 bg-emerald-500/20 border border-emerald-400/30 rounded-lg"
+                  x-text="`${simulationResult.summary.idealManpowerTotal} Personil MDS`"></span>
               </h3>
-              
+
               <p class="text-xs text-slate-300 leading-relaxed max-w-2xl">
-                Berdasarkan target standar <b class="text-white">420 toko reguler / MDS / bulan</b> (21 hari kerja @ 20 toko) + 4 hari DC. 
+                Berdasarkan target standar <b class="text-white">460 kunjungan / MDS / bulan</b> (21 hari kerja @ 20
+                toko + 4 hari DC @ 10 titik).
                 <template x-if="selectedScope === 'JAWA'">
-                  <span class="text-emerald-300 font-medium">✨ Seluruh 32.400 toko di Jawa dapat di-cover oleh <b>56 MDS existing via skema Perdin</b> tanpa penambahan karyawan tetap baru.</span>
+                  <span class="text-emerald-300 font-medium" x-text="`✨ Seluruh ${simulationResult.summary.regularStoresCount.toLocaleString()} toko di Jawa di-cover oleh ${simulationResult.summary.activeCrewAssigned} MDS existing, butuh tambahan +${simulationResult.summary.vacantSlotsGenerated} MDS rekrut baru.`"></span>
                 </template>
                 <template x-if="selectedScope === 'LUAR_PULAU'">
-                  <span class="text-amber-300 font-medium">📍 Luar Pulau memiliki 15.700 toko dengan 19 MDS existing, membutuhkan <b>tambahan +19 MDS rekrut baru</b> untuk cover 100%.</span>
+                  <span class="text-amber-300 font-medium" x-text="`📍 Luar Pulau memiliki ${simulationResult.summary.regularStoresCount.toLocaleString()} toko dengan ${simulationResult.summary.activeCrewAssigned} MDS existing, butuh tambahan +${simulationResult.summary.vacantSlotsGenerated} MDS rekrut baru.`"></span>
                 </template>
                 <template x-if="selectedScope === 'NASIONAL'">
-                  <span class="text-indigo-300 font-medium">🇮🇩 Skala Nasional (48.100 toko) membutuhkan total <b>115 MDS</b> (Existing: 75 MDS, Usulan Rekrut: +40 MDS).</span>
+                  <span class="text-indigo-300 font-medium" x-text="`🇮🇩 Skala Nasional (${simulationResult.summary.regularStoresCount.toLocaleString()} toko) membutuhkan total ${simulationResult.summary.idealManpowerTotal} MDS (Existing: ${simulationResult.summary.activeCrewAssigned} MDS, Usulan Rekrut: +${simulationResult.summary.vacantSlotsGenerated} MDS).`"></span>
                 </template>
               </p>
             </div>
 
             <!-- Right 3-Pillar KPI Counters -->
             <div class="grid grid-cols-3 gap-2 sm:gap-3 flex-shrink-0">
-              
+
               <!-- Pillar 1: MDS Existing -->
-              <div class="p-2.5 sm:p-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/15 text-center min-w-[95px] sm:min-w-[110px]">
+              <div
+                class="p-2.5 sm:p-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/15 text-center min-w-[95px] sm:min-w-[110px]">
                 <div class="text-[10px] text-slate-300 uppercase font-bold">MDS Existing</div>
-                <div class="text-lg sm:text-xl font-extrabold text-indigo-300 mt-0.5" x-text="`${simulationResult.summary.activeCrewAssigned} Org`"></div>
-                <div class="text-[9.5px] text-indigo-200 truncate" x-text="`${simulationResult.summary.activeCoveredStores.toLocaleString()} Toko`"></div>
+                <div class="text-lg sm:text-xl font-extrabold text-indigo-300 mt-0.5"
+                  x-text="`${simulationResult.summary.activeCrewAssigned} Org`"></div>
+                <div class="text-[9.5px] text-indigo-200 truncate"
+                  x-text="`${simulationResult.summary.activeCoveredStores.toLocaleString()} Toko`"></div>
               </div>
 
               <!-- Pillar 2: Total Butuh Full Cover -->
-              <div class="p-2.5 sm:p-3 rounded-xl bg-emerald-500/20 backdrop-blur-md border border-emerald-400/40 text-center ring-2 ring-emerald-400/30 min-w-[95px] sm:min-w-[110px]">
+              <div
+                class="p-2.5 sm:p-3 rounded-xl bg-emerald-500/20 backdrop-blur-md border border-emerald-400/40 text-center ring-2 ring-emerald-400/30 min-w-[95px] sm:min-w-[110px]">
                 <div class="text-[10px] text-emerald-300 uppercase font-extrabold">Total Butuh</div>
-                <div class="text-lg sm:text-xl font-black text-emerald-400 mt-0.5" x-text="`${Math.ceil(simulationResult.summary.regularStoresCount / (params.storesPerDay * params.regularDays || 420))} Org`"></div>
-                <div class="text-[9.5px] text-emerald-200 truncate" x-text="`${simulationResult.summary.regularStoresCount.toLocaleString()} Toko`"></div>
+                <div class="text-lg sm:text-xl font-black text-emerald-400 mt-0.5"
+                  x-text="`${simulationResult.summary.idealManpowerTotal} Org`">
+                </div>
+                <div class="text-[9.5px] text-emerald-200 truncate"
+                  x-text="`${simulationResult.summary.regularStoresCount.toLocaleString()} Toko`"></div>
               </div>
 
               <!-- Pillar 3: Gap / Usulan Rekrut Baru -->
-              <div class="p-2.5 sm:p-3 rounded-xl bg-amber-500/20 backdrop-blur-md border border-amber-400/40 text-center min-w-[95px] sm:min-w-[110px]">
+              <div
+                class="p-2.5 sm:p-3 rounded-xl bg-amber-500/20 backdrop-blur-md border border-amber-400/40 text-center min-w-[95px] sm:min-w-[110px]">
                 <div class="text-[10px] text-amber-300 uppercase font-bold">Gap Rekrut</div>
                 <div class="text-lg sm:text-xl font-extrabold text-amber-400 mt-0.5"
-                     x-text="`+${Math.max(0, Math.ceil(simulationResult.summary.regularStoresCount / (params.storesPerDay * params.regularDays || 420)) - simulationResult.summary.activeCrewAssigned)} Org`"></div>
-                <div class="text-[9.5px] text-amber-200 truncate" x-text="selectedScope === 'JAWA' ? '0 via Perdin' : 'Rekrut Baru'"></div>
+                  x-text="`+${simulationResult.summary.vacantSlotsGenerated} Org`">
+                </div>
+                <div class="text-[9.5px] text-amber-200 truncate"
+                  x-text="selectedScope === 'JAWA' ? '0 via Perdin' : 'Rekrut Baru'"></div>
               </div>
 
             </div>
@@ -338,54 +440,82 @@
 
         <!-- 6 Executive KPI Metrics Grid -->
         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          
+
           <!-- Metric 1: Total Master Toko Reguler -->
-          <div class="p-3 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+          <div
+            class="p-3 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
             <div class="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider"
-                 x-text="selectedScope === 'JAWA' ? 'Total Toko Jawa' : (selectedScope === 'LUAR_PULAU' ? 'Toko Luar Pulau' : 'Total Nasional')"></div>
-            <div class="text-xl font-display font-extrabold text-slate-900 dark:text-white mt-1" x-text="simulationResult.summary.regularStoresCount.toLocaleString()"></div>
-            <div class="text-[10px] text-slate-400 mt-0.5 truncate" x-text="`+ ${simulationResult.summary.dcStoresCount} DC / Gudang`"></div>
+              x-text="selectedScope === 'JAWA' ? 'Total Toko Jawa' : (selectedScope === 'LUAR_PULAU' ? 'Toko Luar Pulau' : 'Total Nasional')">
+            </div>
+            <div class="text-xl font-display font-extrabold text-slate-900 dark:text-white mt-1"
+              x-text="simulationResult.summary.regularStoresCount.toLocaleString()"></div>
+            <div class="text-[10px] text-slate-400 mt-0.5 truncate"
+              x-text="`+ ${simulationResult.summary.dcStoresCount} DC / Gudang`"></div>
           </div>
 
           <!-- Metric 2: Toko Ter-cover MDS Aktif -->
-          <div class="p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/50">
-            <div class="text-[10.5px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center justify-between">
+          <div
+            class="p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/50">
+            <div
+              class="text-[10.5px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center justify-between">
               <span>Ter-cover MDS</span>
               <span class="text-[11px] font-black" x-text="`${simulationResult.summary.activeCoveragePercent}%`"></span>
             </div>
-            <div class="text-xl font-display font-extrabold text-indigo-600 dark:text-indigo-400 mt-1" x-text="simulationResult.summary.activeCoveredStores.toLocaleString()"></div>
-            <div class="text-[10px] text-indigo-500/80 dark:text-indigo-400/80 mt-0.5 truncate" x-text="`Oleh ${simulationResult.summary.activeCrewAssigned} MDS Aktif`"></div>
+            <div class="text-xl font-display font-extrabold text-indigo-600 dark:text-indigo-400 mt-1"
+              x-text="simulationResult.summary.activeCoveredStores.toLocaleString()"></div>
+            <div class="text-[10px] text-indigo-500/80 dark:text-indigo-400/80 mt-0.5 truncate"
+              x-text="`Oleh ${simulationResult.summary.activeCrewAssigned} MDS Aktif`"></div>
           </div>
 
           <!-- Metric 3: Toko Belum Ter-cover (Gap Manpower) -->
-          <div class="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/50">
-            <div class="text-[10.5px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center justify-between">
+          <div
+            class="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/50">
+            <div
+              class="text-[10.5px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center justify-between">
               <span>Belum Ter-cover</span>
               <span class="text-[11px] font-black" x-text="`${simulationResult.summary.vacantCoveragePercent}%`"></span>
             </div>
-            <div class="text-xl font-display font-extrabold text-amber-500 mt-1" x-text="simulationResult.summary.vacantCoveredStores.toLocaleString()"></div>
-            <div class="text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-0.5 truncate" x-text="`&asymp; Butuh ${Math.ceil(simulationResult.summary.vacantCoveredStores / (params.storesPerDay * params.regularDays || 420))} MDS Baru`"></div>
+            <div class="text-xl font-display font-extrabold text-amber-500 mt-1"
+              x-text="simulationResult.summary.vacantCoveredStores.toLocaleString()"></div>
+            <div class="text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-0.5 truncate"
+              x-text="`&asymp; Butuh ${simulationResult.summary.vacantSlotsGenerated} MDS Baru`">
+            </div>
           </div>
 
           <!-- Metric 4: Rata-rata Toko per MDS -->
-          <div class="p-3 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200/80 dark:border-purple-800/50">
-            <div class="text-[10.5px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">Rata-rata Toko / MDS</div>
-            <div class="text-xl font-display font-extrabold text-purple-600 dark:text-purple-400 mt-1" x-text="`${(simulationResult.summary.avgStoresPerMds || (params.storesPerDay * params.regularDays)).toLocaleString()} Toko`"></div>
-            <div class="text-[10px] text-purple-500/80 dark:text-purple-400/80 mt-0.5 truncate" x-text="`${params.regularDays} Hari Toko (+ ${params.dcDays} Hari DC = ${params.regularDays + params.dcDays} H)`"></div>
+          <div
+            class="p-3 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200/80 dark:border-purple-800/50">
+            <div class="text-[10.5px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">Rata-rata
+              Toko / MDS</div>
+            <div class="text-xl font-display font-extrabold text-purple-600 dark:text-purple-400 mt-1"
+              x-text="`${(simulationResult.summary.avgStoresPerMds || (params.storesPerDay * params.regularDays)).toLocaleString()} Toko`">
+            </div>
+            <div class="text-[10px] text-purple-500/80 dark:text-purple-400/80 mt-0.5 truncate"
+              x-text="`${params.regularDays} Hari Toko (+ ${params.dcDays} Hari DC = ${params.regularDays + params.dcDays} H)`">
+            </div>
           </div>
 
           <!-- Metric 5: Rata-rata Kunjungan per MDS per Hari -->
-          <div class="p-3 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/80 dark:border-teal-800/50">
-            <div class="text-[10.5px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider">Rata-rata Visit / Hari</div>
-            <div class="text-xl font-display font-extrabold text-teal-600 dark:text-teal-400 mt-1" x-text="`${simulationResult.summary.avgVisitsPerDay || 18.4} Visit`"></div>
-            <div class="text-[10px] text-teal-500/80 dark:text-teal-400/80 mt-0.5 truncate" x-text="`460 Visit / ${params.regularDays + params.dcDays} Hari Kerja Total`"></div>
+          <div
+            class="p-3 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/80 dark:border-teal-800/50">
+            <div class="text-[10.5px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider">Rata-rata
+              Visit / Hari</div>
+            <div class="text-xl font-display font-extrabold text-teal-600 dark:text-teal-400 mt-1"
+              x-text="`${simulationResult.summary.avgVisitsPerDay || 18.4} Visit`"></div>
+            <div class="text-[10px] text-teal-500/80 dark:text-teal-400/80 mt-0.5 truncate"
+              x-text="`460 Visit / ${params.regularDays + params.dcDays} Hari Kerja Total`"></div>
           </div>
 
           <!-- Metric 6: Total Beban Kunjungan Bulanan -->
-          <div class="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/50">
-            <div class="text-[10.5px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Total Visit / Bulan</div>
-            <div class="text-xl font-display font-extrabold text-emerald-600 dark:text-emerald-400 mt-1" x-text="`${(simulationResult.summary.totalMonthlyVisits || (simulationResult.summary.activeCoveredStores + (simulationResult.summary.activeCrewAssigned * (params.dcDays * params.dcPerDay)))).toLocaleString()} Visit`"></div>
-            <div class="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5 truncate" x-text="`23.520 Toko + 2.240 DC (${params.regularDays + params.dcDays} Hari)`"></div>
+          <div
+            class="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/50">
+            <div class="text-[10.5px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Total
+              Visit / Bulan</div>
+            <div class="text-xl font-display font-extrabold text-emerald-600 dark:text-emerald-400 mt-1"
+              x-text="`${(simulationResult.summary.totalMonthlyVisits || (simulationResult.summary.activeCoveredStores + (simulationResult.summary.activeCrewAssigned * (params.dcDays * params.dcPerDay)))).toLocaleString()} Visit`">
+            </div>
+            <div class="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5 truncate"
+              x-text="`23.520 Toko + 2.240 DC (${params.regularDays + params.dcDays} Hari)`"></div>
           </div>
 
         </div>
@@ -395,47 +525,61 @@
           <div class="flex items-center justify-between text-xs font-bold">
             <span class="text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
               <span class="w-2.5 h-2.5 rounded-sm bg-indigo-600"></span>
-              <span>MDS Aktif: <b x-text="`${simulationResult.summary.activeCoveredStores.toLocaleString()} Toko (${simulationResult.summary.activeCoveragePercent}%)`"></b></span>
+              <span>MDS Aktif: <b
+                  x-text="`${simulationResult.summary.activeCoveredStores.toLocaleString()} Toko (${simulationResult.summary.activeCoveragePercent}%)`"></b></span>
             </span>
             <span class="text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
               <span class="w-2.5 h-2.5 rounded-sm bg-amber-500"></span>
-              <span>Kebutuhan Rekrut Baru: <b x-text="`${simulationResult.summary.vacantCoveredStores.toLocaleString()} Toko (${simulationResult.summary.vacantCoveragePercent}%)`"></b></span>
+              <span>Kebutuhan Rekrut Baru: <b
+                  x-text="`${simulationResult.summary.vacantCoveredStores.toLocaleString()} Toko (${simulationResult.summary.vacantCoveragePercent}%)`"></b></span>
             </span>
           </div>
           <div class="w-full h-3 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex shadow-inner">
-            <div class="bg-indigo-600 h-full transition-all duration-500" :style="`width: ${simulationResult.summary.activeCoveragePercent}%`"></div>
-            <div class="bg-amber-500 h-full transition-all duration-500" :style="`width: ${simulationResult.summary.vacantCoveragePercent}%`"></div>
+            <div class="bg-indigo-600 h-full transition-all duration-500"
+              :style="`width: ${simulationResult.summary.activeCoveragePercent}%`"></div>
+            <div class="bg-amber-500 h-full transition-all duration-500"
+              :style="`width: ${simulationResult.summary.vacantCoveragePercent}%`"></div>
           </div>
         </div>
 
         <!-- Regional Breakdown Chips & Compact Tooltip for Financial Efficiency -->
-        <div class="pt-2 border-t border-slate-200/60 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-2.5 text-xs">
-          
+        <div
+          class="pt-2 border-t border-slate-200/60 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-2.5 text-xs">
+
           <div class="flex flex-wrap items-center gap-2">
             <span class="font-bold text-slate-500 text-[11px] uppercase tracking-wider mr-1">Rincian Ter-cover:</span>
-            
+
             <!-- Jabodetabek -->
-            <div class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5">
+            <div
+              class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5">
               <span>🏢</span>
               <span class="font-semibold text-slate-700 dark:text-slate-300">Jabodetabek:</span>
-              <span class="font-extrabold text-indigo-600 dark:text-indigo-400" x-text="`${simulationResult.summary.regionalStats['JABODETABEK'].stores.toLocaleString()} Toko`"></span>
-              <span class="text-[10px] text-slate-400" x-text="`(${simulationResult.summary.regionalStats['JABODETABEK'].mds} MDS)`"></span>
+              <span class="font-extrabold text-indigo-600 dark:text-indigo-400"
+                x-text="`${simulationResult.summary.regionalStats['JABODETABEK'].stores.toLocaleString()} Toko`"></span>
+              <span class="text-[10px] text-slate-400"
+                x-text="`(${simulationResult.summary.regionalStats['JABODETABEK'].mds} MDS)`"></span>
             </div>
 
             <!-- Jawa Barat / LK -->
-            <div class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5">
+            <div
+              class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5">
               <span>🌾</span>
               <span class="font-semibold text-slate-700 dark:text-slate-300">Luar Kota Jawa:</span>
-              <span class="font-extrabold text-indigo-600 dark:text-indigo-400" x-text="`${simulationResult.summary.regionalStats['PULAU JAWA'].stores.toLocaleString()} Toko`"></span>
-              <span class="text-[10px] text-slate-400" x-text="`(${simulationResult.summary.regionalStats['PULAU JAWA'].mds} MDS)`"></span>
+              <span class="font-extrabold text-indigo-600 dark:text-indigo-400"
+                x-text="`${simulationResult.summary.regionalStats['PULAU JAWA'].stores.toLocaleString()} Toko`"></span>
+              <span class="text-[10px] text-slate-400"
+                x-text="`(${simulationResult.summary.regionalStats['PULAU JAWA'].mds} MDS)`"></span>
             </div>
 
             <!-- Luar Pulau / LP -->
-            <div class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5">
+            <div
+              class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5">
               <span>🌴</span>
               <span class="font-semibold text-slate-700 dark:text-slate-300">Luar Pulau:</span>
-              <span class="font-extrabold text-indigo-600 dark:text-indigo-400" x-text="`${simulationResult.summary.regionalStats['LUAR PULAU'].stores.toLocaleString()} Toko`"></span>
-              <span class="text-[10px] text-slate-400" x-text="`(${simulationResult.summary.regionalStats['LUAR PULAU'].mds} MDS)`"></span>
+              <span class="font-extrabold text-indigo-600 dark:text-indigo-400"
+                x-text="`${simulationResult.summary.regionalStats['LUAR PULAU'].stores.toLocaleString()} Toko`"></span>
+              <span class="text-[10px] text-slate-400"
+                x-text="`(${simulationResult.summary.regionalStats['LUAR PULAU'].mds} MDS)`"></span>
             </div>
           </div>
 
@@ -443,33 +587,40 @@
           <div class="relative group inline-flex items-center self-start md:self-auto">
             <button type="button" @click="showPerdinModal = true"
               class="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-300/80 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm">
-              <span class="px-1.5 py-0.5 rounded text-[9.5px] font-black bg-emerald-500 text-white uppercase tracking-wider">Efisiensi</span>
+              <span
+                class="px-1.5 py-0.5 rounded text-[9.5px] font-black bg-emerald-500 text-white uppercase tracking-wider">Efisiensi</span>
               <span>Perdin:</span>
-              <b class="text-amber-600 dark:text-amber-400" x-text="`Rp ${(simulationResult.summary.totalPerdinBudget || 0).toLocaleString('id-ID')}`"></b>
-              <span class="text-[10px] text-slate-400 font-normal" x-text="`(${simulationResult.summary.totalPerdinDays || 0} Hari)`"></span>
+              <b class="text-amber-600 dark:text-amber-400"
+                x-text="`Rp ${(simulationResult.summary.totalPerdinBudget || 0).toLocaleString('id-ID')}`"></b>
+              <span class="text-[10px] text-slate-400 font-normal"
+                x-text="`(${simulationResult.summary.totalPerdinDays || 0} Hari)`"></span>
               <i data-lucide="info" class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400"></i>
             </button>
 
             <!-- Floating Hover Tooltip Card -->
-            <div class="absolute right-0 bottom-full mb-2 hidden group-hover:block z-50 w-80 p-3.5 bg-slate-900/95 text-white rounded-xl shadow-2xl border border-slate-700 text-xs pointer-events-none backdrop-blur-md">
+            <div
+              class="absolute right-0 bottom-full mb-2 hidden group-hover:block z-50 w-80 p-3.5 bg-slate-900/95 text-white rounded-xl shadow-2xl border border-slate-700 text-xs pointer-events-none backdrop-blur-md">
               <div class="font-display font-extrabold text-emerald-400 flex items-center gap-1.5 mb-1.5">
                 <span>💰</span>
                 <span>Skema Efisiensi Perjalanan Dinas</span>
               </div>
               <p class="text-[11px] text-slate-300 leading-relaxed mb-2.5">
-                Mengoptimalkan 56 MDS existing di Jawa via <b>Perdin (Rp 400.000 / hari)</b>, menghindari penambahan beban biaya tetap rekrutmen baru <i>(~Rp 5,22 Jt/bln/orang)</i>.
+                Mengoptimalkan 56 MDS existing di Jawa via <b>Perdin (Rp 400.000 / hari)</b>, menghindari penambahan
+                beban biaya tetap rekrutmen baru <i>(~Rp 5,22 Jt/bln/orang)</i>.
               </p>
               <div class="pt-2 border-t border-slate-800 space-y-1 text-[11px]">
                 <div class="flex justify-between">
                   <span class="text-slate-400">Est. Biaya Perdin:</span>
-                  <b class="text-amber-400" x-text="`Rp ${(simulationResult.summary.totalPerdinBudget || 0).toLocaleString('id-ID')} (${simulationResult.summary.totalPerdinDays || 0} Hari)`"></b>
+                  <b class="text-amber-400"
+                    x-text="`Rp ${(simulationResult.summary.totalPerdinBudget || 0).toLocaleString('id-ID')} (${simulationResult.summary.totalPerdinDays || 0} Hari)`"></b>
                 </div>
                 <div class="flex justify-between">
                   <span class="text-slate-400">Potensi Hemat vs Rekrut:</span>
                   <b class="text-emerald-400">&asymp; 45% - 60% Lebih Hemat</b>
                 </div>
               </div>
-              <div class="text-[10px] text-indigo-400 font-semibold mt-2 pt-1 border-t border-slate-800 flex items-center justify-between">
+              <div
+                class="text-[10px] text-indigo-400 font-semibold mt-2 pt-1 border-t border-slate-800 flex items-center justify-between">
                 <span>*Klik tombol untuk rincian kebijakan</span>
                 <span>&rarr;</span>
               </div>
@@ -482,13 +633,16 @@
     </template>
 
     <!-- B. SIMULATION PARAMETER ADJUSTER (COLLAPSIBLE ACCORDION WITH RICH TOOLTIPS) -->
-    <div class="glass-card rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-all">
-      
+    <div
+      class="glass-card rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-all">
+
       <!-- Accordion Header (Always Visible & Clickable) -->
-      <button type="button" @click="showParamAccordion = !showParamAccordion; $nextTick(() => { if (window.lucide) lucide.createIcons(); })"
+      <button type="button"
+        @click="showParamAccordion = !showParamAccordion; $nextTick(() => { if (window.lucide) lucide.createIcons(); })"
         class="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-100/50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer select-none">
         <div class="flex flex-wrap items-center gap-2.5 min-w-0">
-          <div class="w-7 h-7 rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center flex-shrink-0">
+          <div
+            class="w-7 h-7 rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center flex-shrink-0">
             <i data-lucide="sliders" class="w-4 h-4"></i>
           </div>
           <span class="font-display font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white">
@@ -496,22 +650,29 @@
           </span>
           <!-- Compact Live Parameter Badges (Visible on Collapsed Mode) -->
           <div class="hidden md:flex items-center gap-1.5 text-[11px] text-slate-500 font-bold ml-2">
-            <span class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+            <span
+              class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
               x-text="`🏪 ${params.storesPerDay} Toko/Hari`"></span>
-            <span class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+            <span
+              class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
               x-text="`🗓️ ${params.regularDays} Hari Toko (${params.storesPerDay * params.regularDays} Toko)`"></span>
-            <span class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+            <span
+              class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
               x-text="`🏭 ${params.dcDays} Hari DC`"></span>
-            <span class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+            <span
+              class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
               x-text="`⏱️ Max ${params.maxTravelMins} Mnt`"></span>
-            <span class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+            <span
+              class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
               x-text="`📍 Max ${params.maxRadiusKm} KM`"></span>
           </div>
         </div>
 
         <div class="flex items-center gap-2 flex-shrink-0">
-          <span class="text-[11px] font-bold text-brand-600 dark:text-brand-400" x-text="showParamAccordion ? 'Tutup' : 'Sesuaikan'"></span>
-          <div class="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 transition-transform duration-200"
+          <span class="text-[11px] font-bold text-brand-600 dark:text-brand-400"
+            x-text="showParamAccordion ? 'Tutup' : 'Sesuaikan'"></span>
+          <div
+            class="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 transition-transform duration-200"
             :class="showParamAccordion ? 'rotate-180 text-brand-600' : ''">
             <i data-lucide="chevron-down" class="w-4 h-4"></i>
           </div>
@@ -519,18 +680,15 @@
       </button>
 
       <!-- Accordion Body (Collapsible) -->
-      <div x-show="showParamAccordion" x-cloak
-        x-transition:enter="transition ease-out duration-200"
-        x-transition:enter-start="opacity-0 -translate-y-2"
-        x-transition:enter-end="opacity-100 translate-y-0"
-        x-transition:leave="transition ease-in duration-150"
-        x-transition:leave-start="opacity-100 translate-y-0"
+      <div x-show="showParamAccordion" x-cloak x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0 -translate-y-2" x-transition:enter-end="opacity-100 translate-y-0"
+        x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 translate-y-0"
         x-transition:leave-end="opacity-0 -translate-y-2"
         class="p-4 border-t border-slate-200 dark:border-slate-800 space-y-4 bg-slate-50/50 dark:bg-slate-800/20">
-        
+
         <!-- Parameter Grid with Hover Tooltips on each input label -->
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 text-xs">
-          
+
           <!-- Field 1: Toko Reguler / Hari -->
           <div class="space-y-1">
             <div class="flex items-center justify-between">
@@ -538,8 +696,10 @@
                 <span>Toko / Hari</span>
               </label>
               <div class="relative group cursor-pointer inline-flex">
-                <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-500 transition-colors"></i>
-                <div class="absolute right-0 bottom-full mb-1.5 hidden group-hover:block z-50 w-56 p-2 bg-slate-900 text-white rounded-lg shadow-xl border border-slate-700 text-[10.5px] pointer-events-none">
+                <i data-lucide="help-circle"
+                  class="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-500 transition-colors"></i>
+                <div
+                  class="absolute right-0 bottom-full mb-1.5 hidden group-hover:block z-50 w-56 p-2 bg-slate-900 text-white rounded-lg shadow-xl border border-slate-700 text-[10.5px] pointer-events-none">
                   Target kapasitas kunjungan toko reguler per hari kerja (default: <b>20 toko/hari</b>).
                 </div>
               </div>
@@ -555,9 +715,12 @@
                 <span>Hari Toko (Bln)</span>
               </label>
               <div class="relative group cursor-pointer inline-flex">
-                <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-500 transition-colors"></i>
-                <div class="absolute right-0 bottom-full mb-1.5 hidden group-hover:block z-50 w-60 p-2 bg-slate-900 text-white rounded-lg shadow-xl border border-slate-700 text-[10.5px] pointer-events-none">
-                  Jumlah hari khusus toko per bulan (default: <b>21 hari</b>). Total target toko bulanan = Toko/Hari &times; Hari Toko (e.g. 20 &times; 21 = <b>420 toko</b>).
+                <i data-lucide="help-circle"
+                  class="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-500 transition-colors"></i>
+                <div
+                  class="absolute right-0 bottom-full mb-1.5 hidden group-hover:block z-50 w-60 p-2 bg-slate-900 text-white rounded-lg shadow-xl border border-slate-700 text-[10.5px] pointer-events-none">
+                  Jumlah hari khusus toko per bulan (default: <b>21 hari</b>). Total target toko bulanan = Toko/Hari
+                  &times; Hari Toko (e.g. 20 &times; 21 = <b>420 toko</b>).
                 </div>
               </div>
             </div>
@@ -572,9 +735,12 @@
                 <span>Hari DC (Bln)</span>
               </label>
               <div class="relative group cursor-pointer inline-flex">
-                <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-500 transition-colors"></i>
-                <div class="absolute right-0 bottom-full mb-1.5 hidden group-hover:block z-50 w-60 p-2 bg-slate-900 text-white rounded-lg shadow-xl border border-slate-700 text-[10.5px] pointer-events-none">
-                  Alokasi hari kerja khusus kunjungan gudang/Distribution Center (DC) per bulan (default: <b>4 hari DC</b>).
+                <i data-lucide="help-circle"
+                  class="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-500 transition-colors"></i>
+                <div
+                  class="absolute right-0 bottom-full mb-1.5 hidden group-hover:block z-50 w-60 p-2 bg-slate-900 text-white rounded-lg shadow-xl border border-slate-700 text-[10.5px] pointer-events-none">
+                  Alokasi hari kerja khusus kunjungan gudang/Distribution Center (DC) per bulan (default: <b>4 hari
+                    DC</b>).
                 </div>
               </div>
             </div>
@@ -589,9 +755,12 @@
                 <span>DC / Hari</span>
               </label>
               <div class="relative group cursor-pointer inline-flex">
-                <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-500 transition-colors"></i>
-                <div class="absolute right-0 bottom-full mb-1.5 hidden group-hover:block z-50 w-56 p-2 bg-slate-900 text-white rounded-lg shadow-xl border border-slate-700 text-[10.5px] pointer-events-none">
-                  Target kapasitas titik kunjungan DC per hari (default: <b>10 kunjungan/hari</b>). Total = 4 &times; 10 = <b>40 kunjungan</b>.
+                <i data-lucide="help-circle"
+                  class="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-500 transition-colors"></i>
+                <div
+                  class="absolute right-0 bottom-full mb-1.5 hidden group-hover:block z-50 w-56 p-2 bg-slate-900 text-white rounded-lg shadow-xl border border-slate-700 text-[10.5px] pointer-events-none">
+                  Target kapasitas titik kunjungan DC per hari (default: <b>10 kunjungan/hari</b>). Total = 4 &times; 10
+                  = <b>40 kunjungan</b>.
                 </div>
               </div>
             </div>
@@ -606,9 +775,12 @@
                 <span>Max Waktu</span>
               </label>
               <div class="relative group cursor-pointer inline-flex">
-                <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-500 transition-colors"></i>
-                <div class="absolute right-0 bottom-full mb-1.5 hidden group-hover:block z-50 w-60 p-2 bg-slate-900 text-white rounded-lg shadow-xl border border-slate-700 text-[10.5px] pointer-events-none">
-                  Batas toleransi maksimal waktu tempuh motor dari rumah ke toko untuk rute non perdin (default: <b>60 menit / 1 jam</b>).
+                <i data-lucide="help-circle"
+                  class="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-500 transition-colors"></i>
+                <div
+                  class="absolute right-0 bottom-full mb-1.5 hidden group-hover:block z-50 w-60 p-2 bg-slate-900 text-white rounded-lg shadow-xl border border-slate-700 text-[10.5px] pointer-events-none">
+                  Batas toleransi maksimal waktu tempuh motor dari rumah ke toko untuk rute non perdin (default: <b>60
+                    menit / 1 jam</b>).
                 </div>
               </div>
             </div>
@@ -623,8 +795,10 @@
                 <span>Max Radius</span>
               </label>
               <div class="relative group cursor-pointer inline-flex">
-                <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-500 transition-colors"></i>
-                <div class="absolute right-0 bottom-full mb-1.5 hidden group-hover:block z-50 w-60 p-2 bg-slate-900 text-white rounded-lg shadow-xl border border-slate-700 text-[10.5px] pointer-events-none">
+                <i data-lucide="help-circle"
+                  class="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-500 transition-colors"></i>
+                <div
+                  class="absolute right-0 bottom-full mb-1.5 hidden group-hover:block z-50 w-60 p-2 bg-slate-900 text-white rounded-lg shadow-xl border border-slate-700 text-[10.5px] pointer-events-none">
                   Batas toleransi radius geografis cluster toko di sekitar domisili MDS (default: <b>25 km</b>).
                 </div>
               </div>
@@ -642,7 +816,7 @@
             <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
             <span>Reset Default</span>
           </button>
-          
+
           <button type="button" @click="runSimulation()"
             class="px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl font-bold flex items-center gap-1.5 transition-all shadow-md shadow-brand-500/20 active:scale-95 cursor-pointer">
             <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
@@ -655,17 +829,18 @@
 
     <!-- C. MAIN FULL-WIDTH INTERACTIVE LAYOUT (MAP & DEDICATED ROUTE DETAIL TABLE) -->
     <div class="space-y-4">
-      
+
       <!-- 1. TOP MDS CONTROL & PROFILE BANNER (FULL WIDTH) -->
       <div class="glass-card rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
         <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          
+
           <!-- Left: Quick MDS Selector & Drawer Toggle -->
           <div class="flex flex-wrap items-center gap-2.5">
-            
+
             <!-- Quick Search / Select MDS Dropdown -->
             <div class="relative min-w-[260px] sm:min-w-[320px]">
-              <select :value="selectedMds ? selectedMds.id : ''" @change="selectMds(simulationResult.assignments.find(m => m.id === $event.target.value))"
+              <select :value="selectedMds ? selectedMds.id : ''"
+                @change="selectMds(simulationResult.assignments.find(m => m.id === $event.target.value))"
                 class="w-full appearance-none pl-9 pr-8 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs focus:ring-2 focus:ring-brand-500 cursor-pointer shadow-sm">
                 <template x-for="m in filteredAssignments" :key="m.id">
                   <option :value="m.id" :selected="selectedMds && selectedMds.id === m.id"
@@ -689,7 +864,8 @@
             </button>
 
             <!-- Status Filter Quick Toggle -->
-            <div class="hidden sm:flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold">
+            <div
+              class="hidden sm:flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold">
               <button type="button" @click="selectedStatus = 'ALL'"
                 class="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
                 :class="selectedStatus === 'ALL' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'">
@@ -712,25 +888,30 @@
           <!-- Right: Active Selected MDS Summary Badges & Exports -->
           <template x-if="selectedMds">
             <div class="flex flex-wrap items-center gap-2 text-xs">
-              
+
               <!-- Workload Distribution Badges -->
               <div class="flex flex-wrap items-center gap-1.5 font-bold">
-                <span class="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800"
+                <span
+                  class="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800"
                   x-text="`🚗 ${selectedMds.nonPerdinDays || selectedMds.localDays || 0} Hari Non Perdin`"></span>
-                
+
                 <template x-if="(selectedMds.perdinDays || 0) > 0">
-                  <span class="px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 flex items-center gap-1"
+                  <span
+                    class="px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 flex items-center gap-1"
                     title="Skema Perjalanan Dinas Luar Kota (Rp 400.000 / hari)">
                     <span>🏨</span>
-                    <span x-text="`${selectedMds.perdinDays} Hari Perdin (Rp ${(selectedMds.estPerdinBudget || 0).toLocaleString('id-ID')})`"></span>
+                    <span
+                      x-text="`${selectedMds.perdinDays} Hari Perdin (Rp ${(selectedMds.estPerdinBudget || 0).toLocaleString('id-ID')})`"></span>
                   </span>
                 </template>
 
-                <span class="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                <span
+                  class="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                   🏭 4 Hari DC
                 </span>
 
-                <span class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                <span
+                  class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
                   x-text="`Total: ${selectedMds.assignedStores.length} Toko`"></span>
               </div>
 
@@ -741,7 +922,8 @@
                   <i data-lucide="download" class="w-3.5 h-3.5"></i>
                   <span>Excel</span>
                 </button>
-                <button type="button" @click="exportGoogleEarthKml(false)" title="Export Rute Personil Ini Saja ke Google Earth (.kml)"
+                <button type="button" @click="exportGoogleEarthKml(false)"
+                  title="Export Rute Personil Ini Saja ke Google Earth (.kml)"
                   class="px-2.5 py-1 rounded-xl bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer">
                   <i data-lucide="globe" class="w-3.5 h-3.5"></i>
                   <span>Earth</span>
@@ -755,27 +937,34 @@
 
         <!-- Selected MDS Info Details Strip -->
         <template x-if="selectedMds">
-          <div class="pt-2 border-t border-slate-200/60 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div
+            class="pt-2 border-t border-slate-200/60 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
             <div class="flex items-center gap-2 min-w-0">
               <div class="w-3 h-3 rounded-full flex-shrink-0" :style="`background-color: ${selectedMds.color}`"></div>
               <span class="font-extrabold text-slate-900 dark:text-white truncate" x-text="selectedMds.nama"></span>
-              <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300" x-text="selectedMds.modul"></span>
+              <span
+                class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                x-text="selectedMds.modul"></span>
               <span class="text-slate-400">&bull;</span>
-              <span class="text-slate-500 truncate" x-text="`Domisili: ${selectedMds.alamat} (${selectedMds.kecamatan}, ${selectedMds.kota})`"></span>
+              <span class="text-slate-500 truncate"
+                x-text="`Domisili: ${selectedMds.alamat} (${selectedMds.kecamatan}, ${selectedMds.kota})`"></span>
             </div>
             <div class="text-[11px] text-slate-500 flex-shrink-0">
-              Rata-rata: <b class="text-slate-700 dark:text-slate-300" x-text="`~${selectedMds.avgDistanceKm} km`"></b> (<span x-text="`~${selectedMds.avgTravelMins} Menit`"></span>) &bull; Jarak Maks: <b class="text-indigo-600 dark:text-indigo-400" x-text="`${selectedMds.maxDistanceKm} km`"></b>
+              Rata-rata: <b class="text-slate-700 dark:text-slate-300" x-text="`~${selectedMds.avgDistanceKm} km`"></b>
+              (<span x-text="`~${selectedMds.avgTravelMins} Menit`"></span>) &bull; Jarak Maks: <b
+                class="text-indigo-600 dark:text-indigo-400" x-text="`${selectedMds.maxDistanceKm} km`"></b>
             </div>
           </div>
         </template>
       </div>
 
       <!-- 2. DAY SELECTOR & STEPPER BAR (FULL WIDTH) -->
-      <div class="glass-card rounded-2xl p-3 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        
+      <div
+        class="glass-card rounded-2xl p-3 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+
         <!-- Left: Day Picker with Quick Navigation Stepper -->
         <div class="flex items-center gap-2">
-          
+
           <button type="button" @click="prevDay()" :disabled="selectedDayIndex <= 1"
             class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
             title="Hari Sebelumnya">
@@ -800,7 +989,8 @@
             </span>
           </div>
 
-          <button type="button" @click="nextDay()" :disabled="selectedDayIndex >= (selectedMds?.dailySchedule?.length || 25)"
+          <button type="button" @click="nextDay()"
+            :disabled="selectedDayIndex >= (selectedMds?.dailySchedule?.length || 25)"
             class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
             title="Hari Berikutnya">
             <i data-lucide="chevron-right" class="w-4 h-4"></i>
@@ -817,9 +1007,11 @@
               <span x-text="currentDaySummary.title"></span>
             </div>
             <div class="hidden sm:flex items-center gap-2 text-[11px] text-slate-500">
-              <span>Beban: <b class="text-slate-700 dark:text-slate-300" x-text="`${currentDaySummary.totalStores} Kunjungan`"></b></span>
+              <span>Beban: <b class="text-slate-700 dark:text-slate-300"
+                  x-text="`${currentDaySummary.totalStores} Kunjungan`"></b></span>
               <span>&bull;</span>
-              <span>Rata-rata: <b class="text-slate-700 dark:text-slate-300" x-text="`~${currentDaySummary.avgDistanceKm} km`"></b></span>
+              <span>Rata-rata: <b class="text-slate-700 dark:text-slate-300"
+                  x-text="`~${currentDaySummary.avgDistanceKm} km`"></b></span>
             </div>
           </div>
         </template>
@@ -829,16 +1021,18 @@
       <!-- 3. FULL WIDTH MAP CONTAINER -->
       <div class="glass-card rounded-2xl p-2 border border-slate-200 dark:border-slate-800 shadow-sm relative">
         <div id="route-map" x-ignore class="w-full h-[540px] rounded-2xl"></div>
-        
+
         <!-- Map Overlay Guide with Perdin Indicator -->
-        <div class="absolute bottom-4 left-4 z-20 glass-card px-3.5 py-2.5 rounded-xl text-[11px] border border-slate-200 dark:border-slate-800 shadow-lg space-y-1 pointer-events-none">
+        <div
+          class="absolute bottom-4 left-4 z-20 glass-card px-3.5 py-2.5 rounded-xl text-[11px] border border-slate-200 dark:border-slate-800 shadow-lg space-y-1 pointer-events-none">
           <div class="flex items-center gap-1.5 font-bold">
             <span>🏠 Domisili MDS</span>
             <span class="text-slate-400">&bull;</span>
             <span>🏪 Urutan Rute Stop #1 s/d #20</span>
           </div>
           <div class="flex items-center gap-2 text-[10.5px]">
-            <span x-text="`Hari ke-${selectedDayIndex} (${(selectedMds?.dailySchedule?.find(d => d.dayNumber === selectedDayIndex)?.stores?.length || 0)} Titik Kunjungan)`"></span>
+            <span
+              x-text="`Hari ke-${selectedDayIndex} (${(selectedMds?.dailySchedule?.find(d => d.dayNumber === selectedDayIndex)?.stores?.length || 0)} Titik Kunjungan)`"></span>
             <template x-if="selectedMds?.dailySchedule?.find(d => d.dayNumber === selectedDayIndex)?.isPerdin">
               <span class="px-2 py-0.5 rounded font-extrabold bg-amber-500 text-white text-[9.5px]">
                 🏨 PERJALANAN DINAS
@@ -850,13 +1044,15 @@
 
       <!-- 4. DEDICATED FULL-WIDTH ROUTE DETAIL TABLE -->
       <div class="glass-card rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-        
+
         <!-- Table Header Toolbar (Scope Tabs, Filters, & Search) -->
-        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-200/70 dark:border-slate-800">
-          
+        <div
+          class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-200/70 dark:border-slate-800">
+
           <!-- Left: Title & Scope Switcher (Hari ke-X vs Semua 25 Hari) -->
           <div class="flex flex-wrap items-center gap-2">
-            <div class="flex items-center gap-2 font-display font-extrabold text-sm text-slate-900 dark:text-white mr-2">
+            <div
+              class="flex items-center gap-2 font-display font-extrabold text-sm text-slate-900 dark:text-white mr-2">
               <i data-lucide="list-ordered" class="w-4 h-4 text-brand-500"></i>
               <span>Tabel Detail Rute Kunjungan</span>
             </div>
@@ -867,20 +1063,22 @@
                 class="px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
                 :class="tableScope === 'DAY' ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'">
                 <span>🗓️ Hari ke-<b x-text="selectedDayIndex"></b></span>
-                <span class="text-[10px] opacity-80" x-text="`(${(selectedMds?.dailySchedule?.find(d => d.dayNumber === selectedDayIndex)?.stores?.length || 0)})`"></span>
+                <span class="text-[10px] opacity-80"
+                  x-text="`(${(selectedMds?.dailySchedule?.find(d => d.dayNumber === selectedDayIndex)?.stores?.length || 0)})`"></span>
               </button>
               <button type="button" @click="tableScope = 'MONTH'"
                 class="px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
                 :class="tableScope === 'MONTH' ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'">
                 <span>📊 Semua Rute (25 Hari)</span>
-                <span class="text-[10px] opacity-80" x-text="`(${selectedMds ? (selectedMds.assignedStores.length + selectedMds.assignedDc.length) : 0})`"></span>
+                <span class="text-[10px] opacity-80"
+                  x-text="`(${selectedMds ? (selectedMds.assignedStores.length + selectedMds.assignedDc.length) : 0})`"></span>
               </button>
             </div>
           </div>
 
           <!-- Right: Type Filters & Search Box -->
           <div class="flex flex-wrap items-center gap-2">
-            
+
             <!-- Filter Type Pills -->
             <div class="flex items-center gap-1 text-xs">
               <button type="button" @click="tableFilterType = 'ALL'"
@@ -921,7 +1119,8 @@
         <!-- Table View Container -->
         <div class="overflow-x-auto max-h-[500px] border border-slate-200/80 dark:border-slate-800 rounded-xl">
           <table class="w-full text-left text-xs border-collapse">
-            <thead class="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-extrabold border-b border-slate-200 dark:border-slate-700 shadow-sm">
+            <thead
+              class="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-extrabold border-b border-slate-200 dark:border-slate-700 shadow-sm">
               <tr>
                 <th class="py-2.5 px-3">Stop #</th>
                 <template x-if="tableScope === 'MONTH'">
@@ -943,7 +1142,7 @@
               <template x-for="(st, idx) in currentTableStores" :key="st.id || idx">
                 <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
                   :class="st.isPerdin ? 'bg-amber-500/5' : ((st.isDc || st.type === 'DC') ? 'bg-emerald-500/5' : '')">
-                  
+
                   <!-- Stop Number -->
                   <td class="py-2.5 px-3 font-extrabold">
                     <span class="w-6 h-6 rounded-full inline-flex items-center justify-center text-[10.5px] font-black"
@@ -960,26 +1159,32 @@
                   <td class="py-2.5 px-3">
                     <span class="px-2 py-0.5 rounded text-[10px] font-extrabold flex items-center gap-1 w-max"
                       :class="st.isPerdin ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30' : ((st.isDc || st.type === 'DC') ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30' : (st.tipeKunjungan === 'TOKO SEKITAR DC' ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20'))">
-                      <span x-text="st.isPerdin ? '🏨 PERDIN' : ((st.isDc || st.type === 'DC') ? '🏭 DC' : (st.tipeKunjungan === 'TOKO SEKITAR DC' ? '🚗 SEKITAR DC' : '🚗 NON PERDIN'))"></span>
+                      <span
+                        x-text="st.isPerdin ? '🏨 PERDIN' : ((st.isDc || st.type === 'DC') ? '🏭 DC' : (st.tipeKunjungan === 'TOKO SEKITAR DC' ? '🚗 SEKITAR DC' : '🚗 NON PERDIN'))"></span>
                     </span>
                   </td>
 
                   <!-- Kode Toko -->
-                  <td class="py-2.5 px-3 font-mono text-[11px] font-semibold text-slate-500 dark:text-slate-400" x-text="st.storeCode || '-'"></td>
+                  <td class="py-2.5 px-3 font-mono text-[11px] font-semibold text-slate-500 dark:text-slate-400"
+                    x-text="st.storeCode || '-'"></td>
 
                   <!-- Nama Toko -->
-                  <td class="py-2.5 px-3 font-bold text-slate-900 dark:text-white" x-text="st.storeName || st.name"></td>
+                  <td class="py-2.5 px-3 font-bold text-slate-900 dark:text-white" x-text="st.storeName || st.name">
+                  </td>
 
                   <!-- Account -->
                   <td class="py-2.5 px-3">
-                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-500/10 text-brand-600 dark:text-brand-400" x-text="st.account || 'DC'"></span>
+                    <span
+                      class="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-500/10 text-brand-600 dark:text-brand-400"
+                      x-text="st.account || 'DC'"></span>
                   </td>
 
                   <!-- Kecamatan -->
                   <td class="py-2.5 px-3 text-slate-500 dark:text-slate-400" x-text="st.kecamatan || '-'"></td>
 
                   <!-- Wilayah / Kab-Kota -->
-                  <td class="py-2.5 px-3 font-semibold text-slate-700 dark:text-slate-300" x-text="st.kabKota || selectedMds?.kota || '-'"></td>
+                  <td class="py-2.5 px-3 font-semibold text-slate-700 dark:text-slate-300"
+                    x-text="st.kabKota || selectedMds?.kota || '-'"></td>
 
                   <!-- Jarak dari Rumah -->
                   <td class="py-2.5 px-3 font-bold"
@@ -992,7 +1197,8 @@
                   <!-- Fasilitas Perdin -->
                   <td class="py-2.5 px-3">
                     <template x-if="st.isPerdin">
-                      <span class="text-[10.5px] font-extrabold text-amber-600 dark:text-amber-400">Rp 400.000 / Hari</span>
+                      <span class="text-[10.5px] font-extrabold text-amber-600 dark:text-amber-400">Rp 400.000 /
+                        Hari</span>
                     </template>
                     <template x-if="!st.isPerdin">
                       <span class="text-[10.5px] text-slate-400">Non Perdin (Rp 0)</span>
@@ -1025,12 +1231,16 @@
         </div>
 
         <!-- Table Summary Footer -->
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500 pt-2 border-t border-slate-200/60 dark:border-slate-800">
+        <div
+          class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500 pt-2 border-t border-slate-200/60 dark:border-slate-800">
           <div>
-            Menampilkan <b class="text-slate-900 dark:text-white" x-text="currentTableStores.length"></b> titik kunjungan untuk personil <b class="text-brand-600 dark:text-brand-400" x-text="selectedMds ? selectedMds.nama : '-'"></b>
+            Menampilkan <b class="text-slate-900 dark:text-white" x-text="currentTableStores.length"></b> titik
+            kunjungan untuk personil <b class="text-brand-600 dark:text-brand-400"
+              x-text="selectedMds ? selectedMds.nama : '-'"></b>
           </div>
           <div class="flex items-center gap-3">
-            <button type="button" @click="exportSimulationExcel()" class="font-bold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1 cursor-pointer">
+            <button type="button" @click="exportSimulationExcel()"
+              class="font-bold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1 cursor-pointer">
               <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
               <span>Download Excel Rute Lengkap</span>
             </button>
@@ -1044,28 +1254,30 @@
     <!-- ============================================================================== -->
     <!-- SLIDE-OVER DRAWER: LIST LENGKAP 56 TIM MDS -->
     <!-- ============================================================================== -->
-    <div x-show="showMdsDrawer" x-cloak class="fixed inset-0 z-50 overflow-hidden" @keydown.escape.window="showMdsDrawer = false">
-      
+    <div x-show="showMdsDrawer" x-cloak class="fixed inset-0 z-50 overflow-hidden"
+      @keydown.escape.window="showMdsDrawer = false">
+
       <!-- Backdrop -->
       <div x-show="showMdsDrawer" x-transition:enter="transition-opacity ease-linear duration-300"
         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
-        x-transition:leave="transition-opacity ease-linear duration-300"
-        x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
-        @click="showMdsDrawer = false" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"></div>
+        x-transition:leave="transition-opacity ease-linear duration-300" x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0" @click="showMdsDrawer = false"
+        class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"></div>
 
       <!-- Slide-Over Panel -->
       <div class="fixed inset-y-0 left-0 max-w-full flex">
-        <div x-show="showMdsDrawer"
-          x-transition:enter="transform transition ease-in-out duration-300"
+        <div x-show="showMdsDrawer" x-transition:enter="transform transition ease-in-out duration-300"
           x-transition:enter-start="-translate-x-full" x-transition:enter-end="translate-x-0"
-          x-transition:leave="transform transition ease-in-out duration-300"
-          x-transition:leave-start="translate-x-0" x-transition:leave-end="-translate-x-full"
+          x-transition:leave="transform transition ease-in-out duration-300" x-transition:leave-start="translate-x-0"
+          x-transition:leave-end="-translate-x-full"
           class="w-screen max-w-md bg-white dark:bg-slate-900 shadow-2xl border-r border-slate-200 dark:border-slate-800 flex flex-col">
-          
+
           <!-- Drawer Header -->
-          <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+          <div
+            class="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
             <div class="flex items-center space-x-2.5">
-              <div class="w-8 h-8 rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center font-bold">
+              <div
+                class="w-8 h-8 rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center font-bold">
                 👥
               </div>
               <div>
@@ -1081,7 +1293,7 @@
 
           <!-- Drawer Filters & Search -->
           <div class="p-4 border-b border-slate-200/60 dark:border-slate-800 space-y-3">
-            
+
             <!-- Search -->
             <div class="relative">
               <input type="text" x-model="searchQuery" placeholder="Cari Nama MDS / Kecamatan / Kota..."
@@ -1118,7 +1330,7 @@
               <div @click="selectMds(mds)"
                 class="p-3 rounded-xl border transition-all cursor-pointer space-y-1.5 select-none"
                 :class="selectedMds && selectedMds.id === mds.id ? 'bg-brand-500/10 border-brand-500 ring-2 ring-brand-400' : 'bg-white/60 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200/80 dark:border-slate-700/80'">
-                
+
                 <div class="flex items-center justify-between">
                   <div class="flex items-center space-x-2 min-w-0">
                     <div class="w-3 h-3 rounded-full flex-shrink-0" :style="`background-color: ${mds.color}`"></div>
@@ -1135,8 +1347,10 @@
                 </div>
 
                 <!-- Metrics Mini Bar -->
-                <div class="flex items-center justify-between text-[10.5px] pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-                  <span class="font-bold text-slate-700 dark:text-slate-300" x-text="`${mds.assignedStores.length} Toko • 4 Hari DC`"></span>
+                <div
+                  class="flex items-center justify-between text-[10.5px] pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                  <span class="font-bold text-slate-700 dark:text-slate-300"
+                    x-text="`${mds.assignedStores.length} Toko • 4 Hari DC`"></span>
                   <span class="text-slate-500" x-text="`~${mds.avgDistanceKm} km (${mds.avgTravelMins} mnt)`"></span>
                 </div>
 
@@ -1157,19 +1371,23 @@
   <div x-show="showPerdinModal" x-cloak
     class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity"
     @keydown.escape.window="showPerdinModal = false">
-    
+
     <div @click.away="showPerdinModal = false"
       class="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden transform transition-all flex flex-col max-h-[90vh]">
-      
+
       <!-- Modal Header -->
-      <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+      <div
+        class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
         <div class="flex items-center space-x-2.5">
-          <div class="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center font-extrabold text-base">
+          <div
+            class="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center font-extrabold text-base">
             🏨
           </div>
           <div>
-            <h3 class="font-display font-extrabold text-sm sm:text-base text-slate-900 dark:text-white">Kebijakan Fasilitas Perjalanan Dinas (Luar Kota)</h3>
-            <p class="text-[11px] text-slate-500 dark:text-slate-400">Ketentuan Operasional & Komparasi Biaya Manpower Retail Cimory</p>
+            <h3 class="font-display font-extrabold text-sm sm:text-base text-slate-900 dark:text-white">Kebijakan
+              Fasilitas Perjalanan Dinas (Luar Kota)</h3>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400">Ketentuan Operasional & Komparasi Biaya Manpower
+              Retail Cimory</p>
           </div>
         </div>
         <button type="button" @click="showPerdinModal = false"
@@ -1180,7 +1398,7 @@
 
       <!-- Modal Body (Scrollable) -->
       <div class="p-6 overflow-y-auto space-y-4 text-xs">
-        
+
         <!-- 0. Kriteria Penetapan Perdin -->
         <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1.5">
           <div class="font-extrabold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
@@ -1188,56 +1406,78 @@
             <span>Kriteria Resmi Penetapan Perjalanan Dinas (Luar Kota):</span>
           </div>
           <p class="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
-            Status Perjalanan Dinas hanya aktif apabila rute kunjungan memenuhi salah satu syarat: <b>Jarak &ge; 150 KM</b> dari domisili MDS, atau <b>Waktu Tempuh Perjalanan &ge; 4 Jam (240 Menit)</b>. Rute dengan jarak &lt; 150 KM diklasifikasikan sebagai <b>🚗 Kunjungan Non Perdin (Pulang-Hari)</b>.
+            Status Perjalanan Dinas hanya aktif apabila rute kunjungan memenuhi salah satu syarat: <b>Jarak &ge; 150
+              KM</b> dari domisili MDS, atau <b>Waktu Tempuh Perjalanan &ge; 4 Jam (240 Menit)</b>. Rute dengan jarak
+            &lt; 150 KM diklasifikasikan sebagai <b>🚗 Kunjungan Non Perdin (Pulang-Hari)</b>.
           </p>
         </div>
 
         <!-- 1. Fasilitas Uang Harian Perdin -->
         <div class="space-y-2">
-          <h4 class="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+          <h4
+            class="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-amber-500"></span>
             <span>1. Breakdown Uang Harian Perjalanan Dinas (Rp 400.000 / Hari Kerja Luar Kota)</span>
           </h4>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
+            <div
+              class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
               <div class="text-[10.5px] text-slate-500 font-bold uppercase">🍲 Uang Makan</div>
-              <div class="text-sm font-extrabold text-slate-900 dark:text-white">Rp 150.000 <span class="text-[10px] font-normal text-slate-400">/ hari</span></div>
-              <div class="text-[10.5px] text-slate-500 leading-tight">Alokasi konsumsi 3x makan selama bertugas luar kota.</div>
+              <div class="text-sm font-extrabold text-slate-900 dark:text-white">Rp 150.000 <span
+                  class="text-[10px] font-normal text-slate-400">/ hari</span></div>
+              <div class="text-[10.5px] text-slate-500 leading-tight">Alokasi konsumsi 3x makan selama bertugas luar
+                kota.</div>
             </div>
-            <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
+            <div
+              class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
               <div class="text-[10.5px] text-slate-500 font-bold uppercase">🏨 Penginapan</div>
-              <div class="text-sm font-extrabold text-slate-900 dark:text-white">Rp 200.000 <span class="text-[10px] font-normal text-slate-400">/ malam</span></div>
-              <div class="text-[10.5px] text-slate-500 leading-tight">Standar hotel budget / homestay di kota tujuan.</div>
+              <div class="text-sm font-extrabold text-slate-900 dark:text-white">Rp 200.000 <span
+                  class="text-[10px] font-normal text-slate-400">/ malam</span></div>
+              <div class="text-[10.5px] text-slate-500 leading-tight">Standar hotel budget / homestay di kota tujuan.
+              </div>
             </div>
-            <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
+            <div
+              class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
               <div class="text-[10.5px] text-slate-500 font-bold uppercase">⛽ Transport / Bensin</div>
-              <div class="text-sm font-extrabold text-slate-900 dark:text-white">Rp 50.000 <span class="text-[10px] font-normal text-slate-400">/ hari</span></div>
-              <div class="text-[10.5px] text-slate-500 leading-tight">Mobilitas rute antar toko di wilayah kluster.</div>
+              <div class="text-sm font-extrabold text-slate-900 dark:text-white">Rp 50.000 <span
+                  class="text-[10px] font-normal text-slate-400">/ hari</span></div>
+              <div class="text-[10.5px] text-slate-500 leading-tight">Mobilitas rute antar toko di wilayah kluster.
+              </div>
             </div>
           </div>
         </div>
 
         <!-- 2. Komparasi Biaya: Rekrut Baru vs Skema Perdin -->
         <div class="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-          <h4 class="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+          <h4
+            class="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
             <span>2. Komparasi Finansial untuk Manajemen (Per Bulan)</span>
           </h4>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            
+
             <!-- Option A: Rekrut Baru -->
-            <div class="p-3.5 rounded-xl bg-red-50/70 dark:bg-red-950/20 border border-red-200 dark:border-red-800/50 space-y-2">
+            <div
+              class="p-3.5 rounded-xl bg-red-50/70 dark:bg-red-950/20 border border-red-200 dark:border-red-800/50 space-y-2">
               <div class="flex items-center justify-between">
                 <span class="font-extrabold text-red-700 dark:text-red-400 text-xs">Opsi A: Rekrut MDS Baru</span>
-                <span class="text-[10px] px-2 py-0.5 rounded font-bold bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300">Biaya Tetap</span>
+                <span
+                  class="text-[10px] px-2 py-0.5 rounded font-bold bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300">Biaya
+                  Tetap</span>
               </div>
               <div class="space-y-1 text-[11px] text-slate-600 dark:text-slate-400">
-                <div class="flex justify-between"><span>Gaji Pokok UMR:</span> <b class="text-slate-900 dark:text-slate-200">~Rp 3.200.000</b></div>
-                <div class="flex justify-between"><span>Operasional Bulanan:</span> <b class="text-slate-900 dark:text-slate-200">Rp 1.200.000</b></div>
-                <div class="flex justify-between"><span>Pulsa & Komunikasi:</span> <b class="text-slate-900 dark:text-slate-200">Rp 100.000</b></div>
-                <div class="flex justify-between"><span>BPJS Ketenagakerjaan & Kes:</span> <b class="text-slate-900 dark:text-slate-200">~Rp 350.000</b></div>
-                <div class="flex justify-between"><span>Porsi THR & Seragam:</span> <b class="text-slate-900 dark:text-slate-200">~Rp 370.000</b></div>
-                <div class="pt-1.5 border-t border-red-200 dark:border-red-800 flex justify-between font-extrabold text-red-700 dark:text-red-400">
+                <div class="flex justify-between"><span>Gaji Pokok UMR:</span> <b
+                    class="text-slate-900 dark:text-slate-200">~Rp 3.200.000</b></div>
+                <div class="flex justify-between"><span>Operasional Bulanan:</span> <b
+                    class="text-slate-900 dark:text-slate-200">Rp 1.200.000</b></div>
+                <div class="flex justify-between"><span>Pulsa & Komunikasi:</span> <b
+                    class="text-slate-900 dark:text-slate-200">Rp 100.000</b></div>
+                <div class="flex justify-between"><span>BPJS Ketenagakerjaan & Kes:</span> <b
+                    class="text-slate-900 dark:text-slate-200">~Rp 350.000</b></div>
+                <div class="flex justify-between"><span>Porsi THR & Seragam:</span> <b
+                    class="text-slate-900 dark:text-slate-200">~Rp 370.000</b></div>
+                <div
+                  class="pt-1.5 border-t border-red-200 dark:border-red-800 flex justify-between font-extrabold text-red-700 dark:text-red-400">
                   <span>Total Biaya Tetap:</span>
                   <span>&asymp; Rp 5.220.000 / org / bln</span>
                 </div>
@@ -1245,18 +1485,28 @@
             </div>
 
             <!-- Option B: Skema Perdin Existing -->
-            <div class="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 space-y-2">
+            <div
+              class="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 space-y-2">
               <div class="flex items-center justify-between">
-                <span class="font-extrabold text-emerald-700 dark:text-emerald-400 text-xs">Opsi B: Skema Perdin MDS Existing</span>
-                <span class="text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">Biaya Fleksibel</span>
+                <span class="font-extrabold text-emerald-700 dark:text-emerald-400 text-xs">Opsi B: Skema Perdin MDS
+                  Existing</span>
+                <span
+                  class="text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">Biaya
+                  Fleksibel</span>
               </div>
               <div class="space-y-1 text-[11px] text-slate-600 dark:text-slate-400">
-                <div class="flex justify-between"><span>Headcount Baru:</span> <b class="text-emerald-600 dark:text-emerald-400 font-bold">0 Orang (Nol Penambahan)</b></div>
-                <div class="flex justify-between"><span>Rata-rata Hari Perdin:</span> <b class="text-slate-900 dark:text-slate-200">7 s/d 10 Hari / Bulan</b></div>
-                <div class="flex justify-between"><span>Tarif Perdin Resmi:</span> <b class="text-slate-900 dark:text-slate-200">Rp 400.000 / Hari</b></div>
-                <div class="flex justify-between"><span>Status Pengeluaran:</span> <b class="text-slate-900 dark:text-slate-200">Sesuai Kebutuhan Nyata</b></div>
-                <div class="flex justify-between"><span>Risiko Manpower:</span> <b class="text-slate-900 dark:text-slate-200">Nol Risiko Beban Tetap</b></div>
-                <div class="pt-1.5 border-t border-emerald-200 dark:border-emerald-800 flex justify-between font-extrabold text-emerald-700 dark:text-emerald-400">
+                <div class="flex justify-between"><span>Headcount Baru:</span> <b
+                    class="text-emerald-600 dark:text-emerald-400 font-bold">0 Orang (Nol Penambahan)</b></div>
+                <div class="flex justify-between"><span>Rata-rata Hari Perdin:</span> <b
+                    class="text-slate-900 dark:text-slate-200">7 s/d 10 Hari / Bulan</b></div>
+                <div class="flex justify-between"><span>Tarif Perdin Resmi:</span> <b
+                    class="text-slate-900 dark:text-slate-200">Rp 400.000 / Hari</b></div>
+                <div class="flex justify-between"><span>Status Pengeluaran:</span> <b
+                    class="text-slate-900 dark:text-slate-200">Sesuai Kebutuhan Nyata</b></div>
+                <div class="flex justify-between"><span>Risiko Manpower:</span> <b
+                    class="text-slate-900 dark:text-slate-200">Nol Risiko Beban Tetap</b></div>
+                <div
+                  class="pt-1.5 border-t border-emerald-200 dark:border-emerald-800 flex justify-between font-extrabold text-emerald-700 dark:text-emerald-400">
                   <span>Total Biaya Variabel:</span>
                   <span>&asymp; Rp 2.800.000 – 3.200.000</span>
                 </div>
@@ -1267,20 +1517,24 @@
         </div>
 
         <!-- 3. Ketentuan Strategis & Fleksibilitas Operasional -->
-        <div class="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-1.5">
+        <div
+          class="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-1.5">
           <div class="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
             <span>💡</span>
             <span>Prinsip Fleksibilitas & Ketenagakerjaan:</span>
           </div>
           <p class="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-            Skema ini menjamin bahwa seluruh target <b>420 toko regular</b> tercapai 100% oleh 56 MDS di Pulau Jawa. Apabila sewaktu-waktu kebijakan operasional atau anggaran luar kota disesuaikan, rute toko luar kota dapat dilepas kembali tanpa adanya konsekuensi hukum ketenagakerjaan biaya tetap personil.
+            Skema ini menjamin bahwa seluruh target <b>420 toko regular</b> tercapai 100% oleh 56 MDS di Pulau Jawa.
+            Apabila sewaktu-waktu kebijakan operasional atau anggaran luar kota disesuaikan, rute toko luar kota dapat
+            dilepas kembali tanpa adanya konsekuensi hukum ketenagakerjaan biaya tetap personil.
           </p>
         </div>
 
       </div>
 
       <!-- Modal Footer -->
-      <div class="px-6 py-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end bg-slate-50 dark:bg-slate-800/50">
+      <div
+        class="px-6 py-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end bg-slate-50 dark:bg-slate-800/50">
         <button type="button" @click="showPerdinModal = false"
           class="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors cursor-pointer">
           Tutup
@@ -1293,16 +1547,19 @@
   <!-- ============================================================================== -->
   <!-- 3. FOOTER -->
   <!-- ============================================================================== -->
-  <footer class="max-w-7xl mx-auto w-full text-center py-4 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500">
+  <footer
+    class="max-w-7xl mx-auto w-full text-center py-4 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500">
     Cimory Retail Operations &bull; Smart Route Simulator &bull; 2026
   </footer>
 
   <!-- Scripts -->
   <script src="./js/config.js?v=20260908_37"></script>
+  <script src="./js/db.js?v=20260908_37"></script>
   <script src="./js/geo_data.js?v=20260908_37"></script>
   <script src="./js/store_data.js?v=20260908_37"></script>
   <script src="./js/engine.js?v=20260908_37"></script>
   <script src="./js/app.js?v=20260908_37"></script>
 
 </body>
+
 </html>

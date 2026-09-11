@@ -4,8 +4,48 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#4f46e5">
-  <meta name="description" content="Aplikasi Retail Ops Rute Master & Absen Kunjungan MDS">
   <title>Retail Ops Rute Master</title>
+
+  <!-- ======================================================== -->
+  <!-- CIMORY MDS PORTAL - AUTH GATEKEEPER & ACCESS CONTROL    -->
+  <!-- ======================================================== -->
+  <script>
+    (function() {
+      const MODULE_KEY = 'absen';
+      const MODULE_TITLE = '01. Web Absen & Jadwal';
+      try {
+        const raw = localStorage.getItem('cimory_portal_active_session');
+        if (!raw) {
+          alert('⛔ Akses Ditolak: Anda belum login ke Cimory MDS Portal.\nSilakan masuk melalui portal utama terlebih dahulu.');
+          window.location.replace('../index.html');
+          return;
+        }
+        const user = JSON.parse(raw);
+        const isSuperAdmin = user.role === 'SUPERADMIN' || user.isSuperAdmin === true;
+
+        if (!isSuperAdmin) {
+          if (user.status !== 'APPROVED') {
+            alert('⏳ Akses Ditolak: Akun Anda masih Menunggu Persetujuan (Pending) dari Atasan.');
+            window.location.replace('../index.html');
+            return;
+          }
+          if (!user.permissions || !user.permissions[MODULE_KEY]) {
+            alert('🔒 Akses Ditolak: Akun Anda tidak memiliki izin untuk membuka ' + MODULE_TITLE + '.\nHubungi Atasan untuk mendapatkan akses.');
+            window.location.replace('../index.html');
+            return;
+          }
+        }
+        window.PORTAL_ACTIVE_USER = user;
+        window.canAccessPortalModule = function(key) {
+          if (!window.PORTAL_ACTIVE_USER) return false;
+          if (window.PORTAL_ACTIVE_USER.isSuperAdmin || window.PORTAL_ACTIVE_USER.role === 'SUPERADMIN') return true;
+          return !!(window.PORTAL_ACTIVE_USER.permissions && window.PORTAL_ACTIVE_USER.permissions[key]);
+        };
+      } catch (err) {
+        window.location.replace('../index.html');
+      }
+    })();
+  </script>
 
   <!-- PWA Manifest & App Icons -->
   <link rel="manifest" href="manifest.json">

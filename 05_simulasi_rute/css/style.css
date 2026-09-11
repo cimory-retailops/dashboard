@@ -38,15 +38,11 @@
   position: relative;
 }
 
-/* Ensure Leaflet zoom/pan transforms are strictly preserved without CSS transitions interference */
-.leaflet-pane,
-.leaflet-marker-icon,
-.leaflet-marker-shadow,
-.leaflet-tile-container,
-.leaflet-zoom-box,
-.leaflet-image-layer,
-.leaflet-layer {
-  transition: none !important;
+/* Ensure Leaflet native zoom transitions are strictly preserved without CSS interference */
+.leaflet-zoom-anim .leaflet-zoom-animated {
+  -webkit-transition: -webkit-transform 0.25s cubic-bezier(0, 0, 0.25, 1) !important;
+  -moz-transition: -moz-transform 0.25s cubic-bezier(0, 0, 0.25, 1) !important;
+  transition: transform 0.25s cubic-bezier(0, 0, 0.25, 1) !important;
 }
 
 /* Reset Leaflet DivIcon default borders & backgrounds */
@@ -58,20 +54,21 @@
 .custom-home-pin, .custom-store-pin {
   background: transparent !important;
   border: none !important;
+  overflow: visible !important;
 }
 
-/* Home Pulsing Pin (Targeting inner wrapper only to preserve Leaflet translate3d matrix) */
+/* Home Pulsing Pin (Centered via translate(-50%, -50%)) */
 .custom-home-pin > div {
   animation: pulse-pin 2s infinite ease-in-out;
 }
 
 @keyframes pulse-pin {
   0%, 100% {
-    transform: scale(1);
+    transform: translate(-50%, -50%) scale(1);
     filter: drop-shadow(0 0 4px rgba(79, 70, 229, 0.6));
   }
   50% {
-    transform: scale(1.12);
+    transform: translate(-50%, -50%) scale(1.12);
     filter: drop-shadow(0 0 12px rgba(79, 70, 229, 0.9));
   }
 }

@@ -53,7 +53,10 @@ document.addEventListener('alpine:init', () => {
     map: null,
     mapMarkersLayer: null,
     mapRoutesLayer: null,
-    activeTab: 'MAP', // 'MAP' | 'SCHEDULE'
+    // Live Cloud Sync (IndexedDB & Google Sheets)
+    isSyncing: false,
+    syncStatusMessage: '',
+    syncMeta: null,
 
     initTheme() {
       if (this.theme === 'dark') {
@@ -73,9 +76,12 @@ document.addEventListener('alpine:init', () => {
       this.initTheme();
 
       try {
-        // 1. Load Datasets
+        // 1. Load Datasets (Instant from IndexedDB if available, fallback to CSV)
         this.rawPersonnel = window.MDS_PERSONNEL_DATA || [];
-        this.rawStores = await StoreService.loadMasterStores();
+        this.rawStores = await StoreService.loadMasterStores(false, (msg) => {
+          this.loadingMessage = msg;
+        });
+        this.syncMeta = StoreService.syncMeta;
 
         // 2. Run Initial Simulation for Pulau Jawa
         this.runSimulation();
@@ -90,6 +96,40 @@ document.addEventListener('alpine:init', () => {
         console.error('[App] Init Error:', err);
       } finally {
         this.isLoading = false;
+      }
+    },
+
+    /**
+     * Live Sync from Google Sheets directly to IndexedDB
+     */
+    async syncGoogleSheets() {
+      if (this.isSyncing) return;
+      this.isSyncing = true;
+      this.syncStatusMessage = 'Menghubungkan ke Google Sheets...';
+
+      try {
+        const freshStores = await StoreService.loadMasterStores(true, (msg) => {
+          this.syncStatusMessage = msg;
+        });
+
+        if (freshStores && freshStores.length > 0) {
+          this.rawStores = freshStores;
+          this.syncMeta = StoreService.syncMeta;
+          this.runSimulation();
+          
+          const countStr = freshStores.length.toLocaleString('id-ID');
+          const dateStr = this.syncMeta?.dateString || 'Baru saja';
+          alert(`✅ Sinkronisasi Google Sheets Berhasil!\n\nTotal Toko: ${countStr}\nWaktu Sync: ${dateStr}\nData telah tersimpan di IndexedDB browser.`);
+        } else {
+          alert('⚠️ Tidak ada data toko yang berhasil disinkronkan.');
+        }
+      } catch (err) {
+        console.error('[App] Sync Error:', err);
+        alert(`❌ Gagal Sinkronisasi Google Sheets:\n${err.message || err}\n\nPeriksa koneksi internet atau hak akses sheet.`);
+      } finally {
+        this.isSyncing = false;
+        this.syncStatusMessage = '';
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
       }
     },
 
@@ -124,7 +164,7 @@ document.addEventListener('alpine:init', () => {
 
       setTimeout(() => {
         const isJawaStore = (st) => {
-          return RouteEngine.getIslandGroup(st.lat, st.lng, st.kabKota, '') === 'JAWA';
+          return RouteEngine.getIslandGroup(st.lat, st.lng, st.kabKota, '', st.branchName || '') === 'JAWA';
         };
 
         const isJawaMds = (m) => {
@@ -356,7 +396,9 @@ document.addEventListener('alpine:init', () => {
         zoom: 11,
         zoomControl: true,
         fadeAnimation: true,
-        markerZoomAnimation: true
+        markerZoomAnimation: true,
+        zoomAnimation: true,
+        wheelDebounceTime: 40
       });
 
       // OpenStreetMap Clean Tiles (100% Free, Zero Watermark, No API Key Required)
@@ -386,16 +428,16 @@ document.addEventListener('alpine:init', () => {
       const mds = this.selectedMds;
       const bounds = [];
 
-      // 1. Plot MDS Home Pin
+      // 1. Plot MDS Home Pin (Anchor centered at 0,0 via translate(-50%, -50%))
       const homeIcon = L.divIcon({
         className: 'custom-home-pin',
         html: `
-          <div style="background-color: ${mds.color}; width: 34px; height: 34px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; font-size: 16px;">
+          <div style="background-color: ${mds.color}; width: 34px; height: 34px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; transform: translate(-50%, -50%); cursor: pointer;">
             🏠
           </div>
         `,
-        iconSize: [34, 34],
-        iconAnchor: [17, 17]
+        iconSize: [0, 0],
+        iconAnchor: [0, 0]
       });
 
       const homeMarker = L.marker([mds.lat, mds.lng], { icon: homeIcon })
@@ -444,7 +486,7 @@ document.addEventListener('alpine:init', () => {
         if (totalAtCoord > 1) {
           const currentIdx = coordIndices.get(key) || 0;
           coordIndices.set(key, currentIdx + 1);
-          
+
           // Radius ~40 meters spread in a neat circle
           const angle = (2 * Math.PI * currentIdx) / totalAtCoord - Math.PI / 2;
           const radius = 0.00038;
@@ -455,12 +497,12 @@ document.addEventListener('alpine:init', () => {
         const storeIcon = L.divIcon({
           className: 'custom-store-pin',
           html: `
-            <div style="background-color: ${pinBg}; min-width: 24px; height: 24px; padding: 0 4px; border-radius: 12px; border: 2px solid ${pinBorder}; box-shadow: 0 2px 6px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: 800;">
+            <div style="background-color: ${pinBg}; min-width: 26px; height: 24px; padding: 0 6px; border-radius: 12px; border: 2px solid ${pinBorder}; box-shadow: 0 2px 6px rgba(0,0,0,0.35); display: inline-flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: 800; white-space: nowrap; transform: translate(-50%, -50%); cursor: pointer;">
               ${pinText}
             </div>
           `,
-          iconSize: [28, 24],
-          iconAnchor: [14, 12]
+          iconSize: [0, 0],
+          iconAnchor: [0, 0]
         });
 
         const storeMarker = L.marker([plotLat, plotLng], { icon: storeIcon })
@@ -490,7 +532,9 @@ document.addEventListener('alpine:init', () => {
           color: isDayDc ? '#059669' : mds.color,
           weight: 3.5,
           opacity: 0.85,
-          dashArray: isDayDc ? '4, 6' : '6, 8'
+          dashArray: isDayDc ? '4, 6' : '6, 8',
+          noClip: true,
+          smoothFactor: 1
         });
         this.mapRoutesLayer.addLayer(polyline);
       }
@@ -507,7 +551,9 @@ document.addEventListener('alpine:init', () => {
             color: mds.color,
             weight: 2,
             opacity: 0.5,
-            dashArray: '3, 6'
+            dashArray: '3, 6',
+            noClip: true,
+            smoothFactor: 1
           });
           this.mapRoutesLayer.addLayer(commuteLine);
         }
@@ -542,7 +588,7 @@ document.addEventListener('alpine:init', () => {
         'Hari Toko Non Perdin': m.nonPerdinDays || m.localDays || 0,
         'Hari Toko Perdin': m.perdinDays || 0,
         'Hari Kunjungan DC': m.dcDays || 4,
-        'Total Beban Kunjungan/Bulan': (m.assignedStores?.length || 0) + (m.assignedDc?.length || 40),
+        'Total Beban Kunjungan/Bulan': m.assignedStores.length + (m.dcDays || 4),
         'Estimasi Anggaran Perdin/Bulan (Rp)': (m.estPerdinBudget || 0),
         'Rata-rata Jarak dari Rumah (KM)': m.avgDistanceKm,
         'Jarak Terjauh (KM)': m.maxDistanceKm,

@@ -6,7 +6,7 @@
  */
 
 const RouteEngine = {
-  
+
   /**
    * Calculate Geodesic Haversine Distance in Kilometers
    */
@@ -45,41 +45,102 @@ const RouteEngine = {
   },
 
   /**
-   * Run Master Simulation & Allocation
-   */
-  /**
    * Determine Granular Regional Corridor Partition (Zero Cross-Province & Zero Cross-Island Routing)
    */
-  getRegionPartition(lat, lng, kabKota = '', prov = '') {
-    const text = (String(kabKota || '') + ' ' + String(prov || '')).toUpperCase();
+  getRegionPartition(lat, lng, kabKota = '', prov = '', branch = '') {
+    const text = (String(kabKota || '') + ' ' + String(prov || '') + ' ' + String(branch || '')).toUpperCase();
+    const numLat = parseFloat(lat);
+    const numLng = parseFloat(lng);
+    const hasCoord = !isNaN(numLat) && !isNaN(numLng) && numLat !== 0 && numLng !== 0;
 
-    // 1. Non-Java Isolated Archipelago Groups
+    // =========================================================================
+    // 1. HARD GEOGRAPHIC FENCES (Coordinates Never Lie)
+    // =========================================================================
+    // A. Kalimantan Island Fence: Lat -5.0 to +5.0, Lng 108.5 to 119.5
+    if (hasCoord && numLat >= -5.0 && numLat <= 5.0 && numLng >= 108.5 && numLng <= 119.5) {
+      if (numLng < 111.0 || /\b(PONTIANAK|SINGKAWANG|KETAPANG|SAMBAS|SINTANG|BENGKAYANG|LANDAK|SANGGAU|SEKADAU|KAPUAS HULU|KAYONG)\b/.test(text)) {
+        return { key: 'KALIMANTAN_BARAT', name: 'Kalimantan Barat', island: 'KALIMANTAN' };
+      }
+      return { key: 'KALIMANTAN_TIMUR_SELATAN', name: 'Kalimantan Timur & Selatan', island: 'KALIMANTAN' };
+    }
+
+    // B. Sulawesi Island Fence: Lat -6.5 to +4.5, Lng 118.5 to 126.0
+    if (hasCoord && numLat >= -6.5 && numLat <= 4.5 && numLng >= 118.5 && numLng <= 126.0) {
+      if (numLat > -1.0 || /\b(MANADO|BITUNG|TOMOHON|MINAHASA|KOTAMOBAGU|GORONTALO|PALU|TOLI|POSO|BANGGAI|BUOL|PARIGI|SIGI|TOJO)\b/.test(text)) {
+        return { key: 'SULAWESI_UTARA_TENGAH', name: 'Sulawesi Bagian Utara', island: 'SULAWESI' };
+      }
+      return { key: 'SULAWESI_SELATAN', name: 'Sulawesi Bagian Selatan', island: 'SULAWESI' };
+    }
+
+    // C. Sumatera Island Fence: Lat -6.5 to +6.5, Lng 94.5 to 106.2
+    if (hasCoord && numLat >= -6.5 && numLat <= 6.5 && numLng >= 94.5 && numLng <= 106.2) {
+      if (numLat > 2.0 || /\b(MEDAN|DELI|BINJAI|ASAHAN|SIMALUNGUN|SIANTAR|KARO|TEBING TINGGI|BATU BARA|LABUHAN|TAPANULI|TOBA|DAIRI|SIBOLGA|PADANG SIDEMPUAN|MANDAILING|NIAS|ACEH|BANDA ACEH|LHOKSEUMAWE|LANGSA|PIDIE|BIREUEN|TAKENGON)\b/.test(text)) {
+        return { key: 'SUMATERA_UTARA_ACEH', name: 'Sumatera Bagian Utara', island: 'SUMATERA' };
+      }
+      if (numLat > -1.0 || /\b(PEKANBARU|DUMAI|PADANG|BUKITTINGGI|JAMBI|RIAU|SUMATERA BARAT|KAMPAR|INDRAGIRI|PELALAWAN|ROKAN|SIAK|KUANTAN|KERINCI|MERANGIN|BATANGHARI|PARIAMAN|SOLOK|PAYAKUMBUH)\b/.test(text)) {
+        return { key: 'SUMATERA_TENGAH', name: 'Sumatera Bagian Tengah', island: 'SUMATERA' };
+      }
+      return { key: 'SUMATERA_SELATAN_LAMPUNG', name: 'Sumatera Bagian Selatan', island: 'SUMATERA' };
+    }
+
+    // D. Bali Island Fence: Lat -9.0 to -7.9, Lng 114.4 to 115.8
+    if (hasCoord && numLat >= -9.0 && numLat <= -7.9 && numLng >= 114.4 && numLng <= 115.8) {
+      return { key: 'BALI', name: 'Bali', island: 'BALI' };
+    }
+
+    // E. Nusa Tenggara (Lombok, Sumbawa, Flores, Timor): Lng 115.8 to 126.0, Lat -11.5 to -7.8
+    if (hasCoord && numLat >= -11.5 && numLat <= -7.8 && numLng >= 115.8 && numLng <= 126.0) {
+      if (numLng < 119.5 || /\b(LOMBOK|MATARAM|SUMBAWA|BIMA|DOMPU|NTB)\b/.test(text)) {
+        return { key: 'NTB', name: 'Nusa Tenggara Barat', island: 'NTB' };
+      }
+      return { key: 'NTT', name: 'Nusa Tenggara Timur', island: 'NTT' };
+    }
+
+    // F. Maluku & Papua: Lng > 126.0
+    if (hasCoord && numLng > 126.0) {
+      if (numLng < 132.0 && numLat <= 3.0) {
+        if (numLat > -1.0) return { key: 'MALUKU_UTARA', name: 'Maluku Utara', island: 'MALUKU_UTARA' };
+        return { key: 'MALUKU', name: 'Maluku', island: 'MALUKU' };
+      }
+      return { key: 'PAPUA', name: 'Papua', island: 'PAPUA' };
+    }
+
+    // G. Bangka Belitung & Kepulauan Riau
+    if (hasCoord && numLat >= -4.0 && numLat <= 1.5 && numLng >= 104.5 && numLng <= 108.5) {
+      if (numLat < -1.0) return { key: 'BANGKA_BELITUNG', name: 'Bangka Belitung', island: 'BANGKA_BELITUNG' };
+      return { key: 'KEPRI', name: 'Kepulauan Riau', island: 'KEPRI' };
+    }
+
+    // =========================================================================
+    // 2. TEXT REGEX RULES (For Missing / Zero Coordinates or Explicit Names)
+    // =========================================================================
+    // Non-Java text keywords
     if (/\b(BALI|DENPASAR|BADUNG|GIANYAR|TABANAN|BULELENG|KLUNGKUNG|BANGLI|KARANGASEM|JEMBRANA)\b/.test(text)) {
       return { key: 'BALI', name: 'Bali', island: 'BALI' };
     }
-    if (/\b(BATAM|BINTAN|TANJUNG PINANG|KARIMUN|NATUNA|ANAMBAS)\b/.test(text) || text.includes('KEPULAUAN RIAU') || text.includes('KEPRI')) {
+    if (/\b(BATAM|BINTAN|TANJUNG PINANG|KARIMUN|NATUNA|ANAMBAS|KEPRI)\b/.test(text)) {
       return { key: 'KEPRI', name: 'Kepulauan Riau', island: 'KEPRI' };
     }
     if (/\b(BANGKA|BELITUNG|PANGKAL PINANG)\b/.test(text)) {
       return { key: 'BANGKA_BELITUNG', name: 'Bangka Belitung', island: 'BANGKA_BELITUNG' };
     }
-    if (/\b(TERNATE|TIDORE|HALMAHERA|MOROTAI|SULA)\b/.test(text) || text.includes('MALUKU UTARA')) {
+    if (/\b(TERNATE|TIDORE|HALMAHERA|MOROTAI|SULA|MALUKU UTARA)\b/.test(text)) {
       return { key: 'MALUKU_UTARA', name: 'Maluku Utara', island: 'MALUKU_UTARA' };
     }
-    if (/\b(AMBON|SERAM|BURU|TUAL|ARU)\b/.test(text) || text.includes('MALUKU')) {
+    if (/\b(AMBON|SERAM|BURU|TUAL|ARU|MALUKU)\b/.test(text)) {
       return { key: 'MALUKU', name: 'Maluku', island: 'MALUKU' };
     }
     if (/\b(PAPUA|JAYAPURA|MERAUKE|TIMIKA|MIMIKA|NABIRE|BIAK|SORONG|MANOKWARI|FAKFAK|JAYAWIJAYA)\b/.test(text)) {
       return { key: 'PAPUA', name: 'Papua', island: 'PAPUA' };
     }
-    if (/\b(LOMBOK|MATARAM|SUMBAWA|BIMA|DOMPU|NTB)\b/.test(text) || text.includes('NUSA TENGGARA BARAT')) {
+    if (/\b(LOMBOK|MATARAM|SUMBAWA|BIMA|DOMPU|NTB|NUSA TENGGARA BARAT)\b/.test(text)) {
       return { key: 'NTB', name: 'Nusa Tenggara Barat', island: 'NTB' };
     }
-    if (/\b(KUPANG|FLORES|TIMOR|ENDE|SIKKA|MANGGARAI|SUMBA|ALOR|ROTE|NTT)\b/.test(text) || text.includes('NUSA TENGGARA TIMUR')) {
+    if (/\b(KUPANG|FLORES|TIMOR|ENDE|SIKKA|MANGGARAI|SUMBA|ALOR|ROTE|NTT|NUSA TENGGARA TIMUR)\b/.test(text)) {
       return { key: 'NTT', name: 'Nusa Tenggara Timur', island: 'NTT' };
     }
 
-    // 2. Sulawesi Corridors
+    // Sulawesi keywords
     if (/\b(MANADO|BITUNG|TOMOHON|MINAHASA|KOTAMOBAGU|GORONTALO|PALU|TOLI|POSO|BANGGAI|BUOL|PARIGI|SIGI|TOJO)\b/.test(text)) {
       return { key: 'SULAWESI_UTARA_TENGAH', name: 'Sulawesi Bagian Utara', island: 'SULAWESI' };
     }
@@ -87,15 +148,15 @@ const RouteEngine = {
       return { key: 'SULAWESI_SELATAN', name: 'Sulawesi Bagian Selatan', island: 'SULAWESI' };
     }
 
-    // 3. Kalimantan Corridors
+    // Kalimantan keywords (Explicitly includes MARTAPURA, KABUPATEN BANJAR, BANJARBARU, BANJARMASIN)
     if (/\b(PONTIANAK|SINGKAWANG|KETAPANG|SAMBAS|SINTANG|BENGKAYANG|LANDAK|SANGGAU|SEKADAU|KAPUAS HULU|KAYONG)\b/.test(text)) {
       return { key: 'KALIMANTAN_BARAT', name: 'Kalimantan Barat', island: 'KALIMANTAN' };
     }
-    if (/\b(SAMARINDA|BALIKPAPAN|BANJARMASIN|BANJARBARU|PALANGKA|PALANGKARAYA|TARAKAN|BERAU|BONTANG|KUTAI|KAPUAS|KOTABARU|KOTA BARU|TANAH BUMBU|TANAH LAUT|TABALONG|HULU SUNGAI|BARITO|PASER|PENAJAM|MAHAKAM|BULUNGAN|NUNUKAN|MALINAU|KATINGAN|KOTAWARINGIN|SAMPIT|PANGKALAN BUN|SUKAMARA|LAMANDAU|SERUYAN|GUNUNG MAS|MURUNG RAYA|KALIMANTAN)\b/.test(text)) {
+    if (/\b(SAMARINDA|BALIKPAPAN|BANJARMASIN|BANJARBARU|MARTAPURA|KABUPATEN BANJAR|KAB\. BANJAR|PALANGKA|PALANGKARAYA|TARAKAN|BERAU|BONTANG|KUTAI|KAPUAS|KOTABARU|KOTA BARU|TANAH BUMBU|TANAH LAUT|TABALONG|HULU SUNGAI|BARITO|PASER|PENAJAM|MAHAKAM|BULUNGAN|NUNUKAN|MALINAU|KATINGAN|KOTAWARINGIN|SAMPIT|PANGKALAN BUN|SUKAMARA|LAMANDAU|SERUYAN|GUNUNG MAS|MURUNG RAYA|KALIMANTAN)\b/.test(text)) {
       return { key: 'KALIMANTAN_TIMUR_SELATAN', name: 'Kalimantan Timur & Selatan', island: 'KALIMANTAN' };
     }
 
-    // 4. Sumatera Corridors
+    // Sumatera keywords
     if (/\b(MEDAN|DELI SERDANG|BINJAI|ASAHAN|SIMALUNGUN|PEMATANGSIANTAR|KARO|TEBING TINGGI|SERDANG BEDAGAI|BATU BARA|LABUHANBATU|LABUHAN BATU|TAPANULI|TOBA|DAIRI|PAKPAK|HUMBANG|SAMOSIR|SIBOLGA|PADANG SIDEMPUAN|MANDAILING|NIAS|GUNUNGSITOLI|ACEH|BANDA ACEH|LHOKSEUMAWE|LANGSA|SABANG|SUBULUSSALAM|PIDIE|BIREUEN|BENER MERIAH|TAKENGON|ACEH BESAR|ACEH UTARA|ACEH TIMUR|ACEH BARAT|ACEH SELATAN|ACEH TENGGARA|ACEH TAMIANG|ACEH SINGKIL|ACEH JAYA|SIMEULUE)\b/.test(text)) {
       return { key: 'SUMATERA_UTARA_ACEH', name: 'Sumatera Bagian Utara', island: 'SUMATERA' };
     }
@@ -106,11 +167,11 @@ const RouteEngine = {
       return { key: 'SUMATERA_SELATAN_LAMPUNG', name: 'Sumatera Bagian Selatan', island: 'SUMATERA' };
     }
 
-    // 5. Java Regional Partitions (Zero Cross-Province Routing)
+    // Java regional keywords (Note: 'KOTA BANJAR' is used instead of generic 'BANJAR' to prevent collision with Kab. Banjar Kalsel)
     if (/\b(JAKARTA|BOGOR|DEPOK|TANGERANG|BEKASI|SERANG|CILEGON|LEBAK|PANDEGLANG)\b/.test(text)) {
       return { key: 'JABODETABEK_BANTEN', name: 'Jabodetabek & Banten', island: 'JAWA' };
     }
-    if (/\b(BANDUNG|CIMAHI|GARUT|TASIKMALAYA|CIAMIS|BANJAR|PANGANDARAN|CIREBON|INDRAMAYU|MAJALENGKA|KUNINGAN|SUKABUMI|CIANJUR|KARAWANG|PURWAKARTA|SUBANG|SUMEDANG)\b/.test(text)) {
+    if (/\b(BANDUNG|CIMAHI|GARUT|TASIKMALAYA|CIAMIS|KOTA BANJAR|BANJAR PATROMAN|PANGANDARAN|CIREBON|INDRAMAYU|MAJALENGKA|KUNINGAN|SUKABUMI|CIANJUR|KARAWANG|PURWAKARTA|SUBANG|SUMEDANG|UJUNG BERUNG|UJUNGBERUNG|CINAMBO)\b/.test(text)) {
       return { key: 'JAWA_BARAT', name: 'Jawa Barat', island: 'JAWA' };
     }
     if (/\b(SEMARANG|SOLO|SURAKARTA|YOGYAKARTA|JOGJA|SLEMAN|BANTUL|GUNUNGKIDUL|KULON PROGO|MAGELANG|SALATIGA|KUDUS|PATI|JEPARA|REMBANG|BLORA|GROBOGAN|KLATEN|BOYOLALI|SUKOHARJO|KARANGANYAR|WONOGIRI|SRAGEN|PURWOKERTO|BANYUMAS|CILACAP|PURBALINGGA|BANJARNEGARA|KEBUMEN|PURWOREJO|WONOSOBO|TEMANGGUNG|TEGAL|BREBES|PEMALANG|PEKALONGAN|BATANG|KENDAL|DEMAK)\b/.test(text)) {
@@ -120,26 +181,14 @@ const RouteEngine = {
       return { key: 'JAWA_TIMUR', name: 'Jawa Timur & Madura', island: 'JAWA' };
     }
 
-    // 6. Spatial Coordinate Bounding Box Fallback (No Leaks!)
-    if (lat >= -5.0 && lat <= 5.0 && lng >= 108.5 && lng <= 119.0) {
-      if (lng < 111.0) return { key: 'KALIMANTAN_BARAT', name: 'Kalimantan Barat', island: 'KALIMANTAN' };
-      return { key: 'KALIMANTAN_TIMUR_SELATAN', name: 'Kalimantan Timur & Selatan', island: 'KALIMANTAN' };
-    }
-    if (lat >= -6.0 && lat <= 3.0 && lng >= 118.5 && lng <= 126.0) {
-      if (lat > -1.0) return { key: 'SULAWESI_UTARA_TENGAH', name: 'Sulawesi Bagian Utara', island: 'SULAWESI' };
-      return { key: 'SULAWESI_SELATAN', name: 'Sulawesi Bagian Selatan', island: 'SULAWESI' };
-    }
-    if (lng < 106.0 && lat >= -6.0 && lat <= 6.0) {
-      if (lat > 2.0) return { key: 'SUMATERA_UTARA_ACEH', name: 'Sumatera Bagian Utara', island: 'SUMATERA' };
-      if (lat > -1.0) return { key: 'SUMATERA_TENGAH', name: 'Sumatera Bagian Tengah', island: 'SUMATERA' };
-      return { key: 'SUMATERA_SELATAN_LAMPUNG', name: 'Sumatera Bagian Selatan', island: 'SUMATERA' };
-    }
-
-    if (lat >= -9.0 && lat <= -5.5) {
-      if (lng < 107.05) return { key: 'JABODETABEK_BANTEN', name: 'Jabodetabek & Banten', island: 'JAWA' };
-      if (lng < 108.85) return { key: 'JAWA_BARAT', name: 'Jawa Barat', island: 'JAWA' };
-      if (lng < 111.45) return { key: 'JAWA_TENGAH_DIY', name: 'Jawa Tengah & DIY', island: 'JAWA' };
-      if (lng <= 115.0) return { key: 'JAWA_TIMUR', name: 'Jawa Timur & Madura', island: 'JAWA' };
+    // =========================================================================
+    // 3. JAVA COORDINATE BOUNDING BOX FALLBACK
+    // =========================================================================
+    if (hasCoord && numLat >= -9.0 && numLat <= -5.5 && numLng >= 105.0 && numLng <= 115.0) {
+      if (numLng < 107.05) return { key: 'JABODETABEK_BANTEN', name: 'Jabodetabek & Banten', island: 'JAWA' };
+      if (numLng < 108.85) return { key: 'JAWA_BARAT', name: 'Jawa Barat', island: 'JAWA' };
+      if (numLng < 111.45) return { key: 'JAWA_TENGAH_DIY', name: 'Jawa Tengah & DIY', island: 'JAWA' };
+      return { key: 'JAWA_TIMUR', name: 'Jawa Timur & Madura', island: 'JAWA' };
     }
 
     return { key: 'JABODETABEK_BANTEN', name: 'Jabodetabek & Banten', island: 'JAWA' };
@@ -148,8 +197,8 @@ const RouteEngine = {
   /**
    * Helper to get island group string
    */
-  getIslandGroup(lat, lng, kabKota = '', prov = '') {
-    const part = this.getRegionPartition(lat, lng, kabKota, prov);
+  getIslandGroup(lat, lng, kabKota = '', prov = '', branch = '') {
+    const part = this.getRegionPartition(lat, lng, kabKota, prov, branch);
     return part.island;
   },
 
@@ -164,7 +213,8 @@ const RouteEngine = {
       regularDays: options.regularDays || SIMULATION_CONFIG.WORKLOAD.REGULAR_STORE_DAYS,
       dcDays: options.dcDays || SIMULATION_CONFIG.WORKLOAD.DC_DAYS,
       dcPerDay: options.dcPerDay || SIMULATION_CONFIG.WORKLOAD.DC_PER_DAY,
-      targetStoresMonth: (options.regularDays || SIMULATION_CONFIG.WORKLOAD.REGULAR_STORE_DAYS) * (options.storesPerDay || SIMULATION_CONFIG.WORKLOAD.STORES_PER_DAY)
+      // Target unique regular stores: (21 days * 20 stores) + (4 days * 9 stores) = 420 + 36 = 456
+      targetStoresMonth: ((options.regularDays || 21) * (options.storesPerDay || 20)) + ((options.dcDays || 4) * ((options.dcPerDay || 10) - 1))
     };
 
     console.log('[RouteEngine] Running simulation on', allStores.length, 'stores with target', config.targetStoresMonth, 'stores/MDS');
@@ -174,7 +224,7 @@ const RouteEngine = {
     const dcStores = [];
 
     allStores.forEach(s => {
-      const part = this.getRegionPartition(s.lat, s.lng, s.kabKota, '');
+      const part = this.getRegionPartition(s.lat, s.lng, s.kabKota, '', s.branchName || '');
       s.regionKey = part.key;
       s.regionName = part.name;
       s.islandGroup = part.island;
@@ -186,8 +236,21 @@ const RouteEngine = {
       }
     });
 
-    // 1. Initialize Active Personnel Slots with Region Partitioning
-    const mdsAssignments = (personnelList || []).map((p, idx) => {
+    // 1. Initialize Active Personnel Slots with Deduplication Safeguard
+    const seenPersonnel = new Set();
+    const cleanPersonnelList = (personnelList || []).filter(p => {
+      const normName = String(p.nama || '').trim().toUpperCase();
+      const normModul = String(p.modul || '').trim().toUpperCase();
+      const key = `${normName}_${normModul}`;
+      if (seenPersonnel.has(key)) {
+        console.warn(`[RouteEngine] Duplicate personnel filtered out: ${p.nama} (${p.modul})`);
+        return false;
+      }
+      seenPersonnel.add(key);
+      return true;
+    });
+
+    const mdsAssignments = cleanPersonnelList.map((p, idx) => {
       const rawId = p.id || `MDS${idx + 1}`;
       const uniqueId = `ACT_${rawId}_${p.account || 'ALL'}_${idx + 1}`;
       const part = this.getRegionPartition(p.lat, p.lng, p.kota || p.kecamatan, p.region);
@@ -223,22 +286,19 @@ const RouteEngine = {
     const unassignedStores = new Set(regularStores.map(s => s.id));
     const storesMap = new Map(regularStores.map(s => [s.id, s]));
 
-    // 2. Proximity Match for Active MDS (Strict Region Geofence & Max Radius <= 28 KM)
+    // 2. Proximity Match for Active MDS (Aggressive search within region)
     const storeCandidates = [];
 
     regularStores.forEach(st => {
       mdsAssignments.forEach(mds => {
-        // STRICT RULE 1: Must be in same regional corridor
-        if (st.regionKey !== mds.regionKey) return;
-
-        // Fast Bounding Box Pre-filter (~40km) to bypass heavy trigonometric calculations
-        if (Math.abs(st.lat - mds.lat) > 0.38 || Math.abs(st.lng - mds.lng) > 0.38) return;
+        // STRICT RULE 1: Must be in same island
+        if (st.islandGroup !== mds.islandGroup) return;
 
         const d = this.getDistanceKm(mds.lat, mds.lng, st.lat, st.lng);
-        // STRICT CEILING: Never assign a store further than maxRadiusKm * 1.25 (Max ~30 km)
-        if (d <= config.maxRadiusKm * 1.25) {
+        // RELAXED CEILING: Allow up to 150km in initial pass if they are in the same region
+        if (d <= 150) {
           const t = this.getEstimatedTravelTimeMins(d);
-          
+
           let accountBonus = 0;
           if (mds.account && st.account) {
             const mAcc = mds.account.toUpperCase();
@@ -263,64 +323,82 @@ const RouteEngine = {
 
     const mdsMap = new Map(mdsAssignments.map(m => [m.id, m]));
 
-    // 3. Fill Active MDS Nearest Stores (up to 420 stores in Primary Pass)
+    // 3. Fill Active MDS Nearest Stores (Round-Robin up to targetStoresMonth)
+    const candidatesByMds = new Map();
+    mdsAssignments.forEach(m => candidatesByMds.set(m.id, []));
     storeCandidates.forEach(cand => {
-      if (!unassignedStores.has(cand.storeId)) return;
-      const mds = mdsMap.get(cand.mdsId);
-      if (!mds) return;
-
-      if (mds.assignedStores.length < config.targetStoresMonth) {
-        const store = storesMap.get(cand.storeId);
-        mds.assignedStores.push({
-          ...store,
-          distanceFromHomeKm: cand.distKm,
-          travelTimeMins: cand.timeMins,
-          isPrimaryCover: true
-        });
-        unassignedStores.delete(cand.storeId);
-      }
+      candidatesByMds.get(cand.mdsId).push(cand);
     });
+
+    let keepAssigning = true;
+    while(keepAssigning) {
+      keepAssigning = false;
+      mdsAssignments.forEach(mds => {
+        if (mds.isVirtual) return;
+        if (mds.assignedStores.length < config.targetStoresMonth) {
+          const cands = candidatesByMds.get(mds.id);
+          let assigned = false;
+          while (cands && cands.length > 0 && !assigned) {
+            const cand = cands.shift();
+            if (unassignedStores.has(cand.storeId)) {
+              const store = storesMap.get(cand.storeId);
+              mds.assignedStores.push({
+                ...store,
+                distanceFromHomeKm: cand.distKm,
+                travelTimeMins: cand.timeMins,
+                isPrimaryCover: true
+              });
+              unassignedStores.delete(cand.storeId);
+              assigned = true;
+              keepAssigning = true;
+            }
+          }
+        }
+      });
+    }
 
     const activeMdsList = mdsAssignments.filter(m => !m.isVirtual);
 
-    // 3.5. Progressive Expansion for MDS with < 420 Stores (STRICTLY within SAME REGIONAL ZONE and <= 55 KM)
+    // 3.5. Progressive Expansion for MDS with < targetStoresMonth (Full Island sweep)
+    // Pre-calculate leftovers for each MDS
+    const leftoversByMds = new Map();
     activeMdsList.forEach(mds => {
-      if (mds.assignedStores.length < config.targetStoresMonth && unassignedStores.size > 0) {
-        const needed = config.targetStoresMonth - mds.assignedStores.length;
-        
-        // Only consider leftovers from the EXACT SAME regional zone
-        const availableLeftovers = Array.from(unassignedStores)
-          .map(id => storesMap.get(id))
-          .filter(s => s && s.regionKey === mds.regionKey);
-        
-        if (availableLeftovers.length === 0) return;
+      const candidates = [];
+      Array.from(unassignedStores).forEach(id => {
+         const st = storesMap.get(id);
+         if (st && st.islandGroup === mds.islandGroup) {
+           const d = this.getDistanceKm(mds.lat, mds.lng, st.lat, st.lng);
+           if (d <= 800) candidates.push({ store: st, distKm: d });
+         }
+      });
+      candidates.sort((a, b) => a.distKm - b.distKm);
+      leftoversByMds.set(mds.id, candidates);
+    });
 
-        // Calculate distance and filter strictly <= 55 km (realistic commute, no crazy cross-province jumps)
-        const validNearby = [];
-        for (let i = 0; i < availableLeftovers.length; i++) {
-          const st = availableLeftovers[i];
-          const d = this.getDistanceKm(mds.lat, mds.lng, st.lat, st.lng);
-          if (d <= 55) { // Strict 55km realistic limit
-            validNearby.push({ store: st, distKm: d });
+    let expandedKeepAssigning = true;
+    while(expandedKeepAssigning) {
+      expandedKeepAssigning = false;
+      activeMdsList.forEach(mds => {
+        if (mds.assignedStores.length < config.targetStoresMonth) {
+          const cands = leftoversByMds.get(mds.id);
+          let assigned = false;
+          while (cands && cands.length > 0 && !assigned) {
+            const cand = cands.shift();
+            if (unassignedStores.has(cand.store.id)) {
+               mds.assignedStores.push({
+                 ...cand.store,
+                 distanceFromHomeKm: Math.round(cand.distKm * 10) / 10,
+                 travelTimeMins: this.getEstimatedTravelTimeMins(cand.distKm),
+                 isPrimaryCover: true
+               });
+               unassignedStores.delete(cand.store.id);
+               assigned = true;
+               expandedKeepAssigning = true;
+            }
           }
         }
-
-        validNearby.sort((a, b) => a.distKm - b.distKm);
-
-        const toAdd = validNearby.slice(0, needed);
-        toAdd.forEach(item => {
-          const st = item.store;
-          const d = item.distKm;
-          mds.assignedStores.push({
-            ...st,
-            distanceFromHomeKm: Math.round(d * 10) / 10,
-            travelTimeMins: this.getEstimatedTravelTimeMins(d),
-            isPrimaryCover: true
-          });
-          unassignedStores.delete(st.id);
-        });
-      }
-    });
+      });
+    }
 
     // 4. Consolidate leftover stores into Dedicated REGION-BY-REGION Recruitment Clusters (Zero Cross-Province Routing)
     const unassignedByRegion = new Map();
@@ -345,7 +423,7 @@ const RouteEngine = {
       const zoneClusters = [];
 
       while (pool.length > 0) {
-        // If remaining stores in this zone <= 420, create final cluster for this zone
+        // If remaining stores in this zone <= targetStoresMonth, create final cluster for this zone
         if (pool.length <= config.targetStoresMonth) {
           zoneClusters.push(pool);
           pool = [];
@@ -384,8 +462,8 @@ const RouteEngine = {
         cluster.forEach(st => unassignedStores.delete(st.id));
 
         // Identify primary cities and centroid coordinates
-        const avgLat = cluster.reduce((sum, s) => sum + s.lat, 0) / cluster.length;
-        const avgLng = cluster.reduce((sum, s) => sum + s.lng, 0) / cluster.length;
+        const avgLat = cluster.reduce((sum, s) => sum + parseFloat(s.lat || 0), 0) / cluster.length;
+        const avgLng = cluster.reduce((sum, s) => sum + parseFloat(s.lng || 0), 0) / cluster.length;
 
         const cityCounts = new Map();
         cluster.forEach(s => {
@@ -443,7 +521,6 @@ const RouteEngine = {
     }
 
     // 5. High-Speed Localized DC Allocation (1 Dedicated DC Hub + 9 Surrounding Regular Stores per DC Day = 10 Stops)
-    // Pre-index DCs and Stores by island and region for O(1) candidate lookup
     const dcsByIsland = new Map();
     dcStores.forEach(dc => {
       const ig = dc.islandGroup || 'JAWA';
@@ -493,38 +570,49 @@ const RouteEngine = {
 
       const activeCandidateDcs = candidateDcs.length > 0 ? candidateDcs : [primaryDc];
       const assignedDcDays = [];
-      const mdsVisitedStoreIds = new Set((mds.assignedStores || []).map(s => s.id));
-      const poolInRegion = storesByRegionKey.get(mds.regionKey) || regularStores;
+
+      // If we have enough assigned stores, we pick DC-day stores from them to avoid double coverage
+      const hasEnoughAssigned = mds.assignedStores.length >= (config.dcDays * 9);
 
       for (let dDay = 0; dDay < config.dcDays; dDay++) {
         const chosenDc = activeCandidateDcs[dDay % activeCandidateDcs.length];
-
         let selected9 = [];
-        if (mds.isVirtual && mds.assignedStores.length >= 10) {
-          // Virtual recruits pick from their own cluster
-          const sliceStart = dDay * 9;
-          selected9 = mds.assignedStores.slice(sliceStart, sliceStart + 9).map(st => ({
-            ...st,
-            isDc: false,
-            type: 'STORE',
-            tipeKunjungan: 'TOKO SEKITAR DC',
-            perdinBadge: '🚗 NON PERDIN'
-          }));
+
+        if (hasEnoughAssigned) {
+          // Pick 9 stores from assigned pool that are closest to this DC
+          const availableForDc = mds.assignedStores.filter(s => !s.isDcDayStore);
+
+          availableForDc.forEach(s => {
+            s._distToDc = this.getDistanceKm(chosenDc.lat, chosenDc.lng, s.lat, s.lng);
+          });
+
+          availableForDc.sort((a, b) => a._distToDc - b._distToDc);
+          selected9 = availableForDc.slice(0, 9).map(st => {
+            st.isDcDayStore = true; // Tag it!
+            return {
+              ...st,
+              isDc: false,
+              type: 'STORE',
+              tipeKunjungan: 'TOKO SEKITAR DC',
+              perdinBadge: '🚗 NON PERDIN'
+            };
+          });
         } else {
-          // Active MDS search localized pool
-          const candidates = poolInRegion.filter(st => 
-            !mdsVisitedStoreIds.has(st.id) && 
+          // Fallback if MDS doesn't have enough stores yet
+          const poolInRegion = storesByRegionKey.get(mds.regionKey) || regularStores;
+          const mdsVisitedStoreIds = new Set(mds.assignedStores.map(s => s.id));
+
+          const candidates = poolInRegion.filter(st =>
+            !mdsVisitedStoreIds.has(st.id) &&
             !st.isDc &&
-            Math.abs(st.lat - chosenDc.lat) < 0.4 &&
-            Math.abs(st.lng - chosenDc.lng) < 0.4
+            Math.abs(st.lat - chosenDc.lat) < 0.8 && // Wider DC search for remote areas
+            Math.abs(st.lng - chosenDc.lng) < 0.8
           ).slice(0, 9);
 
           selected9 = candidates.map(st => {
-            const distToDc = this.getDistanceKm(chosenDc.lat, chosenDc.lng, st.lat, st.lng);
             const distToHome = this.getDistanceKm(mds.lat, mds.lng, st.lat, st.lng);
             return {
               ...st,
-              distToDc: distToDc,
               distanceFromHomeKm: Math.round(distToHome * 10) / 10,
               travelTimeMins: this.getEstimatedTravelTimeMins(distToHome),
               isDc: false,
@@ -535,8 +623,8 @@ const RouteEngine = {
           });
 
           selected9.forEach(st => {
-            mdsVisitedStoreIds.add(st.id);
             unassignedStores.delete(st.id);
+            mds.assignedStores.push({ ...st, isDcDayStore: true });
           });
         }
 
@@ -571,21 +659,8 @@ const RouteEngine = {
       mds.assignedDc = assignedDcDays.flatMap(d => d.stops);
     });
 
-    // 6. Fast O(N log N) Day-by-Day Route Sequencing (Zero Freezing)
+    // 6. Fast Day-by-Day Route Sequencing
     mdsAssignments.forEach(mds => {
-      // 1. Sort all assigned stores by proximity to home in fast O(N log N)
-      const mLat = mds.lat;
-      const mLng = mds.lng;
-      const cosLat = Math.cos((mLat * Math.PI) / 180);
-
-      for (let i = 0; i < mds.assignedStores.length; i++) {
-        const s = mds.assignedStores[i];
-        const dLat = s.lat - mLat;
-        const dLng = (s.lng - mLng) * cosLat;
-        s._dsqHome = dLat * dLat + dLng * dLng;
-      }
-      mds.assignedStores.sort((a, b) => a._dsqHome - b._dsqHome);
-
       if (mds.assignedStores.length > 0) {
         const totalDist = mds.assignedStores.reduce((acc, s) => acc + (s.distanceFromHomeKm || 0), 0);
         const totalTime = mds.assignedStores.reduce((acc, s) => acc + (s.travelTimeMins || 0), 0);
@@ -594,29 +669,39 @@ const RouteEngine = {
         mds.avgTravelMins = Math.round(totalTime / mds.assignedStores.length);
       }
 
-      // 2. Build 25 Days Matrix: Sequence each individual 20-store day in O(K^2) where K=20
       const dailySchedule = [];
       const storesPerDay = config.storesPerDay;
-      const dcPerDay = config.dcPerDay;
       let localDaysCount = 0;
       let perdinDaysCount = 0;
+
+      // Separate regular pool from DC pool
+      const regularPool = mds.assignedStores.filter(s => !s.isDcDayStore);
+
+      const mLat = mds.lat;
+      const mLng = mds.lng;
+      const cosLat = Math.cos((mLat * Math.PI) / 180);
+      regularPool.forEach(s => {
+        const dLat = s.lat - mLat;
+        const dLng = (s.lng - mLng) * cosLat;
+        s._dsqHome = dLat * dLat + dLng * dLng;
+      });
+      regularPool.sort((a, b) => a._dsqHome - b._dsqHome);
 
       // Days 1 to 21: Regular Stores
       for (let day = 1; day <= config.regularDays; day++) {
         const startIdx = (day - 1) * storesPerDay;
-        let dayStores = mds.assignedStores.slice(startIdx, startIdx + storesPerDay);
+        let dayStores = regularPool.slice(startIdx, startIdx + storesPerDay);
 
-        // Sequence only the 20 stores of this specific day (Ultra-fast: 200 ops per day)
         if (dayStores.length > 1) {
-          dayStores = this.sortRouteChain(dayStores[0].lat, dayStores[0].lng, dayStores);
+          dayStores = this.sortRouteChain(mds.lat, mds.lng, dayStores);
         }
-        
+
         const avgDayDist = dayStores.length > 0 ? (dayStores.reduce((acc, s) => acc + (s.distanceFromHomeKm || 0), 0) / dayStores.length) : 0;
         const maxDayDist = dayStores.length > 0 ? Math.max(...dayStores.map(s => s.distanceFromHomeKm || 0)) : 0;
         const avgDayTimeMins = dayStores.length > 0 ? (dayStores.reduce((acc, s) => acc + (s.travelTimeMins || 0), 0) / dayStores.length) : 0;
         const primaryKab = dayStores.length > 0 && dayStores[0].kabKota ? dayStores[0].kabKota.replace(/^KABUPATEN\s+|^KOTA\s+/i, '') : '';
-        
-        const isPerdinDay = (avgDayDist >= 150 || maxDayDist >= 150 || avgDayTimeMins >= 240) && dayStores.length > 0;
+
+        const isPerdinDay = !mds.isVirtual && (avgDayDist >= 150 || maxDayDist >= 150 || avgDayTimeMins >= 240) && dayStores.length > 0;
 
         dayStores.forEach(st => {
           st.isPerdin = isPerdinDay;
@@ -649,21 +734,19 @@ const RouteEngine = {
         });
       }
 
-      // Days 22 to 25: DC Visits (Each day is 1 dedicated DC Hub + 9 surrounding regular stores = 10 stops)
+      // Days 22 to 25: DC Visits
       for (let day = config.regularDays + 1; day <= config.regularDays + config.dcDays; day++) {
         const dcDayIdx = day - config.regularDays - 1;
         const dcDayData = (mds.assignedDcDays && mds.assignedDcDays[dcDayIdx]) || null;
-        const startIdx = dcDayIdx * dcPerDay;
-        const dayStops = dcDayData ? dcDayData.stops : mds.assignedDc.slice(startIdx, startIdx + dcPerDay);
-        
+        const dayStops = dcDayData ? dcDayData.stops : [];
+
         const primaryDc = dayStops.find(s => s.isDc) || dayStops[0];
         const dcName = primaryDc ? (primaryDc.storeName || 'Distribution Center') : 'DC Hub';
         const dcArea = primaryDc ? (primaryDc.kabKota || mds.kota) : mds.kota;
 
-        // Determine if this DC route qualifies as Perdin (Aturan: Jarak >= 150 KM dari rumah atau Waktu Tempuh >= 240 Menit)
         const avgDayDist = dayStops.length > 0 ? (dayStops.reduce((acc, s) => acc + (s.distanceFromHomeKm || 0), 0) / dayStops.length) : 0;
         const maxDayDist = dayStops.length > 0 ? Math.max(...dayStops.map(s => s.distanceFromHomeKm || 0)) : 0;
-        const isPerdinDay = (avgDayDist >= 150 || maxDayDist >= 150) && dayStops.length > 0;
+        const isPerdinDay = !mds.isVirtual && (avgDayDist >= 150 || maxDayDist >= 150) && dayStops.length > 0;
 
         dayStops.forEach((st, sIdx) => {
           st.dayNumber = day;
@@ -701,7 +784,7 @@ const RouteEngine = {
           items: dayStops,
           stores: dayStops,
           count: dayStops.length,
-          target: dcPerDay
+          target: config.dcPerDay
         });
       }
 
@@ -713,7 +796,7 @@ const RouteEngine = {
       mds.dailySchedule = dailySchedule;
     });
 
-    // 7. Overall Summary Metrics & Regional Breakdown
+    // 7. Overall Summary Metrics
     const activeAssignments = mdsAssignments.filter(m => !m.isVirtual);
     const vacantAssignments = mdsAssignments.filter(m => m.isVirtual);
 
@@ -723,9 +806,8 @@ const RouteEngine = {
     const totalPerdinDays = activeAssignments.reduce((sum, m) => sum + (m.perdinDays || 0), 0);
     const totalPerdinBudget = totalPerdinDays * 400000;
 
-    // Financial Analysis Benchmark
     const fixedCostPerNewHire = (window.SIMULATION_CONFIG?.FINANCIAL?.TOTAL_NEW_HIRE_FIXED_COST) || 5220000;
-    const estNewHiresReplaced = Math.max(0, Math.round(totalPerdinDays / 12)); // Asumsi 12 hari perdin setara 1 rekrutmen di area sekunder
+    const estNewHiresReplaced = Math.max(0, Math.round(totalPerdinDays / 12));
     const potentialNewHireCost = estNewHiresReplaced * fixedCostPerNewHire;
     const estimatedSavings = Math.max(0, potentialNewHireCost - totalPerdinBudget);
 
@@ -752,8 +834,10 @@ const RouteEngine = {
 
     const totalWorkingDays = (config.regularDays || 21) + (config.dcDays || 4);
     const avgStoresPerMds = activeAssignments.length > 0 ? Math.round(activeCoveredStores / activeAssignments.length) : 0;
-    const totalDcVisits = activeAssignments.length * (config.dcDays * config.dcPerDay);
-    const totalMonthlyVisits = activeCoveredStores + totalDcVisits;
+
+    // Total monthly visits = unique stores + DC hub visits (4 per MDS)
+    const totalMonthlyVisits = activeCoveredStores + (activeAssignments.length * config.dcDays);
+
     const avgVisitsPerDay = (activeAssignments.length > 0 && totalWorkingDays > 0)
       ? Math.round((totalMonthlyVisits / (activeAssignments.length * totalWorkingDays)) * 10) / 10
       : 0;
@@ -778,13 +862,27 @@ const RouteEngine = {
       coveragePercent: activePercent,
       regionalStats: regionalStats,
       totalMdsSlots: mdsAssignments.length,
-      // Financial & Perdin Summary
       totalPerdinDays: totalPerdinDays,
       totalPerdinBudget: totalPerdinBudget,
       fixedCostPerNewHire: fixedCostPerNewHire,
       estNewHiresReplaced: estNewHiresReplaced,
       estimatedSavings: estimatedSavings
     };
+
+    // 8. Strict West-to-East Geographic Sorting (Ujung Barat Jawa ke Ujung Timur Jawa)
+    // - Existing Active MDS sorted from West (Banten/Tangerang ~106.0) to East (Jember/Banyuwangi ~114.5)
+    // - Proposed Vacant slots sorted from West to East
+    mdsAssignments.sort((a, b) => {
+      if (a.isVirtual !== b.isVirtual) {
+        return a.isVirtual ? 1 : -1;
+      }
+      return (a.lng || 0) - (b.lng || 0);
+    });
+
+    // Re-index curated colors along the geographical west-to-east gradient
+    mdsAssignments.forEach((m, idx) => {
+      m.color = this.getMdsColor(idx);
+    });
 
     console.log('[RouteEngine] Simulation Completed Successfully:', summary);
 
@@ -796,7 +894,7 @@ const RouteEngine = {
   },
 
   /**
-   * High-Speed Nearest Neighbor Traveling Salesperson Chain (Flat-Earth Squared Distance)
+   * High-Speed Nearest Neighbor Traveling Salesperson Chain
    */
   sortRouteChain(startLat, startLng, stores) {
     if (!stores || stores.length <= 1) return stores || [];

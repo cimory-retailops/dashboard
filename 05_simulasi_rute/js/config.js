@@ -59,8 +59,16 @@ const SIMULATION_CONFIG = {
     TOTAL_NEW_HIRE_FIXED_COST: 5220000 // Total Biaya Tetap per Rekrut Baru / bulan (~Rp 5,22 Juta)
   },
 
-  // Storage / CSV paths
-  STORE_CSV_PATH: '../01_web_absen/list_toko.csv'
+  // Storage / CSV & Google Sheets paths
+  STORE_CSV_PATH: '../01_web_absen/list_toko.csv',
+
+  // Google Sheets Master Database & Live Sync Configuration
+  DATA_SOURCE: {
+    // Spreadsheet ID 16cokFfnQFIajmTd553TKy-CfkNFc1Gg7ElkhAer81QA - tab master_toko (GID: 1970488135)
+    GOOGLE_SHEET_CSV_URL: 'https://docs.google.com/spreadsheets/d/16cokFfnQFIajmTd553TKy-CfkNFc1Gg7ElkhAer81QA/export?format=csv&gid=1970488135',
+    GOOGLE_SHEET_GVIZ_URL: 'https://docs.google.com/spreadsheets/d/16cokFfnQFIajmTd553TKy-CfkNFc1Gg7ElkhAer81QA/gviz/tq?tqx=out:csv&sheet=master_toko',
+    FALLBACK_LOCAL_CSV: './data/master_toko_nasional.csv'
+  }
 };
 
 if (typeof window !== 'undefined') {
