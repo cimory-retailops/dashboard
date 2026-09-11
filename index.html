@@ -948,8 +948,8 @@
             </svg>
           </div>
           <div>
-            <h3 class="text-base font-display font-extrabold text-white">Panel Persetujuan & Matriks Hak Akses</h3>
-            <p class="text-xs text-slate-400">Otoritas Khusus Atasan Terkait untuk mengelola izin masuk tiap modul.</p>
+            <h3 class="text-base font-display font-extrabold text-white">Panel Persetujuan Pengguna</h3>
+            <p class="text-xs text-slate-400">Verifikasi pendaftaran dan status aktivasi akun pengguna portal.</p>
           </div>
         </div>
 
@@ -1058,7 +1058,7 @@
             <!-- Middle: RBAC Info (hanya tampil role & area, izin detail diatur di Dashboard RBAC) -->
             <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80 flex flex-wrap items-center gap-3">
               <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block w-full lg:w-auto">
-                Hak Akses:
+                Role & Area:
               </span>
 
               <!-- Role Badge -->
@@ -1079,25 +1079,63 @@
 
               <!-- Info teks: izin diatur via dashboard -->
               <span class="text-[11px] text-slate-500 italic">
-                ✦ Izin tab diatur via RBAC Panel di Dashboard
+                ✦ Pengaturan hak akses tab ada di RBAC Dashboard
               </span>
             </div>
 
             <!-- Right: Action Buttons -->
             <div class="flex items-center space-x-2 self-end lg:self-center">
-              <!-- Approve Button -->
-              <button @click="approveUser(user)" :disabled="user.isSuperAdmin"
-                class="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-40">
-                Setujui & Simpan
-              </button>
+              <!-- Super Admin Badge -->
+              <template x-if="user.isSuperAdmin">
+                <span class="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/60 text-slate-400 text-xs font-semibold">
+                  Akun Utama
+                </span>
+              </template>
 
-              <!-- Reject Button (if pending or approved) -->
-              <template x-if="!user.isSuperAdmin">
-                <button @click="rejectUser(user)"
-                  class="px-2.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-semibold transition-all hover:scale-105"
-                  title="Tolak / Cabut Akses">
-                  Tolak
-                </button>
+              <!-- Pending User Actions -->
+              <template x-if="!user.isSuperAdmin && user.status === 'PENDING'">
+                <div class="flex items-center space-x-2">
+                  <button @click="approveUser(user)"
+                    class="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all hover:scale-105 active:scale-95">
+                    Setujui Akun
+                  </button>
+                  <button @click="rejectUser(user)"
+                    class="px-2.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-semibold transition-all hover:scale-105"
+                    title="Tolak Pendaftaran">
+                    Tolak
+                  </button>
+                </div>
+              </template>
+
+              <!-- Approved User Actions -->
+              <template x-if="!user.isSuperAdmin && user.status === 'APPROVED'">
+                <div class="flex items-center space-x-2">
+                  <span class="px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold flex items-center space-x-1">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <span>Aktif</span>
+                  </span>
+                  <button @click="rejectUser(user)"
+                    class="px-2.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-medium transition-all hover:scale-105"
+                    title="Cabut Akses / Nonaktifkan">
+                    Cabut Akses
+                  </button>
+                </div>
+              </template>
+
+              <!-- Rejected User Actions -->
+              <template x-if="!user.isSuperAdmin && user.status === 'REJECTED'">
+                <div class="flex items-center space-x-2">
+                  <span class="px-2.5 py-1 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-semibold">
+                    Nonaktif
+                  </span>
+                  <button @click="approveUser(user)"
+                    class="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all hover:scale-105"
+                    title="Aktifkan Kembali">
+                    Aktifkan
+                  </button>
+                </div>
               </template>
             </div>
 
@@ -1111,7 +1149,7 @@
         class="px-6 py-3.5 border-t border-slate-800 bg-slate-950 flex items-center justify-between text-xs text-slate-400">
         <div class="flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
-          <span>Approve = aktifkan akses portal. Izin tab detail dikonfigurasi via <strong class="text-sky-300">RBAC Panel</strong> di Dashboard Monitoring.</span>
+          <span>Persetujuan akun mengaktifkan login portal. Hak akses modul/tab diatur terpusat di menu <strong class="text-sky-300">RBAC Dashboard</strong>.</span>
         </div>
         <button @click="openApprovalModal = false"
           class="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs transition-colors">
@@ -1999,10 +2037,11 @@
 
           this.saveUsersToStorage();
 
-          // Simpan approval ke Cloud Firestore
+          // Simpan approval ke Cloud Firestore (tanpa field 'permissions' portal agar tidak bentrok dengan RBAC)
           if (fbDb) {
             try {
-              await fbDb.collection('portal_users').doc(user.id).set(user, { merge: true });
+              const { permissions: _strip, ...userWithoutPortalPerms } = user;
+              await fbDb.collection('portal_users').doc(user.id).set(userWithoutPortalPerms, { merge: true });
               console.log("☁️ Status approval user berhasil disinkronkan ke Cloud Firestore:", user.name);
             } catch (e) {
               console.warn("Firestore update notice:", e.message);
@@ -2075,7 +2114,8 @@
 
             if (fbDb) {
               try {
-                await fbDb.collection('portal_users').doc(user.id).set(user, { merge: true });
+                const { permissions: _strip, ...userWithoutPortalPerms } = user;
+                await fbDb.collection('portal_users').doc(user.id).set(userWithoutPortalPerms, { merge: true });
               } catch (e) {
                 console.warn("Firestore reject notice:", e.message);
               }

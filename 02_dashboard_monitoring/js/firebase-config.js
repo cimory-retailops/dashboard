@@ -530,9 +530,10 @@ class FirebaseRbacService {
     // Simpan ke LocalStorage langsung (Fast feedback)
     localStorage.setItem('cimory_rbac_matrix', JSON.stringify(matrix));
 
-    // Sinkronkan juga field linkedCrew, role, dan modul ke cimory_portal_users jika ada
+    // Sinkronkan juga field linkedCrew, role, dan modul ke cimory_portal_users (localStorage + Firestore)
     try {
       const rawUsers = localStorage.getItem('cimory_portal_users');
+      const portalUsersToUpdate = []; // track untuk sync ke Firestore
       if (rawUsers) {
         const portalUsers = JSON.parse(rawUsers);
         if (Array.isArray(portalUsers)) {
@@ -541,17 +542,22 @@ class FirebaseRbacService {
             if (!pu || !pu.email) return;
             const key = pu.email.toLowerCase();
             if (matrix[key]) {
-              if (matrix[key].linkedCrew !== undefined) {
+              let puChanged = false;
+              if (matrix[key].linkedCrew !== undefined && pu.linkedCrew !== matrix[key].linkedCrew) {
                 pu.linkedCrew = matrix[key].linkedCrew;
-                changed = true;
+                puChanged = true;
               }
-              if (matrix[key].role) {
+              if (matrix[key].role && pu.role !== matrix[key].role) {
                 pu.role = matrix[key].role;
-                changed = true;
+                puChanged = true;
               }
-              if (matrix[key].modul) {
+              if (matrix[key].modul && pu.moduleOrArea !== matrix[key].modul) {
                 pu.moduleOrArea = matrix[key].modul;
+                puChanged = true;
+              }
+              if (puChanged) {
                 changed = true;
+                portalUsersToUpdate.push(pu); // tandai untuk sync Firestore
               }
             }
           });
@@ -571,6 +577,21 @@ class FirebaseRbacService {
           ps.moduleOrArea = m.modul || ps.moduleOrArea;
           localStorage.setItem('cimory_portal_active_session', JSON.stringify(ps));
         }
+      }
+
+      // Sync perubahan role/modul/linkedCrew ke Firestore portal_users
+      if (!this.isUsingMock && this.db && portalUsersToUpdate.length > 0) {
+        const portalBatch = this.db.batch();
+        portalUsersToUpdate.forEach(pu => {
+          const docRef = this.db.collection('portal_users').doc(pu.id);
+          portalBatch.set(docRef, {
+            role: pu.role,
+            moduleOrArea: pu.moduleOrArea,
+            linkedCrew: pu.linkedCrew || ''
+          }, { merge: true });
+        });
+        await portalBatch.commit();
+        console.log(`✅ Sync role/modul ${portalUsersToUpdate.length} user ke Firestore portal_users.`);
       }
     } catch(e) {
       console.warn('Gagal sinkronkan rbac matrix ke portal storage:', e);
