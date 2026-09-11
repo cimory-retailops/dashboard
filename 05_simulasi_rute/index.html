@@ -33,30 +33,6 @@
             window.location.replace('../index.html');
             return;
           }
-
-          if (!isPrivileged) {
-            let hasAccess = false;
-            if (user.permissions && user.permissions[MODULE_KEY]) {
-              hasAccess = true;
-            } else {
-              try {
-                const rawMatrix = localStorage.getItem('cimory_rbac_matrix');
-                if (rawMatrix && user.email) {
-                  const m = JSON.parse(rawMatrix);
-                  const entry = m[user.email.toLowerCase()];
-                  if (entry && entry.permissions) {
-                    const p = entry.permissions;
-                    hasAccess = !!(p.jadwal || p.kunjungan);
-                  }
-                }
-              } catch(e) {}
-            }
-            if (!hasAccess) {
-              alert('🔒 Akses Ditolak: Akun Anda tidak memiliki izin untuk membuka ' + MODULE_TITLE + '.\nHubungi Atasan untuk mendapatkan akses.');
-              window.location.replace('../index.html');
-              return;
-            }
-          }
         }
         window.PORTAL_ACTIVE_USER = user;
         window.canAccessPortalModule = function (key) {

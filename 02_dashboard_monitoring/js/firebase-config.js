@@ -364,44 +364,75 @@ class FirebaseRbacService {
 
   /**
    * LOAD MATRIKS HAK AKSES
-   * Mengambil data hak akses semua user dari Firestore atau LocalStorage Cache
+   * Mengambil data hak akses semua user dari 1 koleksi terpadu: 'portal_users' di Firestore
    */
   async loadPermissionsMatrix(seedUsersList = []) {
     let matrix = {};
 
-    // 1. Coba baca dari Firestore jika real mode
+    // 1. Baca langsung dari 1 koleksi terpadu 'portal_users' jika online
     if (!this.isUsingMock && this.db) {
       try {
-        const snap = await this.db.collection('user_permissions').get();
+        const snap = await this.db.collection('portal_users').get();
         if (!snap.empty) {
+          const portalList = [];
           snap.forEach(doc => {
             const d = doc.data();
-            if (d && typeof d === 'object') {
-              matrix[doc.id] = d;
+            if (d && (d.status === 'APPROVED' || d.role === 'SUPERADMIN' || d.isSuperAdmin)) {
+              const emailKey = (d.email || doc.id).toLowerCase();
+              const role = d.role || 'MDS';
+              const preset = window.RBAC_ROLE_PRESETS && window.RBAC_ROLE_PRESETS[role]
+                ? window.RBAC_ROLE_PRESETS[role].permissions
+                : { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false };
+
+              let userPerms = d.permissions && typeof d.permissions === 'object' && Object.keys(d.permissions).length > 0
+                ? { ...d.permissions }
+                : { ...preset };
+
+              if (!userPerms.subTabs) {
+                userPerms.subTabs = window.getDefaultSubTabsForRole(role);
+              }
+
+              matrix[emailKey] = {
+                id: doc.id,
+                name: d.name || emailKey,
+                email: d.email || emailKey,
+                modul: d.moduleOrArea || d.modul || 'ALL',
+                jabatan: d.jabatan || (role === 'SUPERADMIN' ? 'Super Administrator' : (role === 'SPV' ? 'Supervisor' : 'Merchandiser')),
+                role: role,
+                linkedCrew: d.linkedCrew || '',
+                managedMds: Array.isArray(d.managedMds) ? d.managedMds : [],
+                permissions: userPerms,
+                updatedAt: d.updatedAt || d.approvedAt || new Date().toISOString(),
+                updatedBy: d.updatedBy || d.approvedBy || 'System'
+              };
+
+              portalList.push({ id: doc.id, ...d, permissions: userPerms });
             }
           });
+
+          if (portalList.length > 0) {
+            localStorage.setItem('cimory_portal_users', JSON.stringify(portalList));
+          }
         }
       } catch (err) {
-        console.warn('Gagal membaca Firestore user_permissions, mencoba cache lokal:', err);
+        console.warn('Gagal membaca Firestore portal_users, mencoba cache lokal:', err);
       }
     }
 
-    // 2. Baca dari LocalStorage cache
+    // 2. Fallback baca dari LocalStorage cache jika offline
     if (Object.keys(matrix).length === 0) {
       const cached = localStorage.getItem('cimory_rbac_matrix');
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
-          if (parsed && typeof parsed === 'object') {
-            matrix = parsed;
-          }
+          if (parsed && typeof parsed === 'object') matrix = parsed;
         } catch (e) {
           matrix = {};
         }
       }
     }
 
-    // 3. Bersihkan HANYA akun dummy auto-seed lama (USER_1, USER_2, dsb)
+    // 3. Bersihkan dummy lama
     const dummyEmails = ['admin@cimory.com', 'riswandi@cimory.com', 'ghozali@cimory.com', 'dimas@cimory.com'];
     Object.keys(matrix).forEach(key => {
       const u = matrix[key];
@@ -411,18 +442,16 @@ class FirebaseRbacService {
         u.updatedBy === 'System Rule' ||
         (u.id && String(u.id).startsWith('USER_'));
 
-      if (isAutoSeedDummy) {
-        delete matrix[key];
-      }
+      if (isAutoSeedDummy) delete matrix[key];
     });
 
-    // 4. Sinkronkan dengan user terdaftar & APPROVED dari portal Firestore / Landing
+    // 4. Sinkronkan dengan portal storage
     await this._syncWithPortalApprovedUsers(matrix);
 
-    // 5. Pastikan Super Admin dari akun portal / sesi aktif selalu ada di matriks
+    // 5. Pastikan Super Admin selalu ada di matriks
     this._ensureSuperAdminsInMatrix(matrix);
 
-    // 6. Validasi integritas permissions
+    // 6. Validasi integritas
     Object.keys(matrix).forEach(key => {
       const u = matrix[key];
       if (u && typeof u === 'object') {
@@ -446,33 +475,6 @@ class FirebaseRbacService {
   }
 
   async _syncWithPortalApprovedUsers(matrix) {
-    // 1. Ambil data akun portal dari Cloud Firestore portal_users jika online
-    if (!this.isUsingMock && this.db) {
-      try {
-        const snap = await this.db.collection('portal_users').get();
-        if (!snap.empty) {
-          const cloudList = [];
-          snap.forEach(doc => {
-            const d = doc.data();
-            if (d && (d.status === 'APPROVED' || d.role === 'SUPERADMIN' || d.isSuperAdmin)) {
-              cloudList.push({ id: doc.id, ...d });
-            }
-          });
-          if (cloudList.length > 0) {
-            // Merge ke localStorage cimory_portal_users
-            const rawL = localStorage.getItem('cimory_portal_users');
-            const localArr = rawL ? (JSON.parse(rawL) || []) : [];
-            const mergedM = new Map();
-            localArr.forEach(x => { if (x && x.email) mergedM.set(x.email.toLowerCase(), x); });
-            cloudList.forEach(x => { if (x && x.email) mergedM.set(x.email.toLowerCase(), { ...(mergedM.get(x.email.toLowerCase()) || {}), ...x }); });
-            localStorage.setItem('cimory_portal_users', JSON.stringify(Array.from(mergedM.values())));
-          }
-        }
-      } catch (cloudErr) {
-        console.warn('Sync portal_users dari Firestore notice:', cloudErr.message);
-      }
-    }
-
     try {
       const raw = localStorage.getItem('cimory_portal_users');
       if (raw) {
@@ -481,7 +483,6 @@ class FirebaseRbacService {
           portalUsers.forEach(pu => {
             if (!pu || !pu.email) return;
             const key = pu.email.toLowerCase();
-            // Hanya masukkan user yang sudah di-APPROVED atau role SUPERADMIN
             if (pu.status === 'APPROVED' || pu.role === 'SUPERADMIN' || pu.isSuperAdmin) {
               if (!matrix[key]) {
                 const role = pu.role || 'MDS';
@@ -497,6 +498,7 @@ class FirebaseRbacService {
                   jabatan: pu.jabatan || (role === 'SUPERADMIN' ? 'Super Administrator' : (role === 'SPV' ? 'Supervisor' : 'Merchandiser')),
                   role: role,
                   linkedCrew: pu.linkedCrew || '',
+                  managedMds: Array.isArray(pu.managedMds) ? pu.managedMds : [],
                   permissions: {
                     ...preset,
                     subTabs: window.getDefaultSubTabsForRole(role)
@@ -505,10 +507,7 @@ class FirebaseRbacService {
                   updatedBy: pu.approvedBy || 'Portal Registration'
                 };
               } else {
-                // Pertahankan / sinkronkan linkedCrew jika ada di portalUser
-                if (pu.linkedCrew && !matrix[key].linkedCrew) {
-                  matrix[key].linkedCrew = pu.linkedCrew;
-                }
+                if (pu.linkedCrew && !matrix[key].linkedCrew) matrix[key].linkedCrew = pu.linkedCrew;
                 if (!matrix[key].permissions) matrix[key].permissions = {};
                 if (!matrix[key].permissions.subTabs) {
                   matrix[key].permissions.subTabs = window.getDefaultSubTabsForRole(matrix[key].role || 'MDS');
@@ -524,53 +523,35 @@ class FirebaseRbacService {
   }
 
   /**
-   * SIMPAN MATRIKS HAK AKSES (SATU USER ATAU SEMUA)
+   * SIMPAN MATRIKS HAK AKSES LANGSUNG KE 1 KOLEKSI: portal_users
    */
   async savePermissions(matrix) {
     // Simpan ke LocalStorage langsung (Fast feedback)
     localStorage.setItem('cimory_rbac_matrix', JSON.stringify(matrix));
 
-    // Sinkronkan juga field linkedCrew, role, dan modul ke cimory_portal_users (localStorage + Firestore)
+    // Sinkronkan juga ke cimory_portal_users lokal
     try {
       const rawUsers = localStorage.getItem('cimory_portal_users');
-      const portalUsersToUpdate = []; // track untuk sync ke Firestore
       if (rawUsers) {
         const portalUsers = JSON.parse(rawUsers);
         if (Array.isArray(portalUsers)) {
-          let changed = false;
           portalUsers.forEach(pu => {
             if (!pu || !pu.email) return;
             const key = pu.email.toLowerCase();
             if (matrix[key]) {
-              let puChanged = false;
-              if (matrix[key].linkedCrew !== undefined && pu.linkedCrew !== matrix[key].linkedCrew) {
-                pu.linkedCrew = matrix[key].linkedCrew;
-                puChanged = true;
-              }
-              if (matrix[key].role && pu.role !== matrix[key].role) {
-                pu.role = matrix[key].role;
-                puChanged = true;
-              }
-              if (matrix[key].modul && pu.moduleOrArea !== matrix[key].modul) {
-                pu.moduleOrArea = matrix[key].modul;
-                puChanged = true;
-              }
-              if (Array.isArray(matrix[key].managedMds) && JSON.stringify(pu.managedMds || []) !== JSON.stringify(matrix[key].managedMds)) {
-                pu.managedMds = [...matrix[key].managedMds];
-                puChanged = true;
-              }
-              if (puChanged) {
-                changed = true;
-                portalUsersToUpdate.push(pu); // tandai untuk sync Firestore
-              }
+              const m = matrix[key];
+              pu.role = m.role || pu.role;
+              pu.moduleOrArea = m.modul || pu.moduleOrArea;
+              pu.linkedCrew = m.linkedCrew !== undefined ? m.linkedCrew : (pu.linkedCrew || '');
+              pu.managedMds = Array.isArray(m.managedMds) ? [...m.managedMds] : (pu.managedMds || []);
+              pu.permissions = m.permissions ? { ...m.permissions } : (pu.permissions || {});
             }
           });
-          if (changed) {
-            localStorage.setItem('cimory_portal_users', JSON.stringify(portalUsers));
-          }
+          localStorage.setItem('cimory_portal_users', JSON.stringify(portalUsers));
         }
       }
-      // Juga sinkronkan ke active session jika akun yang aktif ada di matriks
+
+      // Sinkronkan ke active session jika akun aktif ada di matriks
       const rawSession = localStorage.getItem('cimory_portal_active_session');
       if (rawSession) {
         const ps = JSON.parse(rawSession);
@@ -579,47 +560,50 @@ class FirebaseRbacService {
           ps.linkedCrew = m.linkedCrew || '';
           ps.role = m.role || ps.role;
           ps.moduleOrArea = m.modul || ps.moduleOrArea;
+          ps.permissions = m.permissions ? { ...m.permissions } : ps.permissions;
           if (Array.isArray(m.managedMds)) ps.managedMds = [...m.managedMds];
           localStorage.setItem('cimory_portal_active_session', JSON.stringify(ps));
         }
-      }
-
-      // Sync perubahan role/modul/linkedCrew/managedMds ke Firestore portal_users
-      if (!this.isUsingMock && this.db && portalUsersToUpdate.length > 0) {
-        const portalBatch = this.db.batch();
-        portalUsersToUpdate.forEach(pu => {
-          const docRef = this.db.collection('portal_users').doc(pu.id);
-          portalBatch.set(docRef, {
-            role: pu.role,
-            moduleOrArea: pu.moduleOrArea,
-            linkedCrew: pu.linkedCrew || '',
-            managedMds: pu.managedMds || []
-          }, { merge: true });
-        });
-        await portalBatch.commit();
-        console.log(`✅ Sync role/modul/managedMds ${portalUsersToUpdate.length} user ke Firestore portal_users.`);
       }
     } catch(e) {
       console.warn('Gagal sinkronkan rbac matrix ke portal storage:', e);
     }
 
-    // Simpan ke Firestore jika real mode aktif
+    // Simpan langsung ke 1 dokumen per user di koleksi portal_users Firestore
     if (!this.isUsingMock && this.db) {
       try {
         const batch = this.db.batch();
-        const col = this.db.collection('user_permissions');
+        const col = this.db.collection('portal_users');
+
+        // Ambil semua portal_users untuk matching doc ID
+        const snap = await col.get();
+        const docMapByEmail = new Map();
+        snap.forEach(doc => {
+          const d = doc.data();
+          if (d && d.email) {
+            docMapByEmail.set(d.email.toLowerCase(), doc.id);
+          }
+        });
+
         for (const [key, data] of Object.entries(matrix)) {
-          const docRef = col.doc(key);
+          const emailKey = (data.email || key).toLowerCase();
+          const docId = data.id || docMapByEmail.get(emailKey) || emailKey;
+          const docRef = col.doc(docId);
+
           batch.set(docRef, {
-            ...data,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            role: data.role || 'MDS',
+            moduleOrArea: data.modul || 'ALL',
+            linkedCrew: data.linkedCrew || '',
+            managedMds: Array.isArray(data.managedMds) ? data.managedMds : [],
+            permissions: data.permissions || {},
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp ? firebase.firestore.FieldValue.serverTimestamp() : new Date().toISOString(),
             updatedBy: this.currentUser ? this.currentUser.displayName : 'Super Admin'
           }, { merge: true });
         }
         await batch.commit();
-        console.log('✅ Matriks hak akses berhasil disinkronkan ke Firestore.');
+        console.log('✅ 1 Koleksi Terpadu: Hak akses RBAC berhasil disinkronkan ke portal_users Firestore.');
       } catch (err) {
-        console.error('❌ Gagal simpan ke Firestore:', err);
+        console.error('❌ Gagal simpan ke portal_users Firestore:', err);
         throw err;
       }
     }

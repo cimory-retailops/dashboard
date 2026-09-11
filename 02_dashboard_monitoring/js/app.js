@@ -1093,8 +1093,8 @@ function dashboardApp() {
             });
           }
         } else if (this.currentUser.role === 'SPV') {
-          // Prioritas 1: managedMds (crew yang di-assign Super Admin ke SPV ini)
           const crews = this.getSpvManagedCrews();
+          const spvMod = this.getSpvModul();
           if (crews.length > 0) {
             const crewsUpper = crews.map(c => (c || '').toUpperCase().trim()).filter(Boolean);
             data = data.filter(v => {
@@ -1102,12 +1102,10 @@ function dashboardApp() {
               const cCode = (v.kodeCrew || '').toUpperCase().trim();
               return crewsUpper.some(c => c === cName || c === cCode || (c && cName && (cName.includes(c) || c.includes(cName))));
             });
-          } else if (this.currentUser.modul && this.currentUser.modul !== 'ALL' && this.currentUser.modul.toUpperCase() !== 'NASIONAL') {
-            // Fallback lama: filter by modul prefix jika belum ada managedMds
-            const spvMod = this.currentUser.modul.toUpperCase().trim();
+          } else if (spvMod && spvMod !== 'ALL' && spvMod !== 'NASIONAL') {
             data = data.filter(v => {
               const vMod = (v._officialModul || (this.getCrewOfficialModul ? this.getCrewOfficialModul(v.namaCrew || v.kodeCrew, v.modul) : v.modul) || '').toUpperCase().trim();
-              return vMod && vMod.startsWith(spvMod);
+              return vMod && (vMod.startsWith(spvMod) || spvMod.startsWith(vMod));
             });
           }
         }
@@ -1221,8 +1219,8 @@ function dashboardApp() {
             });
           }
         } else if (this.currentUser.role === 'SPV') {
-          // Prioritas 1: managedMds
           const crews = this.getSpvManagedCrews();
+          const spvMod = this.getSpvModul();
           if (crews.length > 0) {
             const crewsUpper = crews.map(c => (c || '').toUpperCase().trim()).filter(Boolean);
             data = data.filter(a => {
@@ -1230,11 +1228,10 @@ function dashboardApp() {
               const cCode = (a.kodeCrew || '').toUpperCase().trim();
               return crewsUpper.some(c => c === cName || c === cCode || (c && cName && (cName.includes(c) || c.includes(cName))));
             });
-          } else if (this.currentUser.modul && this.currentUser.modul !== 'ALL' && this.currentUser.modul.toUpperCase() !== 'NASIONAL') {
-            const spvMod = this.currentUser.modul.toUpperCase().trim();
+          } else if (spvMod && spvMod !== 'ALL' && spvMod !== 'NASIONAL') {
             data = data.filter(a => {
               const aMod = (a._officialModul || (this.getCrewOfficialModul ? this.getCrewOfficialModul(a.namaCrew || a.kodeCrew, a.modul) : a.modul) || '').toUpperCase().trim();
-              return aMod && aMod.startsWith(spvMod);
+              return aMod && (aMod.startsWith(spvMod) || spvMod.startsWith(aMod));
             });
           }
         }
@@ -1506,8 +1503,8 @@ function dashboardApp() {
           });
         }
       } else if (this.currentUser && this.currentUser.role === 'SPV') {
-        // Prioritas 1: managedMds
         const crews = this.getSpvManagedCrews();
+        const spvMod = this.getSpvModul();
         if (crews.length > 0) {
           const crewsUpper = crews.map(c => (c || '').toUpperCase().trim()).filter(Boolean);
           data = data.filter(m => {
@@ -1515,11 +1512,10 @@ function dashboardApp() {
             const cCode = (m.kodeCrew || '').toUpperCase().trim();
             return crewsUpper.some(c => c === cName || c === cCode || (c && cName && (cName.includes(c) || c.includes(cName))));
           });
-        } else if (this.currentUser.modul && this.currentUser.modul !== 'ALL' && this.currentUser.modul.toUpperCase() !== 'NASIONAL') {
-          const spvMod = this.currentUser.modul.toUpperCase().trim();
+        } else if (spvMod && spvMod !== 'ALL' && spvMod !== 'NASIONAL') {
           data = data.filter(m => {
             const mMod = (m._officialModul || (this.getCrewOfficialModul ? this.getCrewOfficialModul(m.namaCrew || m.kodeCrew, m.modul) : m.modul) || '').toUpperCase().trim();
-            return mMod && mMod.startsWith(spvMod);
+            return mMod && (mMod.startsWith(spvMod) || spvMod.startsWith(mMod));
           });
         }
       }
@@ -2076,20 +2072,66 @@ function dashboardApp() {
       if (!targetDate) return null; // Multi-day range: match all stores
       
       const calDay = targetDate.getDate(); // 1..31 (Tanggal Kalender)
+      const weekDayRaw = targetDate.getDay(); // 0 = Minggu, 1 = Senin, ..., 5 = Jumat, 6 = Sabtu
+      const weekDay = weekDayRaw === 0 ? 7 : weekDayRaw; // 1 = Senin .. 7 = Minggu
+      
       const targetSet = new Set();
       
-      targetSet.add(String(calDay));
-      targetSet.add(String(calDay).padStart(2, '0'));
-      targetSet.add('R' + calDay);
-      targetSet.add('R' + String(calDay).padStart(2, '0'));
-      targetSet.add('RUTE ' + calDay);
-      targetSet.add('RUTE ' + String(calDay).padStart(2, '0'));
-      targetSet.add('RUTE-' + calDay);
-      targetSet.add('RUTE-' + String(calDay).padStart(2, '0'));
-      targetSet.add('TGL ' + calDay);
-      targetSet.add('TGL ' + String(calDay).padStart(2, '0'));
-      targetSet.add('HARI ' + calDay);
-      targetSet.add('HARI ' + String(calDay).padStart(2, '0'));
+      // 1. Calendar Day variations (1..31)
+      const calStr = String(calDay);
+      const calPad = calStr.padStart(2, '0');
+      targetSet.add(calStr);
+      targetSet.add(calPad);
+      targetSet.add('R' + calStr);
+      targetSet.add('R' + calPad);
+      targetSet.add('RUTE ' + calStr);
+      targetSet.add('RUTE ' + calPad);
+      targetSet.add('RUTE-' + calStr);
+      targetSet.add('RUTE-' + calPad);
+      targetSet.add('TGL ' + calStr);
+      targetSet.add('TGL ' + calPad);
+      targetSet.add('HARI ' + calStr);
+      targetSet.add('HARI ' + calPad);
+      targetSet.add('H' + calStr);
+      targetSet.add('H-' + calStr);
+
+      // 2. Day of Week / Weekly Cycle variations (1..6 / 1..7: Senin=1, Selasa=2, ..., Jumat=5, Sabtu=6)
+      const weekStr = String(weekDay);
+      const weekPad = weekStr.padStart(2, '0');
+      targetSet.add(weekStr);
+      targetSet.add(weekPad);
+      targetSet.add('R' + weekStr);
+      targetSet.add('R' + weekPad);
+      targetSet.add('RUTE ' + weekStr);
+      targetSet.add('RUTE ' + weekPad);
+      targetSet.add('RUTE-' + weekStr);
+      targetSet.add('RUTE-' + weekPad);
+      targetSet.add('H' + weekStr);
+      targetSet.add('H-' + weekStr);
+      targetSet.add('HARI ' + weekStr);
+      targetSet.add('HARI-' + weekStr);
+
+      // 3. Day Name variations (Indonesian & English)
+      const idDays = ['MINGGU', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
+      const enDays = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+      const idShort = ['MIN', 'SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB'];
+      const enShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+      const todayId = idDays[weekDayRaw];
+      const todayEn = enDays[weekDayRaw];
+      const todayIdShort = idShort[weekDayRaw];
+      const todayEnShort = enShort[weekDayRaw];
+
+      [todayId, todayEn, todayIdShort, todayEnShort].forEach(d => {
+        if (d) {
+          targetSet.add(d);
+          targetSet.add('RUTE ' + d);
+          targetSet.add('RUTE-' + d);
+          targetSet.add('R ' + d);
+          targetSet.add('R-' + d);
+          targetSet.add('HARI ' + d);
+        }
+      });
 
       return targetSet;
     },
@@ -2109,11 +2151,16 @@ function dashboardApp() {
     isRouteMatched(ruteStr, routeMatchSet) {
       if (!routeMatchSet || routeMatchSet.size === 0) return true;
       if (!ruteStr) return false;
-      const clean = String(ruteStr).toUpperCase().trim();
+      const clean = String(ruteStr).toUpperCase().replace(/['"`]/g, '').trim();
+      if (!clean || clean === '-' || clean === 'ALL' || clean === 'SEMUA') return true;
+      
       if (routeMatchSet.has(clean)) return true;
       for (const target of routeMatchSet) {
         if (clean === target) return true;
-        if (clean.endsWith(' ' + target) || clean.endsWith('-' + target) || clean.startsWith(target + ' ') || clean.startsWith(target + '-')) return true;
+        if (clean.endsWith(' ' + target) || clean.endsWith('-' + target) || clean.endsWith('/' + target) || clean.endsWith('_' + target)) return true;
+        if (clean.startsWith(target + ' ') || clean.startsWith(target + '-') || clean.startsWith(target + '/') || clean.startsWith(target + '_')) return true;
+        const tokens = clean.split(/[\s\-_/,\\]+/);
+        if (tokens.includes(target)) return true;
       }
       return false;
     },
@@ -2155,7 +2202,7 @@ function dashboardApp() {
      * Executive KPI Calculations
      */
     get kpiSummary() {
-      const vData = this.filteredVisits;
+      const vData = this.filteredVisits || [];
       const totalVisits = vData.length;
       
       const uniqueStores = new Set(vData.map(v => v.kodeToko).filter(Boolean)).size;
@@ -2184,17 +2231,20 @@ function dashboardApp() {
       } else {
         // Multi-day / Monthly Mode: Sum of all unique stores in master for filtered crews
         totalTarget = compList.reduce((sum, c) => sum + (c.targetCount || 0), 0);
-        if (totalTarget === 0 && this.filteredMasterToko) {
-          totalTarget = this.filteredMasterToko.length || 1;
+        if (totalTarget === 0 && this.filteredMasterToko && this.filteredMasterToko.length > 0) {
+          totalTarget = this.filteredMasterToko.length;
         }
       }
 
       // Validated target visits: sum of visited stores for each crew
       const totalVisitedStores = compList.reduce((sum, c) => sum + (c.visitedCount || 0), 0) || uniqueStores;
+      if (totalTarget === 0 && totalVisitedStores > 0) {
+        totalTarget = totalVisitedStores;
+      }
       const achievementRate = totalTarget > 0 ? Math.min(100, Math.round((totalVisitedStores / totalTarget) * 100)) : (totalVisits > 0 ? 100 : 0);
       
       // Absensi Kehadiran Terfilter
-      const aData = this.filteredAbsensi;
+      const aData = this.filteredAbsensi || [];
       const hadirList = aData.filter(a => {
         const st = (a.status || '').toUpperCase();
         return st.includes('MASUK') || st.includes('HADIR') || st.includes('IN');
@@ -2229,23 +2279,41 @@ function dashboardApp() {
           .trim();
       };
 
-      // 1. STRICTLY Seed Official Active Users from Master User (Single Source of Truth)
+      const cleanCrewToken = (str) => {
+        if (!str) return '';
+        return normKey(str)
+          .replace(/\s*[\(\[\-]?\s*(DK|LK|LP)[0-9]?\s*[\)\]]?\s*$/i, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+
+      const isCrewMatch = (a, b) => {
+        if (!a || !b) return false;
+        const kA = normKey(a);
+        const kB = normKey(b);
+        if (!kA || !kB) return false;
+        if (kA === kB) return true;
+        const baseA = cleanCrewToken(a);
+        const baseB = cleanCrewToken(b);
+        if (baseA && baseB && baseA === baseB) return true;
+        return false;
+      };
+
+      // 1. Multi-source crew seeding (Master User, Official Crews, Managed SPV, dan Visited Crews)
       const crewMap = {};
       const idToKeyMap = {};
 
-      this.masterUser.forEach(u => {
-        const rawName = u.nama || '';
-        const rawId = u.id || '';
+      const seedCrew = (rawName, rawId, rawModul) => {
+        if (!rawName && !rawId) return;
         const cleanName = normKey(rawName);
         const cleanId = normKey(rawId);
-        
         const key = cleanName || cleanId;
         if (!key) return;
 
         if (!crewMap[key]) {
-          const mod = (u.modul || this.getCrewOfficialModul(rawName, '-')).trim().toUpperCase();
+          const mod = (rawModul || (this.getCrewOfficialModul ? this.getCrewOfficialModul(rawName, '-') : '') || '').trim().toUpperCase();
           crewMap[key] = {
-            namaCrew: rawName.trim().toUpperCase(),
+            namaCrew: (rawName || rawId).trim().toUpperCase(),
             kodeCrew: (rawId || '-').trim().toUpperCase(),
             modul: mod,
             allRoutes: new Set(),
@@ -2257,18 +2325,31 @@ function dashboardApp() {
         }
         if (cleanName) idToKeyMap[cleanName] = key;
         if (cleanId) idToKeyMap[cleanId] = key;
-      });
+      };
 
-      // Helper to find existing official crew only (No ghost/extra user creation)
+      (this.masterUser || []).forEach(u => seedCrew(u.nama, u.id, u.modul));
+      (this.availableOfficialCrews || []).forEach(c => seedCrew(c.name, c.code, c.modul));
+      (this.getSpvManagedCrews() || []).forEach(cName => seedCrew(cName, '', ''));
+      (this.filteredVisits || []).forEach(v => seedCrew(v.namaCrew, v.kodeCrew, v.modul));
+
+      // Helper to find existing crew with fuzzy fallback
       const findOfficialCrew = (rawName, rawId) => {
         const cleanName = normKey(rawName);
         const cleanId = normKey(rawId);
-        const key = (cleanName && idToKeyMap[cleanName]) || (cleanId && idToKeyMap[cleanId]) || null;
+        let key = (cleanName && idToKeyMap[cleanName]) || (cleanId && idToKeyMap[cleanId]) || null;
+        if (!key && cleanName) {
+          for (const k of Object.keys(crewMap)) {
+            if (isCrewMatch(k, cleanName)) {
+              key = k;
+              break;
+            }
+          }
+        }
         return key && crewMap[key] ? crewMap[key] : null;
       };
 
       // 2. Pass 1: Collect all assigned routes for each official crew
-      this.masterToko.forEach(m => {
+      (this.masterToko || []).forEach(m => {
         const crewObj = findOfficialCrew(m.namaCrew, m.kodeCrew);
         if (!crewObj) return;
         if (m.rute) crewObj.allRoutes.add(String(m.rute).trim().toUpperCase());
@@ -2276,9 +2357,9 @@ function dashboardApp() {
 
       // Pass 2: Map Target Stores from Master Toko ONLY based on crew's specific schedule pattern
       const targetDate = this.getActiveTargetDate();
-      this.masterToko.forEach(m => {
+      (this.masterToko || []).forEach(m => {
         const crewObj = findOfficialCrew(m.namaCrew, m.kodeCrew);
-        if (!crewObj) return; // Skip non-registered crew
+        if (!crewObj) return;
 
         const storeKey = normKey(m.kodeToko) || normKey(m.namaToko);
         if (storeKey) {
@@ -2292,14 +2373,30 @@ function dashboardApp() {
         }
       });
 
+      // Pass 2.1: Safety Fallback for crews where targetStores is 0 but they have assigned stores in Master Toko or Visits
+      Object.values(crewMap).forEach(crewObj => {
+        if (crewObj.targetStores.size === 0) {
+          if (crewObj.allStores.size > 0 && crewObj.allStores.size <= 25) {
+            crewObj.allStores.forEach(s => crewObj.targetStores.add(s));
+          } else if (crewObj.visitedStores.size > 0) {
+            crewObj.visitedStores.forEach(s => crewObj.targetStores.add(s));
+          }
+        }
+      });
+
       // 3. Map Realized Visits in Active Filter ONLY to existing Official Master Users
-      this.filteredVisits.forEach(v => {
+      (this.filteredVisits || []).forEach(v => {
         const crewObj = findOfficialCrew(v.namaCrew, v.kodeCrew);
-        if (!crewObj) return; // Skip non-registered crew
+        if (!crewObj) return;
 
         crewObj.totalVisits++;
         const visitStoreKey = normKey(v.kodeToko) || normKey(v.namaToko);
-        if (visitStoreKey) crewObj.visitedStores.add(visitStoreKey);
+        if (visitStoreKey) {
+          crewObj.visitedStores.add(visitStoreKey);
+          if (crewObj.targetStores.size === 0) {
+            crewObj.targetStores.add(visitStoreKey);
+          }
+        }
       });
 
       // 3.5 Map DC Visits from Attendance for Fair Route Compensation
@@ -2324,6 +2421,8 @@ function dashboardApp() {
         }
       });
 
+      const spvManagedCrews = (this.currentUser && this.currentUser.role === 'SPV') ? this.getSpvManagedCrews() : [];
+      const spvMod = (this.currentUser && this.currentUser.role === 'SPV') ? this.getSpvModul() : '';
       const results = [];
 
       Object.keys(crewMap).forEach(k => {
@@ -2334,11 +2433,13 @@ function dashboardApp() {
         const cleanIdKey = normKey(c.kodeCrew);
         const dcInfo = crewDcMap[cleanCrewKey] || (cleanIdKey ? crewDcMap[cleanIdKey] : null);
 
-        let targetCount = 0;
-        if (routeMatchSet && routeMatchSet.size > 0) {
-          targetCount = c.targetStores.size;
-        } else {
-          targetCount = c.allStores.size > 0 ? c.allStores.size : c.visitedStores.size;
+        let targetCount = c.targetStores.size;
+        if (targetCount === 0) {
+          if (c.allStores.size > 0 && c.allStores.size <= 25) {
+            targetCount = c.allStores.size;
+          } else {
+            targetCount = c.visitedStores.size;
+          }
         }
 
         const visitedCount = c.visitedStores.size;
@@ -2374,27 +2475,28 @@ function dashboardApp() {
             statusBadge = '🟢 Tuntas 100%';
             statusColor = 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
           } else if (visitedCount > 0) {
-            status = 'ON_PROGRESS';
+            status = 'PROGRESS';
             statusBadge = `🟡 Sisa ${remainingCount} Toko`;
             statusColor = 'bg-amber-500/10 text-amber-500 border-amber-500/20';
           } else {
-            status = 'BELUM_JALAN';
+            status = 'BELUM_KUNJUNGAN';
             statusBadge = `⚪ Belum Kunjungan (0/${targetCount})`;
             statusColor = 'bg-slate-500/10 text-slate-400 border-slate-500/20';
           }
         } else if (visitedCount > 0) {
-          status = 'TUNTAS_TAMBAHAN';
-          statusBadge = `🟢 ${visitedCount} Toko Selesai`;
+          status = 'TUNTAS';
+          statusBadge = `🟢 Tuntas 100%`;
           statusColor = 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
+          targetCount = visitedCount;
         } else {
-          // targetCount === 0 and visitedCount === 0 -> Belum input jadwal untuk tanggal ini
           status = 'BELUM_INPUT';
           statusBadge = '🔴 Belum Input Jadwal';
           statusColor = 'bg-rose-500/10 text-rose-500 border-rose-500/20';
         }
 
-        // Apply module filter if active
-        if (this.selectedModul && this.selectedModul !== 'ALL' && this.selectedModul.toUpperCase() !== 'NASIONAL') {
+        // Apply module filter if active (Kecuali jika personil ini dikelola langsung oleh SPV yang sedang login)
+        const isSpvManaged = spvManagedCrews.length > 0 && spvManagedCrews.some(m => isCrewMatch(m, crewName) || isCrewMatch(m, c.kodeCrew));
+        if (!isSpvManaged && this.selectedModul && this.selectedModul !== 'ALL' && this.selectedModul.toUpperCase() !== 'NASIONAL') {
           if (this.selectedModul.length === 2 && !modulName.toUpperCase().startsWith(this.selectedModul)) return;
           if (this.selectedModul.length > 2 && modulName.toUpperCase() !== this.selectedModul) return;
         }
@@ -2415,16 +2517,19 @@ function dashboardApp() {
         });
       });
 
-      return results.sort((a, b) => {
-        // 1. Sort by rate descending (100% down to 0%)
-        if (b.rate !== a.rate) {
-          return b.rate - a.rate;
+      // RLS Filter untuk SPV pada compliance list
+      let finalResults = results;
+      if (this.currentUser && this.currentUser.role === 'SPV') {
+        if (spvManagedCrews.length > 0) {
+          finalResults = results.filter(r => spvManagedCrews.some(m => isCrewMatch(m, r.namaCrew) || isCrewMatch(m, r.kodeCrew)));
+        } else if (spvMod && spvMod !== 'ALL' && spvMod !== 'NASIONAL') {
+          finalResults = results.filter(r => r.modul && (r.modul.toUpperCase().startsWith(spvMod) || spvMod.startsWith(r.modul.toUpperCase())));
         }
-        // 2. If rate is equal, sort by visited count descending
-        if (b.visitedCount !== a.visitedCount) {
-          return b.visitedCount - a.visitedCount;
-        }
-        // 3. If still equal, sort alphabetically by name
+      }
+
+      return finalResults.sort((a, b) => {
+        if (b.rate !== a.rate) return b.rate - a.rate;
+        if (b.visitedCount !== a.visitedCount) return b.visitedCount - a.visitedCount;
         return a.namaCrew.localeCompare(b.namaCrew);
       });
     },
@@ -2569,7 +2674,7 @@ function dashboardApp() {
     },
 
     /**
-     * Detailed Real-time Monitoring Cards Data Structure (Expandable per MDS)
+     * Detailed Real-time Monitoring Cards Data Structure (Expandable per MDS) - Ultra-Fast O(1) Pre-Indexed
      */
     get crewMonitoringCards() {
       const compList = this.filteredComplianceList || [];
@@ -2582,44 +2687,90 @@ function dashboardApp() {
           .trim();
       };
 
-      // Map visits by crew + store
-      const visitsByCrew = {};
-      (this.filteredVisits || []).forEach(v => {
-        const cKey = normKey(v.namaCrew) || normKey(v.kodeCrew);
-        if (!cKey) return;
-        if (!visitsByCrew[cKey]) visitsByCrew[cKey] = [];
-        visitsByCrew[cKey].push(v);
-      });
+      const cleanCrewToken = (str) => {
+        if (!str) return '';
+        return normKey(str)
+          .replace(/\s*[\(\[\-]?\s*(DK|LK|LP)[0-9]?\s*[\)\]]?\s*$/i, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
 
-      // Map attendance by crew
-      const absensiByCrew = {};
-      (this.filteredAbsensi || []).forEach(a => {
-        const cKey = normKey(a.namaCrew) || normKey(a.kodeCrew);
-        if (!cKey) return;
-        absensiByCrew[cKey] = a;
-      });
+      const parseTimeToSeconds = (tStr) => {
+        if (!tStr) return 0;
+        const clean = String(tStr).trim().replace(/[^\d:]/g, '');
+        const parts = clean.split(':');
+        const h = parseInt(parts[0], 10) || 0;
+        const m = parseInt(parts[1], 10) || 0;
+        const s = parseInt(parts[2], 10) || 0;
+        return h * 3600 + m * 60 + s;
+      };
 
-      // Map master toko by crew
+      const allVisits = this.filteredVisits || [];
+      const allAbsensi = this.filteredAbsensi || [];
+      const allMaster = this.masterToko || [];
       const targetDate = this.getActiveTargetDate();
-      const masterByCrew = {};
-      (this.masterToko || []).forEach(m => {
-        const cKey = normKey(m.namaCrew) || normKey(m.kodeCrew);
-        if (!cKey) return;
-        if (!masterByCrew[cKey]) {
-          masterByCrew[cKey] = { allRoutes: new Set(), stores: [] };
+
+      // Pre-group by exact & base normalized name ONCE (O(N) linear time for 0ms lag)
+      const visitsByCrew = new Map();
+      allVisits.forEach(v => {
+        const k = normKey(v.namaCrew);
+        const base = cleanCrewToken(v.namaCrew);
+        if (k) {
+          if (!visitsByCrew.has(k)) visitsByCrew.set(k, []);
+          visitsByCrew.get(k).push(v);
         }
-        if (m.rute) masterByCrew[cKey].allRoutes.add(String(m.rute).trim().toUpperCase());
-        masterByCrew[cKey].stores.push(m);
+        if (base && base !== k) {
+          if (!visitsByCrew.has(base)) visitsByCrew.set(base, []);
+          visitsByCrew.get(base).push(v);
+        }
+      });
+
+      // Sort visits chronologically per personil once
+      visitsByCrew.forEach(list => {
+        list.sort((a, b) => {
+          const secA = parseTimeToSeconds(a.time || a.jam || a.waktu);
+          const secB = parseTimeToSeconds(b.time || b.jam || b.waktu);
+          return secA - secB;
+        });
+      });
+
+      const absensiByCrew = new Map();
+      allAbsensi.forEach(a => {
+        const k = normKey(a.namaCrew);
+        const base = cleanCrewToken(a.namaCrew);
+        if (k && !absensiByCrew.has(k)) absensiByCrew.set(k, a);
+        if (base && !absensiByCrew.has(base)) absensiByCrew.set(base, a);
+      });
+
+      const masterByCrew = new Map();
+      allMaster.forEach(m => {
+        const k = normKey(m.namaCrew);
+        const base = cleanCrewToken(m.namaCrew);
+        if (k) {
+          if (!masterByCrew.has(k)) masterByCrew.set(k, []);
+          masterByCrew.get(k).push(m);
+        }
+        if (base && base !== k) {
+          if (!masterByCrew.has(base)) masterByCrew.set(base, []);
+          masterByCrew.get(base).push(m);
+        }
       });
 
       return compList.map(c => {
-        const cKey = normKey(c.namaCrew) || normKey(c.kodeCrew);
-        const crewVisits = visitsByCrew[cKey] || [];
-        const crewAbsen = absensiByCrew[cKey] || null;
-        const crewMaster = masterByCrew[cKey] || { allRoutes: new Set(), stores: [] };
+        const cKey = normKey(c.namaCrew);
+        const baseKey = cleanCrewToken(c.namaCrew);
+        
+        const crewVisits = visitsByCrew.get(cKey) || visitsByCrew.get(baseKey) || [];
+        const crewAbsen = absensiByCrew.get(cKey) || absensiByCrew.get(baseKey) || null;
+        const crewMasterStores = masterByCrew.get(cKey) || masterByCrew.get(baseKey) || [];
+
+        const crewRoutes = new Set();
+        crewMasterStores.forEach(m => {
+          if (m.rute) crewRoutes.add(String(m.rute).trim().toUpperCase());
+        });
 
         // Determine today's target routes
-        const targetRouteSet = this.getCrewTargetRouteSet(crewMaster.allRoutes, targetDate);
+        const targetRouteSet = this.getCrewTargetRouteSet(crewRoutes, targetDate);
 
         // Map visits lookup by store key
         const visitMap = new Map();
@@ -2634,7 +2785,7 @@ function dashboardApp() {
         const targetStoresList = [];
         const seenStoreKeys = new Set();
 
-        crewMaster.stores.forEach(m => {
+        crewMasterStores.forEach(m => {
           const ruteStr = String(m.rute || '').toUpperCase().trim();
           if (this.isRouteMatched(ruteStr, targetRouteSet)) {
             const sKey = normKey(m.kodeToko) || normKey(m.namaToko);
@@ -2656,6 +2807,50 @@ function dashboardApp() {
             }
           }
         });
+
+        // Fallback: If no stores matched today's route, but crew has master stores or visits
+        if (targetStoresList.length === 0) {
+          if (crewMasterStores.length > 0 && crewMasterStores.length <= 25) {
+            crewMasterStores.forEach(m => {
+              const sKey = normKey(m.kodeToko) || normKey(m.namaToko);
+              if (sKey && !seenStoreKeys.has(sKey)) {
+                seenStoreKeys.add(sKey);
+                const visitRecord = visitMap.get(sKey);
+                targetStoresList.push({
+                  kodeToko: m.kodeToko || '-',
+                  namaToko: m.namaToko || 'Nama Toko Tidak Tersedia',
+                  account: m.account || 'ALFAMART',
+                  alamat: m.alamat || '-',
+                  rute: m.rute || '-',
+                  isVisited: !!visitRecord,
+                  visitTime: visitRecord ? (visitRecord.jam || visitRecord.waktu || visitRecord.time || '-') : null,
+                  foto: visitRecord ? (visitRecord.foto || visitRecord.fotoDisplay || visitRecord.image || null) : null,
+                  catatan: visitRecord ? (visitRecord.catatan || visitRecord.keterangan || null) : null,
+                  rawVisit: visitRecord || null
+                });
+              }
+            });
+          } else if (crewVisits.length > 0) {
+            crewVisits.forEach(v => {
+              const sKey = normKey(v.kodeToko) || normKey(v.namaToko);
+              if (sKey && !seenStoreKeys.has(sKey)) {
+                seenStoreKeys.add(sKey);
+                targetStoresList.push({
+                  kodeToko: v.kodeToko || '-',
+                  namaToko: v.namaToko || 'Toko Terdaftar',
+                  account: v.account || 'LAINNYA',
+                  alamat: v.alamat || '-',
+                  rute: v.rute || 'VISIT',
+                  isVisited: true,
+                  visitTime: v.jam || v.waktu || v.time || '-',
+                  foto: v.foto || v.fotoDisplay || v.image || null,
+                  catatan: v.catatan || v.keterangan || null,
+                  rawVisit: v
+                });
+              }
+            });
+          }
+        }
 
         // Extra visits (visited stores not on today's target route)
         const extraVisits = [];
@@ -2683,17 +2878,64 @@ function dashboardApp() {
           return a.namaToko.localeCompare(b.namaToko);
         });
 
-        // Last visit time
+        // Last visit time: ambil kunjungan terakhir (paling sore / akhir)
         let lastVisitTime = '-';
         if (crewVisits.length > 0) {
-          const lastV = crewVisits[0];
+          const lastV = crewVisits[crewVisits.length - 1];
           lastVisitTime = lastV.jam || lastV.waktu || lastV.time || '-';
+        }
+
+        const totalUniqueVisited = crewVisits.length > 0 
+          ? new Set(crewVisits.map(v => normKey(v.kodeToko) || normKey(v.namaToko)).filter(Boolean)).size 
+          : 0;
+
+        let targetCount = targetStoresList.length > 0 
+          ? targetStoresList.length 
+          : ((c.targetCount && c.targetCount > 0) ? c.targetCount : totalUniqueVisited);
+        
+        const visitedTargetCount = targetStoresList.filter(t => t.isVisited).length;
+        const displayVisitedCount = visitedTargetCount > 0 ? visitedTargetCount : totalUniqueVisited;
+        
+        if (displayVisitedCount > targetCount) {
+          targetCount = displayVisitedCount;
+        }
+        const remainingCount = Math.max(0, targetCount - displayVisitedCount);
+
+        let statusBadge = c.statusBadge;
+        let statusColor = c.statusColor;
+        let rate = 0;
+
+        if (c.isVisitDc) {
+          rate = 100;
+          statusBadge = totalUniqueVisited > 0 ? '🟢 Tuntas (Visit DC)' : '🏢 Tugas DC';
+          statusColor = totalUniqueVisited > 0 ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+        } else if (targetCount > 0) {
+          rate = Math.min(100, Math.round((displayVisitedCount / targetCount) * 100));
+          if (displayVisitedCount >= targetCount) {
+            statusBadge = '🟢 Tuntas 100%';
+            statusColor = 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
+          } else if (displayVisitedCount > 0) {
+            statusBadge = `🟡 Sisa ${remainingCount} Toko`;
+            statusColor = 'bg-amber-500/10 text-amber-500 border-amber-500/20';
+          } else {
+            statusBadge = `⚪ Belum Kunjungan (0/${targetCount})`;
+            statusColor = 'bg-slate-500/10 text-slate-400 border-slate-500/20';
+          }
+        } else {
+          rate = 0;
+          statusBadge = '🔴 Belum Input Jadwal';
+          statusColor = 'bg-rose-500/10 text-rose-500 border-rose-500/20';
         }
 
         return {
           ...c,
           key: cKey,
-          isExpanded: !!this.expandedCrews[cKey],
+          visitedCount: displayVisitedCount,
+          targetCount: targetCount,
+          remainingCount: remainingCount,
+          rate: rate,
+          statusBadge: statusBadge,
+          statusColor: statusColor,
           visits: crewVisits,
           targetStoresList,
           extraVisits,
@@ -6902,15 +7144,20 @@ function dashboardApp() {
       }
     },
 
-    async performLogout() {
-      if (window.FirebaseAuthService) {
-        await window.FirebaseAuthService.logout();
-      }
+    performLogout() {
+      // 1. Bersihkan sesi secara instan
       localStorage.removeItem('cimory_portal_active_session');
       localStorage.removeItem('cimory_mock_user');
+      sessionStorage.removeItem('cimory_portal_session');
       this.currentUser = null;
       this.userDropdownOpen = false;
-      // Langsung arahkan kembali ke halaman login portal utama
+
+      // 2. Sign out Firebase secara background non-blocking
+      if (window.FirebaseAuthService && window.FirebaseAuthService.auth) {
+        try { window.FirebaseAuthService.auth.signOut().catch(() => {}); } catch(e) {}
+      }
+
+      // 3. Redirect instan ke portal login
       window.location.replace('../index.html');
     },
 
@@ -7202,7 +7449,13 @@ function dashboardApp() {
       this.syncRbacMatrixFromUsers();
     },
 
-    // ── SPV TEAM MANAGEMENT ────────────────────────────────────────────────
+    /**
+     * Helper: modul/area kerja dari currentUser
+     */
+    getSpvModul() {
+      if (!this.currentUser) return '';
+      return (this.currentUser.modul || this.currentUser.moduleOrArea || '').toUpperCase().trim();
+    },
 
     /**
      * Helper: kembalikan array linkedCrew dari managedMds milik currentUser (SPV)
@@ -7210,17 +7463,32 @@ function dashboardApp() {
      */
     getSpvManagedCrews() {
       if (!this.currentUser || this.currentUser.role !== 'SPV') return [];
-      let list = Array.isArray(this.currentUser.managedMds) ? this.currentUser.managedMds : [];
+      let list = Array.isArray(this.currentUser.managedMds) ? [...this.currentUser.managedMds] : [];
       if (list.length === 0 && this.currentUser.email) {
         const u = (this.rbacUsers || []).find(x => x && x.email && x.email.toLowerCase() === this.currentUser.email.toLowerCase());
         if (u && Array.isArray(u.managedMds) && u.managedMds.length > 0) {
-          list = u.managedMds;
+          list = [...u.managedMds];
           this.currentUser.managedMds = list;
         } else if (this.rbacMatrix && this.rbacMatrix[this.currentUser.email.toLowerCase()]) {
           const mu = this.rbacMatrix[this.currentUser.email.toLowerCase()];
           if (mu && Array.isArray(mu.managedMds) && mu.managedMds.length > 0) {
-            list = mu.managedMds;
+            list = [...mu.managedMds];
             this.currentUser.managedMds = list;
+          }
+        }
+      }
+
+      // Jika belum di-assign spesifik di RBAC, otomatis ambil SEMUA personil di Modul/Wilayah SPV
+      if (list.length === 0) {
+        const spvMod = this.getSpvModul();
+        if (spvMod && spvMod !== 'ALL' && spvMod !== 'NASIONAL') {
+          const official = this.availableOfficialCrews || [];
+          const modCrews = official.filter(c => {
+            const cMod = (c.modul || '').toUpperCase().trim();
+            return cMod && (cMod === spvMod || cMod.startsWith(spvMod) || spvMod.startsWith(cMod));
+          });
+          if (modCrews.length > 0) {
+            list = modCrews.map(c => c.name);
           }
         }
       }

@@ -34,30 +34,6 @@
             window.location.replace('../index.html');
             return;
           }
-
-          if (!isPrivileged) {
-            let hasAccess = false;
-            if (user.permissions && user.permissions[MODULE_KEY]) {
-              hasAccess = true;
-            } else {
-              try {
-                const rawMatrix = localStorage.getItem('cimory_rbac_matrix');
-                if (rawMatrix && user.email) {
-                  const m = JSON.parse(rawMatrix);
-                  const entry = m[user.email.toLowerCase()];
-                  if (entry && entry.permissions) {
-                    const p = entry.permissions;
-                    hasAccess = !!(p.kunjungan || p.absensi || p.jadwal || p.tokonasional || p.laporan || p.evaluasi);
-                  }
-                }
-              } catch(e) {}
-            }
-            if (!hasAccess) {
-              alert('🔒 Akses Ditolak: Akun Anda tidak memiliki izin untuk membuka ' + MODULE_TITLE + '.\nHubungi Atasan untuk mendapatkan akses.');
-              window.location.replace('../index.html');
-              return;
-            }
-          }
         }
         window.PORTAL_ACTIVE_USER = user;
         window.canAccessPortalModule = function(key) {
@@ -1259,9 +1235,9 @@
 
         <!-- Grouped Cards Grid -->
         <div class="grid grid-cols-1 gap-4">
-          <template x-for="(card, cIdx) in crewMonitoringCards" :key="card.key + cIdx">
-            <div class="rounded-2xl border transition-all duration-200 shadow-sm overflow-hidden"
-              :class="card.isExpanded ? 'bg-white dark:bg-slate-900 border-amber-500/40 ring-1 ring-amber-500/20 shadow-md' : 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200/80 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600'">
+          <template x-for="(card, cIdx) in crewMonitoringCards" :key="card.key">
+            <div class="rounded-2xl border transition-all duration-150 shadow-sm overflow-hidden"
+              :class="expandedCrews[card.key] ? 'bg-white dark:bg-slate-900 border-amber-500/40 ring-1 ring-amber-500/20 shadow-md' : 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200/80 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600'">
               
               <!-- Card Header (Always Visible & Clickable) -->
               <div @click="toggleCrewCardExpand(card.key)" class="p-4 cursor-pointer select-none space-y-3">
@@ -1286,7 +1262,7 @@
                   <div class="flex items-center gap-2 flex-shrink-0">
                     <span class="px-2.5 py-1 rounded-full text-xs font-extrabold border" :class="card.statusColor" x-text="card.statusBadge"></span>
                     <button type="button" class="w-8 h-8 rounded-lg bg-slate-200/60 dark:bg-slate-700/60 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-transform duration-200"
-                      :class="card.isExpanded ? 'rotate-180 bg-amber-500/20 text-amber-600 dark:text-amber-400' : ''">
+                      :class="expandedCrews[card.key] ? 'rotate-180 bg-amber-500/20 text-amber-600 dark:text-amber-400' : ''">
                       <i data-lucide="chevron-down" class="w-4 h-4"></i>
                     </button>
                   </div>
@@ -1308,7 +1284,7 @@
               </div>
 
               <!-- Card Expandable Content (Accordion Body - Grouped Details) -->
-              <div x-show="card.isExpanded" x-cloak x-transition
+              <div x-show="!!expandedCrews[card.key]" x-cloak
                 class="border-t border-slate-200 dark:border-slate-800 p-4 sm:p-5 bg-slate-50/50 dark:bg-slate-950/40 space-y-5">
                 
                 <!-- Quick Info Header (Absensi & Jam Masuk) -->
@@ -6199,7 +6175,7 @@
   <script src="./js/api.js?v=20260910_4"></script>
   <script src="./js/charts.js?v=20260910_4"></script>
   <script src="./js/map.js?v=20260911_2"></script>
-  <script src="./js/app.js?v=20260911_12"></script>
+  <script src="./js/app.js?v=20260911_18"></script>
 
   <!-- Failsafe preloader auto-dismiss -->
   <script>

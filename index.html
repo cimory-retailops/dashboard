@@ -690,6 +690,25 @@
           </div>
         </div>
 
+        <!-- Quick Dashboard Launch Banner -->
+        <div class="p-4 rounded-2xl bg-gradient-to-r from-indigo-900/60 via-sky-900/60 to-slate-900/80 border border-sky-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg shadow-sky-950/40">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center font-black flex-shrink-0">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+              </svg>
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-sm text-white">Akses Dashboard Monitoring Terpadu</h4>
+              <p class="text-xs text-slate-400">Monitoring real-time kunjungan, absensi tim, jadwal rute &amp; analitik</p>
+            </div>
+          </div>
+          <a href="./02_dashboard_monitoring/index.html"
+            class="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-sky-600/30 transition-all flex items-center justify-center space-x-2 flex-shrink-0">
+            <span>Masuk ke Dashboard &rarr;</span>
+          </a>
+        </div>
+
         <!-- Modules Navigation Cards Grid -->
         <div>
           <div class="flex items-center justify-between mb-4 px-1">
@@ -1362,13 +1381,14 @@
           setTimeout(() => this.initHomeMap(), 500);
         },
 
-        // Sinkronisasi dengan Cloud Firestore jika online
+        // Sinkronisasi dengan 1 Koleksi Terpadu 'portal_users' di Cloud Firestore
         async syncWithFirestore() {
           if (!fbDb) return;
           try {
             const snapshot = await fbDb.collection('portal_users').get();
             if (!snapshot.empty) {
               const cloudUsers = [];
+              const matrix = {};
               const dummyEmails = ['admin@cimory.com', 'riswandi@cimory.com', 'ghozali@cimory.com', 'dimas@cimory.com'];
               const dummyIds = ['USR_ADMIN_01', 'USR_ADMIN_02', 'USR_SPV_01', 'USR_MDS_01', 'USR_MDS_02'];
 
@@ -1380,19 +1400,51 @@
                   (doc.id === 'USR_ADMIN_YOHANDI' && data.password === 'admin');
 
                 if (isDummy) {
-                  // Hapus akun dummy dari Cloud Firestore demi keamanan
                   try {
                     await fbDb.collection('portal_users').doc(doc.id).delete();
-                    console.log("🧹 Dihapus dummy/seed user dari Cloud Firestore:", email || doc.id);
-                  } catch (delErr) {
-                    console.warn("Gagal hapus dummy:", delErr.message);
-                  }
+                  } catch (delErr) {}
                 } else {
-                  cloudUsers.push({ id: doc.id, ...data });
+                  const role = data.role || 'MDS';
+                  const rolePresets = {
+                    SUPERADMIN: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true },
+                    MANAGER:    { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true },
+                    SPV:        { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true },
+                    MDS:        { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false }
+                  };
+                  const defaultPerms = rolePresets[role.toUpperCase()] || rolePresets.MDS;
+
+                  // Pastikan field permissions RBAC valid
+                  let userPerms = (data.permissions && typeof data.permissions === 'object' && Object.keys(data.permissions).length > 0)
+                    ? { ...data.permissions }
+                    : { ...defaultPerms };
+
+                  const cleanUser = {
+                    id: doc.id,
+                    ...data,
+                    permissions: userPerms
+                  };
+                  cloudUsers.push(cleanUser);
+
+                  // Masukkan ke RBAC matrix jika status APPROVED atau SUPERADMIN
+                  if (cleanUser.status === 'APPROVED' || cleanUser.role === 'SUPERADMIN' || cleanUser.isSuperAdmin) {
+                    matrix[email || doc.id.toLowerCase()] = {
+                      id: doc.id,
+                      name: cleanUser.name || email,
+                      email: cleanUser.email || email,
+                      modul: cleanUser.moduleOrArea || 'ALL',
+                      jabatan: cleanUser.jabatan || (role === 'SUPERADMIN' ? 'Super Administrator' : (role === 'SPV' ? 'Supervisor' : 'Merchandiser')),
+                      role: role,
+                      linkedCrew: cleanUser.linkedCrew || '',
+                      managedMds: Array.isArray(cleanUser.managedMds) ? cleanUser.managedMds : [],
+                      permissions: userPerms,
+                      updatedAt: cleanUser.updatedAt || cleanUser.approvedAt || new Date().toISOString(),
+                      updatedBy: cleanUser.updatedBy || cleanUser.approvedBy || 'System'
+                    };
+                  }
                 }
               }
 
-              // Merge dengan usersList lokal (hanya user sah/non-dummy)
+              // Merge dengan usersList lokal
               const mergedMap = new Map();
               this.usersList.forEach(u => {
                 const uEmail = (u.email || '').toLowerCase();
@@ -1400,12 +1452,17 @@
                   mergedMap.set(u.id || u.email, u);
                 }
               });
-              cloudUsers.forEach(cu => mergedMap.set(cu.id || cu.email, { ...mergedMap.get(cu.id || cu.email), ...cu }));
+              cloudUsers.forEach(cu => {
+                mergedMap.set(cu.id || cu.email, { ...(mergedMap.get(cu.id || cu.email) || {}), ...cu });
+              });
 
               this.usersList = Array.from(mergedMap.values());
               this.saveUsersToStorage();
+
+              // Simpan matriks RBAC terpadu ke localStorage
+              localStorage.setItem('cimory_rbac_matrix', JSON.stringify(matrix));
               this.checkActiveSession();
-              console.log("☁️ Berhasil mensinkronkan", cloudUsers.length, "pengguna sah dari Cloud Firestore.");
+              console.log("☁️ 1 Koleksi Terpadu: Berhasil mensinkronkan", cloudUsers.length, "pengguna & RBAC dari portal_users.");
             }
           } catch (e) {
             console.info("Info sinkronisasi Firestore (mode offline/local aktif):", e.message);
@@ -1496,53 +1553,16 @@
           return list;
         },
 
-        hasPermission(moduleKey) {
+        // Akses Portal: Semua user APPROVED otomatis bisa membuka modul
+        hasAccess(moduleKey) {
           if (!this.currentUser) return false;
           if (this.isSuperAdmin) return true;
+          // Selama status APPROVED, izinkan membuka aplikasi. Kontrol tab diatur di RBAC Dashboard
+          return this.currentUser.status === 'APPROVED';
+        },
 
-          // Role MANAGER & SPV: akses penuh ke semua modul portal
-          const role = (this.currentUser.role || '').toUpperCase();
-          if (role === 'MANAGER' || role === 'SPV') return true;
-
-          // User harus sudah APPROVED terlebih dahulu
-          if (this.currentUser.status !== 'APPROVED') return false;
-
-          // === SINGLE SOURCE OF TRUTH: cimory_rbac_matrix ===
-          // Mapping portal module key → RBAC tab permissions
-          let rbacEntry = null;
-          try {
-            const rbacRaw = localStorage.getItem('cimory_rbac_matrix');
-            if (rbacRaw && this.currentUser.email) {
-              const rbac = JSON.parse(rbacRaw);
-              rbacEntry = rbac[this.currentUser.email.toLowerCase()] || null;
-            }
-          } catch(e) {}
-
-          // Jika tidak ada entry di RBAC matrix sama sekali, user belum dikonfigurasi
-          if (!rbacEntry) {
-            // Fallback: jika user APPROVED tapi belum di RBAC, izinkan akses dasar (absen)
-            return moduleKey === 'absen';
-          }
-
-          const perms = rbacEntry.permissions || {};
-
-          // Mapping: portal module key → cek RBAC tab permissions
-          switch (moduleKey) {
-            case 'absen':
-              // Web Absen: semua user APPROVED boleh akses
-              return true;
-            case 'dashboard':
-              // Dashboard Monitoring: boleh jika ada minimal 1 tab yang diizinkan
-              return !!(perms.kunjungan || perms.absensi || perms.jadwal || perms.tokonasional || perms.laporan || perms.evaluasi);
-            case 'galeri':
-              // Galeri Pajangan: boleh jika punya akses laporan atau SPV/MGR
-              return !!(perms.laporan || perms.kunjungan);
-            case 'simulasi':
-              // Simulasi Rute: boleh jika punya akses jadwal atau laporan
-              return !!(perms.jadwal || perms.laporan || perms.evaluasi);
-            default:
-              return false;
-          }
+        hasPermission(moduleKey) {
+          return this.hasAccess(moduleKey);
         },
 
         // Auth Actions
@@ -1672,34 +1692,22 @@
           }
 
           // Approved / Active
-          const uRole = (user.role || 'MDS').toUpperCase();
-          const isPriv = uRole === 'SUPERADMIN' || uRole === 'MANAGER' || uRole === 'SPV';
           user.permissions = {
             absen: true,
-            dashboard: isPriv,
-            galeri: isPriv,
-            simulasi: isPriv
+            dashboard: true,
+            galeri: true,
+            simulasi: true
           };
-          if (!isPriv) {
-            try {
-              const rbacRaw = localStorage.getItem('cimory_rbac_matrix');
-              if (rbacRaw && user.email) {
-                const rbac = JSON.parse(rbacRaw);
-                const entry = rbac[user.email.toLowerCase()];
-                if (entry && entry.permissions) {
-                  const p = entry.permissions;
-                  user.permissions.dashboard = !!(p.kunjungan || p.absensi || p.jadwal || p.tokonasional || p.laporan || p.evaluasi);
-                  user.permissions.galeri = !!(p.laporan || p.kunjungan);
-                  user.permissions.simulasi = !!(p.jadwal || p.kunjungan);
-                }
-              }
-            } catch(e) {}
-          }
 
           this.currentUser = user;
           localStorage.setItem('cimory_portal_active_session', JSON.stringify(user));
-          this.authSuccess = 'Login berhasil! Selamat datang, ' + user.name;
+          this.authSuccess = 'Login berhasil! Mengarahkan ke Dashboard...';
           this.authMode = 'none';
+
+          // Auto-redirect ke Dashboard Monitoring
+          setTimeout(() => {
+            window.location.href = './02_dashboard_monitoring/index.html';
+          }, 400);
         },
 
         async handleRegister() {
@@ -1747,9 +1755,10 @@
 
           const finalModule = isMds ? (this.registerForm.moduleOrArea.trim() || 'Nasional') : 'Nasional';
 
+          const userNameClean = this.registerForm.name.trim();
           const newUser = {
-            id: 'USR_' + Date.now().toString(36).toUpperCase(),
-            name: this.registerForm.name.trim(),
+            id: userNameClean || ('USR_' + Date.now().toString(36).toUpperCase()),
+            name: userNameClean,
             email: this.registerForm.email.trim(),
             phone: this.registerForm.phone.trim(),
             role: this.registerForm.role || 'MDS',
@@ -1757,7 +1766,6 @@
             password: this.registerForm.password,
             status: 'PENDING',
             isSuperAdmin: false,
-            permissions: { absen: false, dashboard: false, galeri: false, simulasi: false },
             registeredAt: dateStr,
             approvedAt: null,
             approvedBy: null,
@@ -2006,9 +2014,14 @@
         logout() {
           this.currentUser = null;
           localStorage.removeItem('cimory_portal_active_session');
+          localStorage.removeItem('cimory_mock_user');
+          sessionStorage.removeItem('cimory_portal_session');
           this.authError = '';
           this.authSuccess = '';
           this.openApprovalModal = false;
+          if (fbAuth) {
+            try { fbAuth.signOut().catch(() => {}); } catch(e) {}
+          }
         },
 
         refreshUserStatus() {
@@ -2059,14 +2072,25 @@
           user.approvedAt = new Date().toISOString().replace('T', ' ').substring(0, 16);
           user.approvedBy = this.currentUser ? this.currentUser.name : 'Super Admin';
 
+          const role = user.role || 'MDS';
+          const rolePresets = {
+            SUPERADMIN: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true },
+            MANAGER:    { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true },
+            SPV:        { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true },
+            MDS:        { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false }
+          };
+          const defaultPerms = rolePresets[role.toUpperCase()] || rolePresets.MDS;
+          if (!user.permissions) {
+            user.permissions = { ...defaultPerms };
+          }
+
           this.saveUsersToStorage();
 
-          // Simpan approval ke Cloud Firestore (tanpa field 'permissions' portal agar tidak bentrok dengan RBAC)
+          // Simpan approval & permissions ke 1 dokumen di Cloud Firestore (portal_users)
           if (fbDb) {
             try {
-              const { permissions: _strip, ...userWithoutPortalPerms } = user;
-              await fbDb.collection('portal_users').doc(user.id).set(userWithoutPortalPerms, { merge: true });
-              console.log("☁️ Status approval user berhasil disinkronkan ke Cloud Firestore:", user.name);
+              await fbDb.collection('portal_users').doc(user.id).set(user, { merge: true });
+              console.log("☁️ 1 Koleksi Terpadu: Status approval & permissions disinkronkan ke Firestore portal_users:", user.name);
             } catch (e) {
               console.warn("Firestore update notice:", e.message);
             }
@@ -2078,69 +2102,43 @@
             localStorage.setItem('cimory_portal_active_session', JSON.stringify(this.currentUser));
           }
 
-          // Sinkronkan langsung ke cimory_rbac_matrix (SINGLE SOURCE OF TRUTH)
-          // Gunakan preset permissions berdasarkan ROLE user
+          // Sinkronkan langsung ke cimory_rbac_matrix
           try {
             const rawMatrix = localStorage.getItem('cimory_rbac_matrix');
             const matrix = rawMatrix ? JSON.parse(rawMatrix) : {};
             if (user.email) {
               const key = user.email.toLowerCase();
-              const role = user.role || 'MDS';
-              // Default permissions berdasarkan role
-              const rolePresets = {
-                SUPERADMIN: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true },
-                MANAGER:    { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true },
-                SPV:        { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true },
-                MDS:        { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false }
+              matrix[key] = {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                modul: user.moduleOrArea || 'ALL',
+                jabatan: user.jabatan || (role === 'SUPERADMIN' ? 'Super Administrator' : (role === 'SPV' ? 'Supervisor' : (role === 'MANAGER' ? 'Manager' : 'Merchandiser'))),
+                role: role,
+                linkedCrew: user.linkedCrew || '',
+                managedMds: Array.isArray(user.managedMds) ? user.managedMds : [],
+                permissions: user.permissions || { ...defaultPerms },
+                updatedAt: new Date().toISOString(),
+                updatedBy: this.currentUser ? this.currentUser.name : 'Portal Approval'
               };
-              const defaultPerms = rolePresets[role.toUpperCase()] || rolePresets.MDS;
-              if (!matrix[key]) {
-                // Buat entry RBAC baru
-                matrix[key] = {
-                  id: user.id,
-                  name: user.name,
-                  email: user.email,
-                  modul: user.moduleOrArea || 'ALL',
-                  jabatan: user.jabatan || (role === 'SUPERADMIN' ? 'Super Administrator' : (role === 'SPV' ? 'Supervisor' : (role === 'MANAGER' ? 'Manager' : 'Merchandiser'))),
-                  role: role,
-                  linkedCrew: user.linkedCrew || '',
-                  permissions: { ...defaultPerms },
-                  updatedAt: new Date().toISOString(),
-                  updatedBy: this.currentUser ? this.currentUser.name : 'Portal Approval'
-                };
-              } else {
-                // Jika sudah ada, sinkronkan info dasar (jangan timpa permissions custom yang sudah di-set)
-                matrix[key].role = role;
-                matrix[key].name = user.name;
-                matrix[key].modul = user.moduleOrArea || matrix[key].modul || 'ALL';
-                if (user.linkedCrew) matrix[key].linkedCrew = user.linkedCrew;
-                if (!matrix[key].permissions) matrix[key].permissions = { ...defaultPerms };
-              }
-              // Simpan ke localStorage
               localStorage.setItem('cimory_rbac_matrix', JSON.stringify(matrix));
-              // Simpan juga ke Firestore user_permissions jika online
-              if (fbDb) {
-                try {
-                  await fbDb.collection('user_permissions').doc(key).set(matrix[key], { merge: true });
-                } catch(fsErr) { console.warn('Firestore rbac sync note:', fsErr.message); }
-              }
             }
           } catch(e) { console.warn('RBAC matrix sync error:', e); }
 
-          alert(`✅ Akun ${user.name} berhasil DISETUJUI!\nIzin tab detail bisa dikonfigurasi di RBAC Panel pada Dashboard Monitoring.`);
+          alert(`✅ Akun ${user.name} berhasil DISETUJUI!\nHak akses RBAC terpadu langsung aktif dan tersimpan di database.`);
         },
 
         async rejectUser(user) {
           if (confirm(`Yakin ingin menolak / mencabut akses untuk ${user.name}?`)) {
             user.status = 'REJECTED';
-            // Tidak perlu menghapus portal-level permissions (sudah tidak digunakan)
-            // Izin dikelola via RBAC matrix — hapus dari matrix jika perlu
             this.saveUsersToStorage();
 
             if (fbDb) {
               try {
-                const { permissions: _strip, ...userWithoutPortalPerms } = user;
-                await fbDb.collection('portal_users').doc(user.id).set(userWithoutPortalPerms, { merge: true });
+                await fbDb.collection('portal_users').doc(user.id).set({
+                  status: 'REJECTED',
+                  updatedAt: firebase.firestore.FieldValue.serverTimestamp ? firebase.firestore.FieldValue.serverTimestamp() : new Date().toISOString()
+                }, { merge: true });
               } catch (e) {
                 console.warn("Firestore reject notice:", e.message);
               }
