@@ -555,6 +555,10 @@ class FirebaseRbacService {
                 pu.moduleOrArea = matrix[key].modul;
                 puChanged = true;
               }
+              if (Array.isArray(matrix[key].managedMds) && JSON.stringify(pu.managedMds || []) !== JSON.stringify(matrix[key].managedMds)) {
+                pu.managedMds = [...matrix[key].managedMds];
+                puChanged = true;
+              }
               if (puChanged) {
                 changed = true;
                 portalUsersToUpdate.push(pu); // tandai untuk sync Firestore
@@ -575,11 +579,12 @@ class FirebaseRbacService {
           ps.linkedCrew = m.linkedCrew || '';
           ps.role = m.role || ps.role;
           ps.moduleOrArea = m.modul || ps.moduleOrArea;
+          if (Array.isArray(m.managedMds)) ps.managedMds = [...m.managedMds];
           localStorage.setItem('cimory_portal_active_session', JSON.stringify(ps));
         }
       }
 
-      // Sync perubahan role/modul/linkedCrew ke Firestore portal_users
+      // Sync perubahan role/modul/linkedCrew/managedMds ke Firestore portal_users
       if (!this.isUsingMock && this.db && portalUsersToUpdate.length > 0) {
         const portalBatch = this.db.batch();
         portalUsersToUpdate.forEach(pu => {
@@ -587,11 +592,12 @@ class FirebaseRbacService {
           portalBatch.set(docRef, {
             role: pu.role,
             moduleOrArea: pu.moduleOrArea,
-            linkedCrew: pu.linkedCrew || ''
+            linkedCrew: pu.linkedCrew || '',
+            managedMds: pu.managedMds || []
           }, { merge: true });
         });
         await portalBatch.commit();
-        console.log(`✅ Sync role/modul ${portalUsersToUpdate.length} user ke Firestore portal_users.`);
+        console.log(`✅ Sync role/modul/managedMds ${portalUsersToUpdate.length} user ke Firestore portal_users.`);
       }
     } catch(e) {
       console.warn('Gagal sinkronkan rbac matrix ke portal storage:', e);

@@ -2113,6 +2113,7 @@
                 matrix[key].role = role;
                 matrix[key].name = user.name;
                 matrix[key].modul = user.moduleOrArea || matrix[key].modul || 'ALL';
+                if (user.linkedCrew) matrix[key].linkedCrew = user.linkedCrew;
                 if (!matrix[key].permissions) matrix[key].permissions = { ...defaultPerms };
               }
               // Simpan ke localStorage

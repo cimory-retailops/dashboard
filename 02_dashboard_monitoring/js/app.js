@@ -616,7 +616,7 @@ function dashboardApp() {
 
       // Filter by selectedModul if active
       let results = Array.from(crewMap.values());
-      if (this.selectedModul && this.selectedModul !== 'ALL') {
+      if (this.selectedModul && this.selectedModul !== 'ALL' && this.selectedModul.toUpperCase() !== 'NASIONAL') {
         const selMod = this.selectedModul.toUpperCase();
         results = results.filter(c => (c.modul || '').toUpperCase().startsWith(selMod));
       }
@@ -1003,7 +1003,9 @@ function dashboardApp() {
       this.crewDayVisitsMap = new Map();
 
       if (this.visits && this.visits.length > 0) {
+        this.visits = this.visits.filter(v => v && typeof v === 'object');
         this.visits.forEach(v => {
+          if (!v) return;
           const iso = this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
           v._iso = iso;
           v._officialModul = this.getCrewOfficialModul(v.namaCrew || v.kodeCrew, v.modul || v.prefix);
@@ -1022,41 +1024,43 @@ function dashboardApp() {
 
         // Sort each crew's day visits chronologically (earliest to latest in morning/afternoon) once
         for (const list of this.crewDayVisitsMap.values()) {
-          list.sort((a, b) => String(a.time || a.waktu || '00:00').localeCompare(String(b.time || b.waktu || '00:00')));
+          list.sort((a, b) => String((a && (a.time || a.waktu)) || '00:00').localeCompare(String((b && (b.time || b.waktu)) || '00:00')));
         }
 
         // Sort visits newest first (Date descending, Time descending)
         this.visits.sort((a, b) => {
-          const isoA = a._iso || '';
-          const isoB = b._iso || '';
+          const isoA = (a && a._iso) || '';
+          const isoB = (b && b._iso) || '';
           if (isoA !== isoB) return isoB.localeCompare(isoA);
-          const timeA = a.time || a.waktu || '';
-          const timeB = b.time || b.waktu || '';
+          const timeA = (a && (a.time || a.waktu)) || '';
+          const timeB = (b && (b.time || b.waktu)) || '';
           return timeB.localeCompare(timeA);
         });
       }
 
       if (this.absensi && this.absensi.length > 0) {
+        this.absensi = this.absensi.filter(a => a && typeof a === 'object');
         this.absensi.forEach(a => {
+          if (!a) return;
           a._iso = this.normalizeIsoDate(a.dateIso || a.date || a.tanggal);
           a._officialModul = this.getCrewOfficialModul(a.namaCrew || a.kodeCrew, a.modul);
         });
 
         this.absensi.sort((a, b) => {
-          const isoA = a._iso || '';
-          const isoB = b._iso || '';
+          const isoA = (a && a._iso) || '';
+          const isoB = (b && b._iso) || '';
           if (isoA !== isoB) return isoB.localeCompare(isoA);
-          const timeA = a.waktu || a.time || '';
-          const timeB = b.waktu || b.time || '';
+          const timeA = (a && (a.waktu || a.time)) || '';
+          const timeB = (b && (b.waktu || b.time)) || '';
           return timeB.localeCompare(timeA);
         });
       }
 
       // Log summary date distribution for quick developer console verification
       const vDates = {};
-      (this.visits || []).forEach(v => { if (v._iso) vDates[v._iso] = (vDates[v._iso] || 0) + 1; });
+      (this.visits || []).forEach(v => { if (v && v._iso) vDates[v._iso] = (vDates[v._iso] || 0) + 1; });
       const aDates = {};
-      (this.absensi || []).forEach(a => { if (a._iso) aDates[a._iso] = (aDates[a._iso] || 0) + 1; });
+      (this.absensi || []).forEach(a => { if (a && a._iso) aDates[a._iso] = (aDates[a._iso] || 0) + 1; });
       console.log(`%c[Data Kunjungan Ready]%c Total: ${(this.visits || []).length} baris | Distribusi Tanggal:`, 'background:#6366f1;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#a5b4fc;', vDates);
       console.log(`%c[Data Absensi Ready]%c Total: ${(this.absensi || []).length} baris | Distribusi Tanggal:`, 'background:#10b981;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#6ee7b7;', aDates);
 
@@ -1073,8 +1077,8 @@ function dashboardApp() {
      * Computed / Filtered Visits (Pure, Zero Mutation, High Speed)
      */
     get filteredVisits() {
-      let data = this.visits;
-      if (!data || data.length === 0) return [];
+      let data = (this.visits || []).filter(v => v && typeof v === 'object');
+      if (data.length === 0) return [];
 
       // 0. Row-Level Security / Role-Based Scoping
       if (this.currentUser) {
@@ -1092,13 +1096,13 @@ function dashboardApp() {
           // Prioritas 1: managedMds (crew yang di-assign Super Admin ke SPV ini)
           const crews = this.getSpvManagedCrews();
           if (crews.length > 0) {
-            const crewsUpper = crews.map(c => c.toUpperCase().trim());
+            const crewsUpper = crews.map(c => (c || '').toUpperCase().trim()).filter(Boolean);
             data = data.filter(v => {
               const cName = (v.namaCrew || '').toUpperCase().trim();
               const cCode = (v.kodeCrew || '').toUpperCase().trim();
-              return crewsUpper.some(c => c === cName || c === cCode);
+              return crewsUpper.some(c => c === cName || c === cCode || (c && cName && (cName.includes(c) || c.includes(cName))));
             });
-          } else if (this.currentUser.modul && this.currentUser.modul !== 'ALL') {
+          } else if (this.currentUser.modul && this.currentUser.modul !== 'ALL' && this.currentUser.modul.toUpperCase() !== 'NASIONAL') {
             // Fallback lama: filter by modul prefix jika belum ada managedMds
             const spvMod = this.currentUser.modul.toUpperCase().trim();
             data = data.filter(v => {
@@ -1109,11 +1113,14 @@ function dashboardApp() {
         }
       }
 
+      if (!data || data.length === 0) return [];
+
       // 1. Smart Date Filtering
       if (this.dateFilter === 'LATEST_DAY') {
-        const latestIso = data[0]._iso || this.normalizeIsoDate(data[0].dateIso || data[0].date || data[0].tanggal);
+        const first = data[0];
+        const latestIso = first ? (first._iso || this.normalizeIsoDate(first.dateIso || first.date || first.tanggal)) : null;
         if (latestIso) {
-          data = data.filter(v => (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === latestIso);
+          data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === latestIso);
         }
       } else if (this.dateFilter === 'TODAY') {
         const now = new Date();
@@ -1121,18 +1128,19 @@ function dashboardApp() {
         const m = String(now.getMonth() + 1).padStart(2, '0');
         const d = String(now.getDate()).padStart(2, '0');
         const todayIso = `${y}-${m}-${d}`;
-        data = data.filter(v => (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === todayIso);
+        data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === todayIso);
       } else if (this.dateFilter === 'YESTERDAY') {
         const yDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const y_y = yDate.getFullYear();
         const y_m = String(yDate.getMonth() + 1).padStart(2, '0');
         const y_d = String(yDate.getDate()).padStart(2, '0');
         const yIso = `${y_y}-${y_m}-${y_d}`;
-        data = data.filter(v => (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === yIso);
+        data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === yIso);
       } else if (this.dateFilter === 'CUSTOM' && this.startDate && this.endDate) {
         const start = this.startDate;
         const end = this.endDate;
         data = data.filter(v => {
+          if (!v) return false;
           const vIso = v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
           return vIso && vIso >= start && vIso <= end;
         });
@@ -1140,6 +1148,7 @@ function dashboardApp() {
         const start = this.startDate;
         const end = this.endDate;
         data = data.filter(v => {
+          if (!v) return false;
           const vIso = v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
           return vIso && vIso >= start && vIso <= end;
         });
@@ -1147,13 +1156,14 @@ function dashboardApp() {
         const start = this.startDate;
         const end = this.endDate;
         data = data.filter(v => {
+          if (!v) return false;
           const vIso = v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
           return vIso && vIso >= start && vIso <= end;
         });
       }
 
       // 2. Filter by Modul (Using Official Module Mapping)
-      if (this.selectedModul !== 'ALL') {
+      if (this.selectedModul && this.selectedModul !== 'ALL' && this.selectedModul.toUpperCase() !== 'NASIONAL') {
         const selMod = this.selectedModul;
         if (selMod.length === 2) {
           data = data.filter(v => (v._officialModul || this.getCrewOfficialModul(v.namaCrew || v.kodeCrew, v.modul)).startsWith(selMod));
@@ -1195,8 +1205,8 @@ function dashboardApp() {
      * Computed Filtered Absensi (Smart Date, Modul & Search Filtering - Tab Absensi Scoped)
      */
     get filteredAbsensi() {
-      let data = this.absensi;
-      if (!data || data.length === 0) return [];
+      let data = (this.absensi || []).filter(a => a && typeof a === 'object');
+      if (data.length === 0) return [];
 
       // 0. Row-Level Security / Role-Based Scoping
       if (this.currentUser) {
@@ -1214,13 +1224,13 @@ function dashboardApp() {
           // Prioritas 1: managedMds
           const crews = this.getSpvManagedCrews();
           if (crews.length > 0) {
-            const crewsUpper = crews.map(c => c.toUpperCase().trim());
+            const crewsUpper = crews.map(c => (c || '').toUpperCase().trim()).filter(Boolean);
             data = data.filter(a => {
               const cName = (a.namaCrew || '').toUpperCase().trim();
               const cCode = (a.kodeCrew || '').toUpperCase().trim();
-              return crewsUpper.some(c => c === cName || c === cCode);
+              return crewsUpper.some(c => c === cName || c === cCode || (c && cName && (cName.includes(c) || c.includes(cName))));
             });
-          } else if (this.currentUser.modul && this.currentUser.modul !== 'ALL') {
+          } else if (this.currentUser.modul && this.currentUser.modul !== 'ALL' && this.currentUser.modul.toUpperCase() !== 'NASIONAL') {
             const spvMod = this.currentUser.modul.toUpperCase().trim();
             data = data.filter(a => {
               const aMod = (a._officialModul || (this.getCrewOfficialModul ? this.getCrewOfficialModul(a.namaCrew || a.kodeCrew, a.modul) : a.modul) || '').toUpperCase().trim();
@@ -1230,16 +1240,20 @@ function dashboardApp() {
         }
       }
 
+      if (!data || data.length === 0) return [];
+
       const f = this.filterAbsensi || {};
       const dFilter = f.dateFilter || 'LATEST_DAY';
 
       // 1. Smart Date Filtering
       if (dFilter === 'LATEST_DAY') {
-        const latestIso = (this.visits && this.visits.length > 0 && this.visits[0]._iso)
-          ? this.visits[0]._iso
-          : (data[0]._iso || this.normalizeIsoDate(data[0].tanggal || data[0].dateIso || data[0].date));
+        const firstVisit = (this.visits && this.visits.length > 0) ? this.visits[0] : null;
+        const firstData = (data && data.length > 0) ? data[0] : null;
+        const latestIso = (firstVisit && firstVisit._iso)
+          ? firstVisit._iso
+          : (firstData ? (firstData._iso || this.normalizeIsoDate(firstData.tanggal || firstData.dateIso || firstData.date)) : null);
         if (latestIso) {
-          data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === latestIso);
+          data = data.filter(a => a && (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === latestIso);
         }
       } else if (dFilter === 'TODAY') {
         const now = new Date();
@@ -1247,18 +1261,19 @@ function dashboardApp() {
         const m = String(now.getMonth() + 1).padStart(2, '0');
         const d = String(now.getDate()).padStart(2, '0');
         const todayIso = `${y}-${m}-${d}`;
-        data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === todayIso);
+        data = data.filter(a => a && (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === todayIso);
       } else if (dFilter === 'YESTERDAY') {
         const yDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const y_y = yDate.getFullYear();
         const y_m = String(yDate.getMonth() + 1).padStart(2, '0');
         const y_d = String(yDate.getDate()).padStart(2, '0');
         const yIso = `${y_y}-${y_m}-${y_d}`;
-        data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === yIso);
+        data = data.filter(a => a && (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === yIso);
       } else if (dFilter === 'CUSTOM' && f.startDate && f.endDate) {
         const start = f.startDate;
         const end = f.endDate;
         data = data.filter(a => {
+          if (!a) return false;
           const aIso = a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date);
           return aIso && aIso >= start && aIso <= end;
         });
@@ -1266,6 +1281,7 @@ function dashboardApp() {
         const start = f.startDate;
         const end = f.endDate;
         data = data.filter(a => {
+          if (!a) return false;
           const aIso = a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date);
           return aIso && aIso >= start && aIso <= end;
         });
@@ -1273,6 +1289,7 @@ function dashboardApp() {
         const start = f.startDate;
         const end = f.endDate;
         data = data.filter(a => {
+          if (!a) return false;
           const aIso = a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date);
           return aIso && aIso >= start && aIso <= end;
         });
@@ -1280,7 +1297,7 @@ function dashboardApp() {
 
       // 2. Filter by Modul
       const selMod = f.modul || 'ALL';
-      if (selMod !== 'ALL') {
+      if (selMod && selMod !== 'ALL' && selMod.toUpperCase() !== 'NASIONAL') {
         if (selMod.length === 2) {
           data = data.filter(a => (a._officialModul || this.getCrewOfficialModul(a.namaCrew || a.kodeCrew, a.modul)).startsWith(selMod));
         } else {
@@ -1492,13 +1509,13 @@ function dashboardApp() {
         // Prioritas 1: managedMds
         const crews = this.getSpvManagedCrews();
         if (crews.length > 0) {
-          const crewsUpper = crews.map(c => c.toUpperCase().trim());
+          const crewsUpper = crews.map(c => (c || '').toUpperCase().trim()).filter(Boolean);
           data = data.filter(m => {
             const cName = (m.namaCrew || '').toUpperCase().trim();
             const cCode = (m.kodeCrew || '').toUpperCase().trim();
-            return crewsUpper.some(c => c === cName || c === cCode);
+            return crewsUpper.some(c => c === cName || c === cCode || (c && cName && (cName.includes(c) || c.includes(cName))));
           });
-        } else if (this.currentUser.modul && this.currentUser.modul !== 'ALL') {
+        } else if (this.currentUser.modul && this.currentUser.modul !== 'ALL' && this.currentUser.modul.toUpperCase() !== 'NASIONAL') {
           const spvMod = this.currentUser.modul.toUpperCase().trim();
           data = data.filter(m => {
             const mMod = (m._officialModul || (this.getCrewOfficialModul ? this.getCrewOfficialModul(m.namaCrew || m.kodeCrew, m.modul) : m.modul) || '').toUpperCase().trim();
@@ -1520,7 +1537,7 @@ function dashboardApp() {
       } else {
         // Hanya filter modul wilayah jika sedang memilih "Semua MDS"
         const selMod = f.appliedModul || 'ALL';
-        if (selMod !== 'ALL') {
+        if (selMod && selMod !== 'ALL' && selMod.toUpperCase() !== 'NASIONAL') {
           if (selMod.length === 2) {
             data = data.filter(m => (m._officialModul || this.getCrewOfficialModul(m.namaCrew || m.kodeCrew, m.modul)).startsWith(selMod));
           } else {
@@ -1592,7 +1609,7 @@ function dashboardApp() {
       }
 
       let dataset = this.masterToko;
-      if (selMod !== 'ALL') {
+      if (selMod && selMod !== 'ALL' && selMod.toUpperCase() !== 'NASIONAL') {
         if (selMod.length === 2) {
           dataset = dataset.filter(m => (m._officialModul || this.getCrewOfficialModul(m.namaCrew || m.kodeCrew, m.modul)).startsWith(selMod));
         } else {
@@ -1625,6 +1642,13 @@ function dashboardApp() {
           const mdsCrewUpper = mdsCrew.toUpperCase().trim();
           const single = list.filter(c => c.upper === mdsCrewUpper || c.upper.includes(mdsCrewUpper) || mdsCrewUpper.includes(c.upper));
           return single.length > 0 ? single : [{ name: mdsCrew, upper: mdsCrewUpper, modul: this.currentUser.modul || '' }];
+        }
+      } else if (this.currentUser && this.currentUser.role === 'SPV') {
+        const managed = this.getSpvManagedCrews();
+        if (managed.length > 0) {
+          const managedUpper = managed.map(c => (c || '').toUpperCase().trim()).filter(Boolean);
+          const filtered = list.filter(c => managedUpper.some(m => m === c.upper || c.upper.includes(m) || m.includes(c.upper)));
+          return filtered.length > 0 ? filtered : list;
         }
       }
       this._cachedCrewListByModul.set(selMod, list);
@@ -1989,8 +2013,9 @@ function dashboardApp() {
      * Computed Filtered Master User
      */
     get filteredMasterUser() {
-      let data = this.masterUser;
-      if (this.selectedModul !== 'ALL') {
+      let data = this.masterUser || [];
+      if (!data || data.length === 0) return [];
+      if (this.selectedModul && this.selectedModul !== 'ALL' && this.selectedModul.toUpperCase() !== 'NASIONAL') {
         if (this.selectedModul.length === 2) {
           data = data.filter(u => u.modul && u.modul.toUpperCase().startsWith(this.selectedModul));
         } else {
@@ -2369,7 +2394,7 @@ function dashboardApp() {
         }
 
         // Apply module filter if active
-        if (this.selectedModul !== 'ALL') {
+        if (this.selectedModul && this.selectedModul !== 'ALL' && this.selectedModul.toUpperCase() !== 'NASIONAL') {
           if (this.selectedModul.length === 2 && !modulName.toUpperCase().startsWith(this.selectedModul)) return;
           if (this.selectedModul.length > 2 && modulName.toUpperCase() !== this.selectedModul) return;
         }
@@ -2419,25 +2444,22 @@ function dashboardApp() {
           }];
         }
       }
-      const seen = new Set();
-      const list = [];
-      (this.masterUser || []).forEach(u => {
-        const rawName = (u.nama || u.NAMA || u.Nama || '').trim();
-        const rawId = (u.id || u.ID || u.kode || u.KODE || u.kodeCrew || '').trim();
-        if (!rawName) return;
-        const upper = rawName.toUpperCase();
-        if (!seen.has(upper)) {
-          seen.add(upper);
-          const mod = (u.modul || u.MODUL || (this.getCrewOfficialModul ? this.getCrewOfficialModul(rawName, '-') : '-')).trim().toUpperCase();
-          list.push({
-            namaCrew: rawName,
-            kodeCrew: rawId || '-',
-            modul: mod,
-            upper: upper
-          });
+      let list = (this.availableOfficialCrews || []).map(c => ({
+        namaCrew: c.name,
+        kodeCrew: c.code || '-',
+        modul: c.modul || '',
+        upper: (c.name || '').toUpperCase().trim()
+      }));
+
+      if (this.currentUser && this.currentUser.role === 'SPV') {
+        const managed = this.getSpvManagedCrews();
+        if (managed.length > 0) {
+          const managedUpper = managed.map(c => (c || '').toUpperCase().trim()).filter(Boolean);
+          const filtered = list.filter(c => managedUpper.some(m => m === c.upper || c.upper.includes(m) || m.includes(c.upper)));
+          return filtered.length > 0 ? filtered : list;
         }
-      });
-      return list.sort((a, b) => a.namaCrew.localeCompare(b.namaCrew));
+      }
+      return list;
     },
 
     /**
@@ -2450,7 +2472,7 @@ function dashboardApp() {
       const q = (this.crewDropdownSearch || '').toUpperCase().trim();
       let list = this.allAvailableCrews;
 
-      if (this.selectedModul && this.selectedModul !== 'ALL') {
+      if (this.selectedModul && this.selectedModul !== 'ALL' && this.selectedModul.toUpperCase() !== 'NASIONAL') {
         if (this.selectedModul.length === 2) {
           list = list.filter(c => c.modul.startsWith(this.selectedModul));
         } else {
@@ -3024,8 +3046,9 @@ function dashboardApp() {
      * Compute Real-time Comprehensive Attendance & Operational Anomaly Audit
      */
     get auditAnomalies() {
-      const activeVisits = this.filteredVisits || [];
-      const activeAbsensi = this.filteredAbsensi || [];
+      try {
+        const activeVisits = this.filteredVisits || [];
+        const activeAbsensi = this.filteredAbsensi || [];
 
       // Helper for clean name normalization (removes symbols, extra spaces, typos)
       const normKey = (str) => {
@@ -3326,6 +3349,31 @@ function dashboardApp() {
         alphaList: alphaList,
         totalAnomalies: absenNoVisit.length + visitNoAbsen.length + terlambatList.length + gpsIssueList.length
       };
+      } catch (err) {
+        console.warn("⚠️ auditAnomalies calculation fallback:", err);
+        return {
+          totalRoster: 0,
+          totalAbsenMasuk: 0,
+          totalActiveVisit: 0,
+          totalNormalVisit: 0,
+          totalTerlambat: 0,
+          totalTepatWaktu: 0,
+          totalIzinSakit: 0,
+          totalBelumAbsenMasuk: 0,
+          totalAlpha: 0,
+          absenNoVisit: [],
+          visitNoAbsen: [],
+          terlambatList: [],
+          lupaPulangList: [],
+          izinList: [],
+          sakitList: [],
+          cutiList: [],
+          visitDcList: [],
+          gpsIssueList: [],
+          alphaList: [],
+          totalAnomalies: 0
+        };
+      }
     },
 
     /**
@@ -4054,9 +4102,9 @@ function dashboardApp() {
       const dFilter = f.dateFilter || 'LATEST_DAY';
 
       if (dFilter === 'LATEST_DAY') {
-        const latestIso = (this.visits && this.visits.length > 0 && this.visits[0]._iso)
+        const latestIso = (this.visits && this.visits.length > 0 && this.visits[0] && this.visits[0]._iso)
           ? this.visits[0]._iso
-          : (this.absensi && this.absensi.length > 0 ? (this.absensi[0]._iso || this.normalizeIsoDate(this.absensi[0].tanggal)) : '');
+          : (this.absensi && this.absensi.length > 0 && this.absensi[0] ? (this.absensi[0]._iso || this.normalizeIsoDate(this.absensi[0].tanggal)) : '');
         return latestIso ? `Data Terkini (${this.formatIndoDate(latestIso)})` : 'Data Terkini';
       }
       if (dFilter === 'TODAY') {
@@ -4088,18 +4136,20 @@ function dashboardApp() {
       const dFilter = f.dateFilter || 'LATEST_DAY';
 
       if (dFilter === 'LATEST_DAY') {
-        const latestIso = data[0]._iso || this.normalizeIsoDate(data[0].dateIso || data[0].date || data[0].tanggal);
+        const first = data[0];
+        const latestIso = first ? (first._iso || this.normalizeIsoDate(first.dateIso || first.date || first.tanggal)) : null;
         if (latestIso) {
-          data = data.filter(v => (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === latestIso);
+          data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === latestIso);
         }
       } else if (dFilter === 'TODAY') {
         const todayIso = f.startDate || this.getTodayIso();
-        data = data.filter(v => (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === todayIso);
+        data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === todayIso);
       } else if (dFilter === 'YESTERDAY') {
         const yIso = f.startDate || this.getYesterdayIso();
-        data = data.filter(v => (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === yIso);
+        data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === yIso);
       } else if ((dFilter === 'CUSTOM' || dFilter === '7_DAYS' || dFilter === 'THIS_MONTH') && f.startDate && f.endDate) {
         data = data.filter(v => {
+          if (!v) return false;
           const vIso = v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
           return vIso && vIso >= f.startDate && vIso <= f.endDate;
         });
@@ -4119,20 +4169,23 @@ function dashboardApp() {
       const dFilter = f.dateFilter || 'LATEST_DAY';
 
       if (dFilter === 'LATEST_DAY') {
-        const latestIso = (this.visits && this.visits.length > 0 && this.visits[0]._iso)
-          ? this.visits[0]._iso
-          : (data[0]._iso || this.normalizeIsoDate(data[0].tanggal || data[0].dateIso || data[0].date));
+        const firstVisit = (this.visits && this.visits.length > 0) ? this.visits[0] : null;
+        const firstData = (data && data.length > 0) ? data[0] : null;
+        const latestIso = (firstVisit && firstVisit._iso)
+          ? firstVisit._iso
+          : (firstData ? (firstData._iso || this.normalizeIsoDate(firstData.tanggal || firstData.dateIso || firstData.date)) : null);
         if (latestIso) {
-          data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === latestIso);
+          data = data.filter(a => a && (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === latestIso);
         }
       } else if (dFilter === 'TODAY') {
         const todayIso = f.startDate || this.getTodayIso();
-        data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === todayIso);
+        data = data.filter(a => a && (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === todayIso);
       } else if (dFilter === 'YESTERDAY') {
         const yIso = f.startDate || this.getYesterdayIso();
-        data = data.filter(a => (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === yIso);
+        data = data.filter(a => a && (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === yIso);
       } else if ((dFilter === 'CUSTOM' || dFilter === '7_DAYS' || dFilter === 'THIS_MONTH') && f.startDate && f.endDate) {
         data = data.filter(a => {
+          if (!a) return false;
           const aIso = a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date);
           return aIso && aIso >= f.startDate && aIso <= f.endDate;
         });
@@ -6708,10 +6761,15 @@ function dashboardApp() {
             this.role = 'admin';
           } else if (user && user.role === 'SPV') {
             this.role = 'admin';
-            if (user.modul && user.modul !== 'ALL') {
+            const uMod = (user.modul || '').toUpperCase().trim();
+            if (uMod && uMod !== 'ALL' && uMod !== 'NASIONAL') {
               this.selectedModul = user.modul;
               if (this.filterAbsensi) this.filterAbsensi.modul = user.modul;
               if (this.filterJadwal) this.filterJadwal.modul = user.modul;
+            } else {
+              this.selectedModul = 'ALL';
+              if (this.filterAbsensi) this.filterAbsensi.modul = 'ALL';
+              if (this.filterJadwal) this.filterJadwal.modul = 'ALL';
             }
           } else if (user && user.role === 'MDS') {
             this.role = 'mds';
@@ -6737,6 +6795,22 @@ function dashboardApp() {
 
         this.rbacMatrix = await window.FirebaseAuthService.loadPermissionsMatrix(this.masterUser || []);
         this.populateRbacUsers();
+
+        // Selaraskan currentUser dengan data permissions_matrix terbaru dari cloud/storage
+        if (this.currentUser && this.currentUser.email && this.rbacMatrix) {
+          const freshMatrixUser = this.rbacMatrix[this.currentUser.email.toLowerCase()];
+          if (freshMatrixUser) {
+            if (Array.isArray(freshMatrixUser.managedMds) && freshMatrixUser.managedMds.length > 0) {
+              this.currentUser.managedMds = [...freshMatrixUser.managedMds];
+            }
+            if (freshMatrixUser.role) {
+              this.currentUser.role = freshMatrixUser.role;
+            }
+            if (freshMatrixUser.linkedCrew && !this.currentUser.linkedCrew) {
+              this.currentUser.linkedCrew = freshMatrixUser.linkedCrew;
+            }
+          }
+        }
       }
     },
 
@@ -6934,15 +7008,21 @@ function dashboardApp() {
 
       // Sort: Superadmin first, then Manager, then SPV, then MDS, alphabetically by name
       const rolePriority = { SUPERADMIN: 1, MANAGER: 2, SPV: 3, MDS: 4, CUSTOM: 5 };
-      return [...list].sort((a, b) => {
+      const sorted = [...list].sort((a, b) => {
         const pA = (a && a.role && rolePriority[a.role]) || 99;
         const pB = (b && b.role && rolePriority[b.role]) || 99;
         if (pA !== pB) return pA - pB;
         return String((a && a.name) || '').localeCompare(String((b && b.name) || ''));
       });
+
+      sorted.forEach((u, i) => {
+        if (!u.id) u.id = u.email || `usr_${i}`;
+      });
+
+      return sorted;
     },
 
-    changeUserRole(userId, newRole) {
+    async changeUserRole(userId, newRole) {
       const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
       if (!u) return;
       u.role = newRole;
@@ -6958,9 +7038,14 @@ function dashboardApp() {
         }
       }
       this.syncRbacMatrixFromUsers();
+      if (window.FirebaseAuthService) {
+        try {
+          await window.FirebaseAuthService.savePermissions(this.rbacMatrix);
+        } catch(e) { console.warn('Auto-save role notice:', e); }
+      }
     },
 
-    changeUserLinkedCrew(userId, crewName) {
+    async changeUserLinkedCrew(userId, crewName) {
       const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
       if (!u) return;
       u.linkedCrew = (crewName || '').trim();
@@ -6973,6 +7058,11 @@ function dashboardApp() {
         }
       }
       this.syncRbacMatrixFromUsers();
+      if (window.FirebaseAuthService) {
+        try {
+          await window.FirebaseAuthService.savePermissions(this.rbacMatrix);
+        } catch(e) { console.warn('Auto-save linkedCrew notice:', e); }
+      }
     },
 
     getCurrentMdsCrewName() {
@@ -6993,11 +7083,18 @@ function dashboardApp() {
     },
 
     get availableOfficialCrews() {
+      if (this._cachedOfficialCrews && this._cachedOfficialCrews.length > 0) {
+        return this._cachedOfficialCrews;
+      }
+      return this.computeOfficialCrews();
+    },
+
+    computeOfficialCrews() {
       const crewMap = new Map();
       const nonMdsKeywords = ['VACANT', 'OPEN', 'RESIGN', 'ADMIN', 'EMPTY', 'LEADER', 'CIMORY', 'TEST', '-'];
 
       // 1. Dari masterUser
-      if (Array.isArray(this.masterUser)) {
+      if (Array.isArray(this.masterUser) && this.masterUser.length > 0) {
         this.masterUser.forEach(u => {
           const rawName = (u.nama || u.NAMA || u.Nama || '').trim();
           const rawCode = (u.id || u.ID || u.kode || u.KODE || u.kodeCrew || '').trim();
@@ -7018,55 +7115,37 @@ function dashboardApp() {
         });
       }
 
-      // 2. Dari visits
-      if (Array.isArray(this.visits)) {
-        this.visits.forEach(v => {
-          const rawName = (v.namaCrew || '').trim();
-          const rawCode = (v.kodeCrew || '').trim();
-          const rawMod = (v._officialModul || v.modul || '').trim().toUpperCase();
-          if (!rawName) return;
-          const upper = rawName.toUpperCase();
-          if (nonMdsKeywords.some(kw => upper.includes(kw))) return;
+      // 2. Tambahan dari visits & absensi (hanya nama personil manusia, lewati kode toko/angka)
+      const extraCrews = new Set();
+      (this.visits || []).forEach(v => {
+        const n = (v.namaCrew || '').trim();
+        if (n && !/^\d/.test(n) && !nonMdsKeywords.some(kw => n.toUpperCase().includes(kw))) {
+          extraCrews.add(n);
+        }
+      });
+      (this.absensi || []).forEach(a => {
+        const n = (a.namaCrew || '').trim();
+        if (n && !/^\d/.test(n) && !nonMdsKeywords.some(kw => n.toUpperCase().includes(kw))) {
+          extraCrews.add(n);
+        }
+      });
 
-          if (!crewMap.has(upper)) {
-            const finalMod = rawMod || (this.getCrewOfficialModul ? this.getCrewOfficialModul(rawName, '-') : '') || '';
-            crewMap.set(upper, {
-              name: rawName,
-              code: rawCode,
-              modul: finalMod,
-              label: `${rawName}${rawCode ? ' (' + rawCode + ')' : ''}${finalMod ? ' - ' + finalMod : ''}`
-            });
-          } else {
-            const cur = crewMap.get(upper);
-            if (!cur.code && rawCode) cur.code = rawCode;
-            if (!cur.modul && rawMod) cur.modul = rawMod;
-          }
-        });
-      }
+      extraCrews.forEach(n => {
+        const upper = n.toUpperCase();
+        if (!crewMap.has(upper)) {
+          const mod = (this.getCrewOfficialModul ? this.getCrewOfficialModul(n, '-') : '') || '';
+          crewMap.set(upper, {
+            name: n,
+            code: '',
+            modul: mod,
+            label: `${n}${mod ? ' - ' + mod : ''}`
+          });
+        }
+      });
 
-      // 3. Dari absensi
-      if (Array.isArray(this.absensi)) {
-        this.absensi.forEach(a => {
-          const rawName = (a.namaCrew || '').trim();
-          const rawCode = (a.kodeCrew || '').trim();
-          const rawMod = (a._officialModul || a.modul || '').trim().toUpperCase();
-          if (!rawName) return;
-          const upper = rawName.toUpperCase();
-          if (nonMdsKeywords.some(kw => upper.includes(kw))) return;
-
-          if (!crewMap.has(upper)) {
-            const finalMod = rawMod || (this.getCrewOfficialModul ? this.getCrewOfficialModul(rawName, '-') : '') || '';
-            crewMap.set(upper, {
-              name: rawName,
-              code: rawCode,
-              modul: finalMod,
-              label: `${rawName}${rawCode ? ' (' + rawCode + ')' : ''}${finalMod ? ' - ' + finalMod : ''}`
-            });
-          }
-        });
-      }
-
-      return Array.from(crewMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const result = Array.from(crewMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+      this._cachedOfficialCrews = result;
+      return result;
     },
 
     toggleUserPerm(userId, permKey) {
@@ -7131,7 +7210,21 @@ function dashboardApp() {
      */
     getSpvManagedCrews() {
       if (!this.currentUser || this.currentUser.role !== 'SPV') return [];
-      return Array.isArray(this.currentUser.managedMds) ? this.currentUser.managedMds : [];
+      let list = Array.isArray(this.currentUser.managedMds) ? this.currentUser.managedMds : [];
+      if (list.length === 0 && this.currentUser.email) {
+        const u = (this.rbacUsers || []).find(x => x && x.email && x.email.toLowerCase() === this.currentUser.email.toLowerCase());
+        if (u && Array.isArray(u.managedMds) && u.managedMds.length > 0) {
+          list = u.managedMds;
+          this.currentUser.managedMds = list;
+        } else if (this.rbacMatrix && this.rbacMatrix[this.currentUser.email.toLowerCase()]) {
+          const mu = this.rbacMatrix[this.currentUser.email.toLowerCase()];
+          if (mu && Array.isArray(mu.managedMds) && mu.managedMds.length > 0) {
+            list = mu.managedMds;
+            this.currentUser.managedMds = list;
+          }
+        }
+      }
+      return list;
     },
 
     openSpvTeamConfig(userId) {
@@ -7154,6 +7247,20 @@ function dashboardApp() {
     toggleSpvMdsMember(crewName) {
       const u = this.activeSpvTeamUser;
       if (!u || !crewName) return;
+      const k = String(crewName).toUpperCase().trim();
+
+      // Cek apakah personil sudah dikelola oleh SPV lain
+      const otherSpv = (this.rbacUsers || []).find(spv =>
+        spv && spv.role === 'SPV' &&
+        (spv.id !== u.id && spv.email !== u.email) &&
+        Array.isArray(spv.managedMds) &&
+        spv.managedMds.some(m => String(m).toUpperCase().trim() === k)
+      );
+      if (otherSpv) {
+        alert(`Personil "${crewName}" sudah dipilih dan dikelola oleh ${otherSpv.name || otherSpv.email}!`);
+        return;
+      }
+
       if (!Array.isArray(u.managedMds)) u.managedMds = [];
       const idx = u.managedMds.indexOf(crewName);
       if (idx >= 0) {
@@ -7161,19 +7268,20 @@ function dashboardApp() {
       } else {
         u.managedMds.push(crewName);
       }
-      // Jika yang diedit adalah currentUser (SPV login), update currentUser langsung
-      if (this.currentUser && (this.currentUser.id === u.id || (this.currentUser.email && u.email && this.currentUser.email.toLowerCase() === u.email.toLowerCase()))) {
-        this.currentUser.managedMds = [...u.managedMds];
-      }
-      // Sync ke rbacUsers & rbacMatrix
-      const userIdx = (this.rbacUsers || []).findIndex(x => x && (x.id === u.id || (x.email && u.email && x.email.toLowerCase() === u.email.toLowerCase())));
-      if (userIdx >= 0) this.rbacUsers[userIdx] = { ...u };
-      this.syncRbacMatrixFromUsers();
     },
 
     async saveSpvTeam() {
       const u = this.activeSpvTeamUser;
-      if (u && this.currentUser && (this.currentUser.id === u.id || (this.currentUser.email && u.email && this.currentUser.email.toLowerCase() === u.email.toLowerCase()))) {
+      if (!u) return;
+
+      const userIdx = (this.rbacUsers || []).findIndex(x => x && (x.id === u.id || (x.email && u.email && x.email.toLowerCase() === u.email.toLowerCase())));
+      if (userIdx >= 0) {
+        this.rbacUsers[userIdx] = { ...this.rbacUsers[userIdx], managedMds: [...(u.managedMds || [])] };
+      } else {
+        this.rbacUsers.push({ ...u, managedMds: [...(u.managedMds || [])] });
+      }
+
+      if (this.currentUser && (this.currentUser.id === u.id || (this.currentUser.email && u.email && this.currentUser.email.toLowerCase() === u.email.toLowerCase()))) {
         this.currentUser.managedMds = [...(u.managedMds || [])];
         const rawSession = localStorage.getItem('cimory_portal_active_session');
         if (rawSession) {
@@ -7184,8 +7292,18 @@ function dashboardApp() {
           } catch(e) {}
         }
       }
+
+      this.syncRbacMatrixFromUsers();
       await this.saveRbacChanges();
       this.closeSpvTeamModal();
+
+      // Refresh marker map seketika agar langsung tampil
+      this.$nextTick(() => {
+        if (typeof MapService !== 'undefined' && MapService.renderVisitsOnMap) {
+          if (MapService.mapInstance) MapService.mapInstance.invalidateSize();
+          MapService.renderVisitsOnMap(this.filteredVisits);
+        }
+      });
     },
 
     /** MDS yang bisa di-assign ke SPV: gabungan dari master official crews + akun MDS RBAC */
@@ -7224,7 +7342,62 @@ function dashboardApp() {
         });
       }
 
-      let list = Array.from(map.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      // 3. Petakan MDS yang sudah dikelola oleh SPV (dari rbacUsers, rbacMatrix, dan currentUser)
+      const activeSpv = this.activeSpvTeamUser;
+      const assignedMap = new Map();
+      const registerSpvCrews = (spv) => {
+        if (!spv || spv.role !== 'SPV' || !Array.isArray(spv.managedMds)) return;
+        spv.managedMds.forEach(crew => {
+          if (!crew) return;
+          const k = String(crew).toUpperCase().trim();
+          if (!assignedMap.has(k)) {
+            assignedMap.set(k, {
+              id: spv.id || spv.email,
+              email: spv.email,
+              name: spv.name || spv.displayName || spv.email || 'SPV Lain'
+            });
+          }
+        });
+      };
+
+      (this.rbacUsers || []).forEach(registerSpvCrews);
+      if (this.rbacMatrix) Object.values(this.rbacMatrix).forEach(registerSpvCrews);
+      if (this.currentUser && this.currentUser.role === 'SPV') registerSpvCrews(this.currentUser);
+
+      const activeManagedMds = (activeSpv && Array.isArray(activeSpv.managedMds)) ? activeSpv.managedMds : [];
+
+      let list = Array.from(map.values()).map(item => {
+        const k = (item.linkedCrew || item.name || '').toUpperCase().trim();
+        const assignedSpv = assignedMap.get(k);
+        let assignedToOther = false;
+        let assignedSpvName = '';
+        const isCurrentTeam = activeManagedMds.some(m => String(m).toUpperCase().trim() === k);
+
+        if (assignedSpv) {
+          const isOwn = activeSpv && (
+            (activeSpv.id && assignedSpv.id && activeSpv.id === assignedSpv.id) ||
+            (activeSpv.email && assignedSpv.email && activeSpv.email.toLowerCase() === assignedSpv.email.toLowerCase())
+          );
+          if (!isOwn) {
+            assignedToOther = true;
+            assignedSpvName = assignedSpv.name;
+          }
+        }
+        return {
+          ...item,
+          isCurrentTeam,
+          assignedToOther,
+          assignedSpvName
+        };
+      }).sort((a, b) => {
+        // Anggota tim saat ini selalu di urutan paling atas
+        if (a.isCurrentTeam && !b.isCurrentTeam) return -1;
+        if (!a.isCurrentTeam && b.isCurrentTeam) return 1;
+        // Yang dikelola SPV lain ditaruh di bawah
+        if (a.assignedToOther && !b.assignedToOther) return 1;
+        if (!a.assignedToOther && b.assignedToOther) return -1;
+        return (a.name || '').localeCompare(b.name || '');
+      });
 
       // Filter pencarian
       if (this.spvMdsSearch && this.spvMdsSearch.trim()) {

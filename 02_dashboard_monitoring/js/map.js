@@ -60,23 +60,41 @@ const MapService = {
     if (acc.includes('ALFAMIDI')) return '#f59e0b'; // Amber
     if (acc.includes('ALFAMART')) return '#ef4444'; // Red
     if (acc.includes('LAWSON')) return '#6366f1'; // Indigo
+    if (acc.includes('SUPERINDO') || acc.includes('LION')) return '#10b981'; // Emerald
     if (acc.includes('DC') || acc.includes('GUDANG')) return '#8b5cf6'; // Purple
 
     if (prefix === 'LP') return '#10b981'; // Emerald
     if (prefix === 'LK') return '#0ea5e9'; // Sky
-    return '#6366f1'; // Indigo default
+    return '#dc2626'; // Vivid Red default (kontras tinggi, bukan putih)
   },
 
   /**
-   * Helper: Parse koordinat "lat, lng"
+   * Helper: Parse koordinat "lat, lng" (Mendukung link Google Maps, tanda petik, spasi, dsb)
    */
   parseCoordinates(coordStr) {
-    if (!coordStr || !coordStr.includes(',')) return null;
-    const parts = coordStr.split(',');
-    const lat = parseFloat(parts[0].trim());
-    const lng = parseFloat(parts[1].trim());
-    if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return null;
-    return [lat, lng];
+    if (!coordStr) return null;
+    const str = String(coordStr).trim();
+    // 1. Ekstrak pola desimal numerik lat, lng
+    const match = str.match(/([-+]?\d{1,3}\.\d+)\s*,\s*([-+]?\d{1,3}\.\d+)/);
+    if (match) {
+      const lat = parseFloat(match[1]);
+      const lng = parseFloat(match[2]);
+      if (!isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
+        return [lat, lng];
+      }
+    }
+    // 2. Fallback split koma sederhana
+    if (str.includes(',')) {
+      const parts = str.replace(/['"\s]/g, '').split(',');
+      if (parts.length >= 2) {
+        const lat = parseFloat(parts[0]);
+        const lng = parseFloat(parts[1]);
+        if (!isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
+          return [lat, lng];
+        }
+      }
+    }
+    return null;
   },
 
   /**
@@ -94,9 +112,14 @@ const MapService = {
     const cleanQ = (searchQuery || '').trim().toUpperCase();
     const isSearchActive = cleanQ.length > 0;
 
-    // Filter data yang memiliki koordinat valid
+    // Filter data yang memiliki koordinat valid (dengan fallback ke master toko jika koordinat visit kosong)
     const validVisits = visits.map(v => {
-      const coords = this.parseCoordinates(v.koordinat);
+      let rawCoord = v.koordinat || v.coords || v.latLng;
+      if (!rawCoord && v.kodeToko && window.app && Array.isArray(window.app.masterToko)) {
+        const st = window.app.masterToko.find(t => t && t.kodeToko === v.kodeToko && t.koordinat);
+        if (st) rawCoord = st.koordinat;
+      }
+      const coords = this.parseCoordinates(rawCoord);
       return coords ? { ...v, _latLng: coords } : null;
     }).filter(Boolean);
 
@@ -137,30 +160,30 @@ const MapService = {
         markerIcon = L.divIcon({
           className: 'numbered-pin-wrapper',
           html: `
-            <div class="numbered-route-pin" style="background-color: ${brandColor}; width: 24px; height: 24px; border-radius: 50% !important; display: flex !important; align-items: center !important; justify-content: center !important; color: #ffffff !important; font-weight: 800 !important; font-size: 11px !important; border: 2px solid #ffffff !important; box-shadow: 0 2px 8px rgba(0,0,0,0.45) !important; line-height: 1 !important;">
+            <div class="numbered-route-pin" style="background-color: ${brandColor}; width: 26px; height: 26px; border-radius: 50% !important; display: flex !important; align-items: center !important; justify-content: center !important; color: #ffffff !important; font-weight: 800 !important; font-size: 11px !important; border: 2.5px solid #ffffff !important; box-shadow: 0 3px 10px rgba(0,0,0,0.55) !important; line-height: 1 !important;">
               ${visitIndex}
             </div>
           `,
-          iconSize: [24, 24],
-          iconAnchor: [12, 12]
+          iconSize: [26, 26],
+          iconAnchor: [13, 13]
         });
       } else if (isSearchActive) {
         // Mode 2: Toko / MDS yang dicari - Highlight Pulse Pin
         markerIcon = L.divIcon({
           className: 'numbered-pin-wrapper',
           html: `
-            <div class="pulse-target-pin" style="background-color: ${brandColor}; width: 18px; height: 18px; border-radius: 50% !important; border: 3px solid #ffffff !important; box-shadow: 0 0 10px rgba(99, 102, 241, 0.7) !important;"></div>
+            <div class="pulse-target-pin" style="background-color: ${brandColor}; width: 20px; height: 20px; border-radius: 50% !important; border: 3px solid #ffffff !important; box-shadow: 0 0 12px ${brandColor} !important;"></div>
           `,
-          iconSize: [18, 18],
-          iconAnchor: [9, 9]
+          iconSize: [20, 20],
+          iconAnchor: [10, 10]
         });
       } else {
-        // Mode 3: Default Mode (Pencarian kosong) - Clean Normal Dot Pin
+        // Mode 3: Default Mode (Pencarian kosong) - Clean Normal Dot Pin Berwarna Terang
         markerIcon = L.divIcon({
           className: 'numbered-pin-wrapper',
-          html: `<div class="custom-map-pin" style="background-color: ${brandColor}; width: 12px; height: 12px; border-radius: 50% !important; border: 2px solid white !important; box-shadow: 0 0 8px rgba(0,0,0,0.35) !important;"></div>`,
-          iconSize: [12, 12],
-          iconAnchor: [6, 6]
+          html: `<div class="custom-map-pin" style="background-color: ${brandColor}; width: 16px; height: 16px; border-radius: 50% !important; border: 2.5px solid #ffffff !important; box-shadow: 0 2px 8px rgba(0,0,0,0.5) !important;"></div>`,
+          iconSize: [16, 16],
+          iconAnchor: [8, 8]
         });
       }
 

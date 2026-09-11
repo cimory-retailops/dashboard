@@ -3,6 +3,9 @@
 
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Cimory MDS Retail Ops - Central Dashboard</title>
   <meta name="description" content="Dashboard Monitoring Operasional Terpadu Modul DK, LK, dan LP secara Real-time.">
 
@@ -136,7 +139,7 @@
   <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
 
   <!-- Modular Stylesheet -->
-  <link rel="stylesheet" href="./css/dashboard.css">
+  <link rel="stylesheet" href="./css/dashboard.css?v=20260911_1">
   
   <style>
     [x-cloak] { display: none !important; }
@@ -4774,7 +4777,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800/80">
-              <template x-for="(u, idx) in filteredRbacUsers" :key="(u && (u.email || u.id) || ('u_' + idx))">
+              <template x-for="(u, idx) in filteredRbacUsers">
                 <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
                   :class="currentUser && u && (currentUser.id === u.id || currentUser.email === u.email) ? 'bg-purple-50/30 dark:bg-purple-950/15' : ''">
                   
@@ -4802,7 +4805,7 @@
                   <!-- Modul -->
                   <td class="py-3 px-3">
                     <span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-                      x-text="u.modul"></span>
+                      x-text="u ? (u.modul || '-') : '-'"></span>
                   </td>
 
                   <!-- Role Preset Dropdown -->
@@ -4830,7 +4833,7 @@
                             @change="changeUserLinkedCrew(u ? (u.id || u.email) : '', $event.target.value)"
                             class="text-[10.5px] font-semibold px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-purple-500 focus:outline-none cursor-pointer max-w-[220px]">
                             <option value="">-- Bebas / Belum Terikat --</option>
-                            <template x-for="c in availableOfficialCrews" :key="c.name">
+                            <template x-for="c in availableOfficialCrews">
                               <option :value="c.name" x-text="c.label" :selected="u && u.linkedCrew === c.name"></option>
                             </template>
                           </select>
@@ -4996,24 +4999,38 @@
             <p class="text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Pilih MDS untuk tim ini:</p>
             <span class="text-[10px] text-slate-400" x-text="assignableMdsList.length + ' MDS ditemukan'"></span>
           </div>
-          <template x-for="mds in assignableMdsList" :key="mds.id">
-            <label class="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/50 hover:bg-sky-50 dark:hover:bg-sky-950/20 hover:border-sky-200 dark:hover:border-sky-800/50 transition-colors cursor-pointer">
+          <template x-for="mds in assignableMdsList">
+            <label class="flex items-center justify-between p-3 rounded-xl border transition-all"
+              :class="mds.assignedToOther ? 'bg-slate-100/70 dark:bg-slate-800/30 border-slate-200/50 dark:border-slate-800 opacity-60 cursor-not-allowed' : (mds.isCurrentTeam ? 'bg-sky-50 dark:bg-sky-950/30 border-sky-300 dark:border-sky-700/60 shadow-xs' : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200/70 dark:border-slate-700/50 hover:bg-slate-100/80 dark:hover:bg-slate-800 cursor-pointer')">
               <div class="flex items-center space-x-3">
-                <div class="w-7 h-7 rounded-lg bg-emerald-500/15 flex items-center justify-center text-emerald-500 flex-shrink-0">
+                <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                  :class="mds.assignedToOther ? 'bg-slate-200 dark:bg-slate-700 text-slate-400' : (mds.isCurrentTeam ? 'bg-sky-500/20 text-sky-600 dark:text-sky-400' : 'bg-emerald-500/15 text-emerald-500')">
                   <i data-lucide="user" class="w-3.5 h-3.5"></i>
                 </div>
                 <div>
                   <div class="font-bold text-xs text-slate-900 dark:text-white" x-text="mds.name"></div>
-                  <div class="text-[10px] text-slate-400 flex items-center gap-1">
+                  <div class="text-[10px] text-slate-400 flex items-center gap-1.5 flex-wrap">
                     <span class="px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold" x-text="mds.linkedCrew"></span>
                     <span x-text="mds.modul && mds.modul !== 'ALL' ? '· ' + mds.modul : ''"></span>
+                    <template x-if="mds.isCurrentTeam">
+                      <span class="px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-400 font-extrabold border border-sky-500/30 text-[9px]">
+                        ✓ Anggota Tim
+                      </span>
+                    </template>
+                    <template x-if="mds.assignedToOther">
+                      <span class="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold border border-amber-500/30 text-[9px]">
+                        🔒 Dikelola: <span x-text="mds.assignedSpvName"></span>
+                      </span>
+                    </template>
                   </div>
                 </div>
               </div>
               <input type="checkbox"
+                :disabled="mds.assignedToOther"
                 :checked="activeSpvTeamUser && Array.isArray(activeSpvTeamUser.managedMds) && activeSpvTeamUser.managedMds.includes(mds.linkedCrew)"
                 @change="toggleSpvMdsMember(mds.linkedCrew)"
-                class="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 cursor-pointer">
+                class="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                :class="mds.assignedToOther ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'">
             </label>
           </template>
         </div>
@@ -6174,15 +6191,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <script src="./js/firebase-config.js?v=20260910_5"></script>
+  <script src="./js/firebase-config.js?v=20260911_2"></script>
 
   <!-- Modular Scripts with Cache-Buster -->
   <script src="./js/config.js?v=20260910_4"></script>
   <script src="./js/db.js?v=20260910_4"></script>
   <script src="./js/api.js?v=20260910_4"></script>
   <script src="./js/charts.js?v=20260910_4"></script>
-  <script src="./js/map.js?v=20260910_4"></script>
-  <script src="./js/app.js?v=20260910_4"></script>
+  <script src="./js/map.js?v=20260911_2"></script>
+  <script src="./js/app.js?v=20260911_12"></script>
 
   <!-- Failsafe preloader auto-dismiss -->
   <script>

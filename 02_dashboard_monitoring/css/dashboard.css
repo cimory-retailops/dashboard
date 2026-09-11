@@ -206,9 +206,10 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   background: #1e293b;
 }
 
-/* Reset Leaflet Div Icon Bawaan agar tidak kotak */
+/* Reset Leaflet Div Icon Bawaan agar tidak kotak putih */
 .leaflet-div-icon,
-.custom-map-pin-container {
+.custom-map-pin-container,
+.numbered-pin-wrapper {
   background: transparent !important;
   border: none !important;
 }
@@ -216,12 +217,11 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 /* Leaflet Enhanced Pin Styling & Route Badges */
 .custom-map-pin {
   transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  background: transparent !important;
-  border: none !important;
+  display: block;
 }
 
 .custom-map-pin:hover {
-  transform: scale(1.25);
+  transform: scale(1.3);
   z-index: 1000 !important;
 }
 
