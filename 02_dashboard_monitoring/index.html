@@ -21,7 +21,9 @@
           return;
         }
         const user = JSON.parse(raw);
-        const isSuperAdmin = user.role === 'SUPERADMIN' || user.isSuperAdmin === true;
+        const userRole = (user.role || '').toUpperCase();
+        const isSuperAdmin = userRole === 'SUPERADMIN' || user.isSuperAdmin === true;
+        const isPrivileged = isSuperAdmin || userRole === 'MANAGER' || userRole === 'SPV';
 
         if (!isSuperAdmin) {
           if (user.status !== 'APPROVED') {
@@ -29,17 +31,53 @@
             window.location.replace('../index.html');
             return;
           }
-          if (!user.permissions || !user.permissions[MODULE_KEY]) {
-            alert('🔒 Akses Ditolak: Akun Anda tidak memiliki izin untuk membuka ' + MODULE_TITLE + '.\nHubungi Atasan untuk mendapatkan akses.');
-            window.location.replace('../index.html');
-            return;
+
+          if (!isPrivileged) {
+            let hasAccess = false;
+            if (user.permissions && user.permissions[MODULE_KEY]) {
+              hasAccess = true;
+            } else {
+              try {
+                const rawMatrix = localStorage.getItem('cimory_rbac_matrix');
+                if (rawMatrix && user.email) {
+                  const m = JSON.parse(rawMatrix);
+                  const entry = m[user.email.toLowerCase()];
+                  if (entry && entry.permissions) {
+                    const p = entry.permissions;
+                    hasAccess = !!(p.kunjungan || p.absensi || p.jadwal || p.tokonasional || p.laporan || p.evaluasi);
+                  }
+                }
+              } catch(e) {}
+            }
+            if (!hasAccess) {
+              alert('🔒 Akses Ditolak: Akun Anda tidak memiliki izin untuk membuka ' + MODULE_TITLE + '.\nHubungi Atasan untuk mendapatkan akses.');
+              window.location.replace('../index.html');
+              return;
+            }
           }
         }
         window.PORTAL_ACTIVE_USER = user;
         window.canAccessPortalModule = function(key) {
           if (!window.PORTAL_ACTIVE_USER) return false;
-          if (window.PORTAL_ACTIVE_USER.isSuperAdmin || window.PORTAL_ACTIVE_USER.role === 'SUPERADMIN') return true;
-          return !!(window.PORTAL_ACTIVE_USER.permissions && window.PORTAL_ACTIVE_USER.permissions[key]);
+          const u = window.PORTAL_ACTIVE_USER;
+          const r = (u.role || '').toUpperCase();
+          if (u.isSuperAdmin || r === 'SUPERADMIN' || r === 'MANAGER' || r === 'SPV') return true;
+          if (u.permissions && u.permissions[key]) return true;
+          try {
+            const rawM = localStorage.getItem('cimory_rbac_matrix');
+            if (rawM && u.email) {
+              const m = JSON.parse(rawM);
+              const entry = m[u.email.toLowerCase()];
+              if (entry && entry.permissions) {
+                const p = entry.permissions;
+                if (key === 'absen') return true;
+                if (key === 'dashboard') return !!(p.kunjungan || p.absensi || p.jadwal || p.tokonasional || p.laporan || p.evaluasi);
+                if (key === 'galeri') return !!(p.laporan || p.kunjungan);
+                if (key === 'simulasi') return !!(p.jadwal || p.kunjungan);
+              }
+            }
+          } catch(e) {}
+          return false;
         };
       } catch (err) {
         window.location.replace('../index.html');

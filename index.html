@@ -1672,6 +1672,30 @@
           }
 
           // Approved / Active
+          const uRole = (user.role || 'MDS').toUpperCase();
+          const isPriv = uRole === 'SUPERADMIN' || uRole === 'MANAGER' || uRole === 'SPV';
+          user.permissions = {
+            absen: true,
+            dashboard: isPriv,
+            galeri: isPriv,
+            simulasi: isPriv
+          };
+          if (!isPriv) {
+            try {
+              const rbacRaw = localStorage.getItem('cimory_rbac_matrix');
+              if (rbacRaw && user.email) {
+                const rbac = JSON.parse(rbacRaw);
+                const entry = rbac[user.email.toLowerCase()];
+                if (entry && entry.permissions) {
+                  const p = entry.permissions;
+                  user.permissions.dashboard = !!(p.kunjungan || p.absensi || p.jadwal || p.tokonasional || p.laporan || p.evaluasi);
+                  user.permissions.galeri = !!(p.laporan || p.kunjungan);
+                  user.permissions.simulasi = !!(p.jadwal || p.kunjungan);
+                }
+              }
+            } catch(e) {}
+          }
+
           this.currentUser = user;
           localStorage.setItem('cimory_portal_active_session', JSON.stringify(user));
           this.authSuccess = 'Login berhasil! Selamat datang, ' + user.name;

@@ -21,7 +21,8 @@
           return;
         }
         const user = JSON.parse(raw);
-        const isSuperAdmin = user.role === 'SUPERADMIN' || user.isSuperAdmin === true;
+        const userRole = (user.role || '').toUpperCase();
+        const isSuperAdmin = userRole === 'SUPERADMIN' || user.isSuperAdmin === true;
 
         if (!isSuperAdmin) {
           if (user.status !== 'APPROVED') {
@@ -29,17 +30,11 @@
             window.location.replace('../index.html');
             return;
           }
-          if (!user.permissions || !user.permissions[MODULE_KEY]) {
-            alert('🔒 Akses Ditolak: Akun Anda tidak memiliki izin untuk membuka ' + MODULE_TITLE + '.\nHubungi Atasan untuk mendapatkan akses.');
-            window.location.replace('../index.html');
-            return;
-          }
         }
         window.PORTAL_ACTIVE_USER = user;
         window.canAccessPortalModule = function(key) {
           if (!window.PORTAL_ACTIVE_USER) return false;
-          if (window.PORTAL_ACTIVE_USER.isSuperAdmin || window.PORTAL_ACTIVE_USER.role === 'SUPERADMIN') return true;
-          return !!(window.PORTAL_ACTIVE_USER.permissions && window.PORTAL_ACTIVE_USER.permissions[key]);
+          return true;
         };
       } catch (err) {
         window.location.replace('../index.html');
