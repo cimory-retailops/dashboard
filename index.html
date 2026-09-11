@@ -1373,10 +1373,14 @@
         usersList: [],
 
         // Initialize
-        init() {
+        async init() {
           this.loadUsersFromStorage();
           this.checkActiveSession();
-          this.syncWithFirestore();
+          await this.syncWithFirestore();
+          this.checkActiveSession();
+          if (this.currentUser && this.currentUser.status === 'APPROVED' && this.authMode === 'pending') {
+            this.authMode = 'none';
+          }
           // Init peta home location setelah DOM siap (delay agar Leaflet & layout sudah ready)
           setTimeout(() => this.initHomeMap(), 500);
         },
@@ -1572,25 +1576,51 @@
           const ident = this.loginForm.identifier.trim().toLowerCase();
           const pass = this.loginForm.password;
 
-          let user = this.usersList.find(u =>
+          // 1. Prioritas Utama: Tarik status terbaru langsung dari Cloud Firestore
+          let cloudUser = null;
+          if (fbDb && ident) {
+            try {
+              // Cari langsung by ID atau Email di portal_users Firestore
+              const directDoc = await fbDb.collection('portal_users').doc(ident).get();
+              if (directDoc.exists) {
+                cloudUser = { id: directDoc.id, ...directDoc.data() };
+              } else {
+                const q = await fbDb.collection('portal_users').where('email', '==', ident).limit(1).get();
+                if (!q.empty) {
+                  cloudUser = { id: q.docs[0].id, ...q.docs[0].data() };
+                }
+              }
+              if (cloudUser) {
+                // Perbarui ke local usersList
+                const idx = this.usersList.findIndex(u => u.id === cloudUser.id || (u.email && u.email.toLowerCase() === ident));
+                if (idx !== -1) {
+                  this.usersList[idx] = cloudUser;
+                } else {
+                  this.usersList.unshift(cloudUser);
+                }
+                this.saveUsersToStorage();
+              }
+            } catch (fsErr) {
+              console.warn('Direct Firestore user check note:', fsErr);
+            }
+          }
+
+          let user = cloudUser || this.usersList.find(u =>
             ((u.email && u.email.toLowerCase() === ident) || (u.name && u.name.toLowerCase() === ident) || (u.id && u.id.toLowerCase() === ident))
           );
 
           // Jika user tidak ditemukan di portal_users, cek di cimory_rbac_matrix
-          // Ini terjadi jika user ditambahkan dari RBAC panel dashboard (bukan via registrasi portal)
           if (!user) {
             try {
               const rbacRaw = localStorage.getItem('cimory_rbac_matrix');
               if (rbacRaw) {
                 const rbac = JSON.parse(rbacRaw);
-                // Cari berdasarkan email atau nama
                 for (const key of Object.keys(rbac)) {
                   const entry = rbac[key];
                   if (!entry) continue;
                   const entryEmail = (entry.email || key).toLowerCase();
                   const entryName = (entry.name || '').toLowerCase();
                   if (entryEmail === ident || entryName === ident) {
-                    // Buat user baru dari RBAC entry dan tambahkan ke portal users
                     const role = entry.role || 'MDS';
                     user = {
                       id: entry.id || `RBAC_${key.replace(/[^a-zA-Z0-9]/g, '_')}`,
@@ -1599,17 +1629,14 @@
                       role: role,
                       moduleOrArea: entry.modul || 'ALL',
                       jabatan: entry.jabatan || (role === 'SPV' ? 'Supervisor' : (role === 'MANAGER' ? 'Manager' : 'Merchandiser')),
-                      status: 'APPROVED', // User dari RBAC panel sudah dianggap APPROVED
+                      status: 'APPROVED',
                       isSuperAdmin: role === 'SUPERADMIN',
                       permissions: entry.permissions || {},
                       linkedCrew: entry.linkedCrew || '',
-                      managedMds: entry.managedMds || [],
-                      // Password belum di-set (akan diverifikasi via Firebase Auth)
+                      managedMds: entry.managedMds || []
                     };
-                    // Tambahkan ke usersList agar ke depannya langsung ketemu
                     this.usersList.unshift(user);
                     this.saveUsersToStorage();
-                    console.log('ℹ️ User dari RBAC matrix di-auto-import ke portal_users:', user.name);
                     break;
                   }
                 }
@@ -1625,7 +1652,6 @@
               try {
                 const cred = await fbAuth.signInWithEmailAndPassword(ident, pass);
                 if (cred && cred.user) {
-                  // User ada di Firebase tapi belum di portal — buat entry minimal
                   user = {
                     id: 'FB_' + cred.user.uid.substring(0, 8),
                     name: cred.user.displayName || ident.split('@')[0],
@@ -1634,29 +1660,27 @@
                     moduleOrArea: 'ALL',
                     status: 'APPROVED',
                     isSuperAdmin: false,
-                    permissions: { absen: true, dashboard: true, galeri: false, simulasi: false }
+                    permissions: { absen: true, dashboard: true, galeri: true, simulasi: true }
                   };
                   this.currentUser = user;
                   localStorage.setItem('cimory_portal_active_session', JSON.stringify(user));
-                  this.authSuccess = 'Login berhasil! Selamat datang, ' + user.name;
+                  this.authSuccess = 'Login berhasil! Mengarahkan ke Dashboard...';
                   this.authMode = 'none';
+                  setTimeout(() => {
+                    window.location.href = './02_dashboard_monitoring/index.html';
+                  }, 400);
                   return;
                 }
-              } catch(fbErr) {
-                // Firebase login gagal, lanjut ke error
-              }
+              } catch(fbErr) {}
             }
             this.authError = 'Pengguna tidak ditemukan. Silakan periksa email/username atau daftar baru.';
             return;
           }
 
           if (user.password && user.password !== pass) {
-            // Jika ada password di data lokal tapi tidak cocok, coba verifikasi via Firebase Auth
             if (fbAuth && user.email) {
               try {
                 await fbAuth.signInWithEmailAndPassword(user.email, pass);
-                console.log("🔥 Firebase Auth login berhasil (override password lokal):", user.email);
-                // Update password lokal agar sinkron
                 user.password = pass;
                 this.saveUsersToStorage();
               } catch (authErr) {
@@ -1669,14 +1693,10 @@
             }
           }
 
-          // Coba login ke Firebase Authentication jika aktif
           if (fbAuth && user.email && !user.password) {
             try {
               await fbAuth.signInWithEmailAndPassword(user.email, pass);
-              console.log("🔥 Firebase Auth login berhasil:", user.email);
-            } catch (authErr) {
-              console.warn("Firebase Auth signIn note:", authErr.code, authErr.message);
-            }
+            } catch (authErr) {}
           }
 
           if (user.status === 'PENDING') {
@@ -2024,12 +2044,36 @@
           }
         },
 
-        refreshUserStatus() {
-          this.syncWithFirestore();
+        async refreshUserStatus() {
+          this.authError = '';
+          if (fbDb && this.currentUser) {
+            try {
+              const ident = (this.currentUser.email || this.currentUser.id || '').toLowerCase();
+              let docSnap = null;
+              if (this.currentUser.id) {
+                const directDoc = await fbDb.collection('portal_users').doc(this.currentUser.id).get();
+                if (directDoc.exists) docSnap = directDoc;
+              }
+              if (!docSnap && this.currentUser.email) {
+                const q = await fbDb.collection('portal_users').where('email', '==', this.currentUser.email).limit(1).get();
+                if (!q.empty) docSnap = q.docs[0];
+              }
+              if (docSnap && docSnap.exists) {
+                const fresh = docSnap.data();
+                this.currentUser = { id: docSnap.id, ...fresh };
+                localStorage.setItem('cimory_portal_active_session', JSON.stringify(this.currentUser));
+              }
+            } catch (e) {
+              console.warn(e);
+            }
+          }
+          await this.syncWithFirestore();
           this.loadUsersFromStorage();
           this.checkActiveSession();
-          if (this.currentUser && this.currentUser.status === 'APPROVED') {
-            alert('Selamat! Akun Anda telah disetujui. Anda sekarang dapat mengakses modul yang diizinkan.');
+          if (this.currentUser && (this.currentUser.status === 'APPROVED' || this.currentUser.role === 'SUPERADMIN' || this.currentUser.isSuperAdmin)) {
+            alert('🎉 Selamat! Akun Anda telah disetujui.\nAnda akan langsung diarahkan ke Dashboard Monitoring.');
+            this.authMode = 'none';
+            window.location.href = './02_dashboard_monitoring/index.html';
           } else {
             alert('Status akun Anda masih Menunggu Persetujuan dari Atasan Terkait.');
           }

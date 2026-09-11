@@ -407,10 +407,7 @@ function dashboardApp() {
         this.loadArchiveMonths();
       }
 
-      // Initialize Master Database 49k Cache from IndexedDB in background
-      this.initStores49k();
-
-      // Setup Lucide icons & Watch activeTab for Evaluasi MTD chart
+      // Setup Lucide icons & Watch activeTab for Evaluasi MTD chart and Lazy Master 49k
       this.$nextTick(() => {
         if (window.lucide) lucide.createIcons();
       });
@@ -424,6 +421,10 @@ function dashboardApp() {
                 if (window.lucide) lucide.createIcons();
               }, 80);
             });
+          } else if (newTab === 'tokonasional') {
+            if (!this.stores49k || this.stores49k.length === 0) {
+              this.initStores49k();
+            }
           }
         });
       }
@@ -1687,7 +1688,7 @@ function dashboardApp() {
           const cached = await DashboardDB.get('stores_49k', true);
           const lastSync = await DashboardDB.get('stores_49k_synced_at', true);
           if (cached && Array.isArray(cached) && cached.length > 0) {
-            this.stores49k = cached;
+            this.stores49k = Object.freeze(cached);
             this.stores49kLastSynced = lastSync;
             return;
           }
@@ -1710,7 +1711,7 @@ function dashboardApp() {
           console.log('[Sync 49k]:', msg);
         });
         if (data && data.length > 0) {
-          this.stores49k = data;
+          this.stores49k = Object.freeze(data);
           this.stores49kLastSynced = Date.now();
         }
       } catch (err) {
@@ -2075,63 +2076,84 @@ function dashboardApp() {
       const weekDayRaw = targetDate.getDay(); // 0 = Minggu, 1 = Senin, ..., 5 = Jumat, 6 = Sabtu
       const weekDay = weekDayRaw === 0 ? 7 : weekDayRaw; // 1 = Senin .. 7 = Minggu
       
+      // Analyze routes assigned to this crew to determine their schedule type
+      const routeArray = routesSet ? Array.from(routesSet) : [];
+      const numbers = [];
+      let hasDayName = false;
+      const dayWords = ['SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU', 'MINGGU', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+      
+      routeArray.forEach(r => {
+        const str = String(r).toUpperCase().trim();
+        const matches = str.match(/\d+/g);
+        if (matches) matches.forEach(m => numbers.push(parseInt(m, 10)));
+        if (dayWords.some(d => str.includes(d))) hasDayName = true;
+      });
+
+      const maxNum = numbers.length > 0 ? Math.max(...numbers) : 0;
+      const isStrictWeekly = routeArray.length > 0 && maxNum > 0 && maxNum <= 7 && !numbers.some(n => n > 7);
+      const isStrictDayName = routeArray.length > 0 && hasDayName && maxNum === 0;
+      const isStrictCalendar = routeArray.length > 0 && maxNum > 7;
+
       const targetSet = new Set();
       
-      // 1. Calendar Day variations (1..31)
-      const calStr = String(calDay);
-      const calPad = calStr.padStart(2, '0');
-      targetSet.add(calStr);
-      targetSet.add(calPad);
-      targetSet.add('R' + calStr);
-      targetSet.add('R' + calPad);
-      targetSet.add('RUTE ' + calStr);
-      targetSet.add('RUTE ' + calPad);
-      targetSet.add('RUTE-' + calStr);
-      targetSet.add('RUTE-' + calPad);
-      targetSet.add('TGL ' + calStr);
-      targetSet.add('TGL ' + calPad);
-      targetSet.add('HARI ' + calStr);
-      targetSet.add('HARI ' + calPad);
-      targetSet.add('H' + calStr);
-      targetSet.add('H-' + calStr);
+      // 1. Calendar Day variations (1..31) - apply if calendar schedule or default
+      if (!isStrictWeekly && !isStrictDayName) {
+        const calStr = String(calDay);
+        const calPad = calStr.padStart(2, '0');
+        targetSet.add(calStr);
+        targetSet.add(calPad);
+        targetSet.add('R' + calStr);
+        targetSet.add('R' + calPad);
+        targetSet.add('RUTE ' + calStr);
+        targetSet.add('RUTE ' + calPad);
+        targetSet.add('RUTE-' + calStr);
+        targetSet.add('RUTE-' + calPad);
+        targetSet.add('TGL ' + calStr);
+        targetSet.add('TGL ' + calPad);
+        targetSet.add('HARI ' + calStr);
+        targetSet.add('HARI ' + calPad);
+        targetSet.add('H' + calStr);
+        targetSet.add('H-' + calStr);
+      }
 
-      // 2. Day of Week / Weekly Cycle variations (1..6 / 1..7: Senin=1, Selasa=2, ..., Jumat=5, Sabtu=6)
-      const weekStr = String(weekDay);
-      const weekPad = weekStr.padStart(2, '0');
-      targetSet.add(weekStr);
-      targetSet.add(weekPad);
-      targetSet.add('R' + weekStr);
-      targetSet.add('R' + weekPad);
-      targetSet.add('RUTE ' + weekStr);
-      targetSet.add('RUTE ' + weekPad);
-      targetSet.add('RUTE-' + weekStr);
-      targetSet.add('RUTE-' + weekPad);
-      targetSet.add('H' + weekStr);
-      targetSet.add('H-' + weekStr);
-      targetSet.add('HARI ' + weekStr);
-      targetSet.add('HARI-' + weekStr);
+      // 2. Day of Week / Weekly Cycle variations (1..6 / 1..7 / Day Names) - apply if weekly or day-name schedule or default
+      if (!isStrictCalendar) {
+        const weekStr = String(weekDay);
+        const weekPad = weekStr.padStart(2, '0');
+        targetSet.add(weekStr);
+        targetSet.add(weekPad);
+        targetSet.add('R' + weekStr);
+        targetSet.add('R' + weekPad);
+        targetSet.add('RUTE ' + weekStr);
+        targetSet.add('RUTE ' + weekPad);
+        targetSet.add('RUTE-' + weekStr);
+        targetSet.add('RUTE-' + weekPad);
+        targetSet.add('H' + weekStr);
+        targetSet.add('H-' + weekStr);
+        targetSet.add('HARI ' + weekStr);
+        targetSet.add('HARI-' + weekStr);
 
-      // 3. Day Name variations (Indonesian & English)
-      const idDays = ['MINGGU', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
-      const enDays = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-      const idShort = ['MIN', 'SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB'];
-      const enShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+        const idDays = ['MINGGU', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
+        const enDays = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+        const idShort = ['MIN', 'SEN', 'SEL', 'RAB', 'KAM', 'JUM', 'SAB'];
+        const enShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
-      const todayId = idDays[weekDayRaw];
-      const todayEn = enDays[weekDayRaw];
-      const todayIdShort = idShort[weekDayRaw];
-      const todayEnShort = enShort[weekDayRaw];
+        const todayId = idDays[weekDayRaw];
+        const todayEn = enDays[weekDayRaw];
+        const todayIdShort = idShort[weekDayRaw];
+        const todayEnShort = enShort[weekDayRaw];
 
-      [todayId, todayEn, todayIdShort, todayEnShort].forEach(d => {
-        if (d) {
-          targetSet.add(d);
-          targetSet.add('RUTE ' + d);
-          targetSet.add('RUTE-' + d);
-          targetSet.add('R ' + d);
-          targetSet.add('R-' + d);
-          targetSet.add('HARI ' + d);
-        }
-      });
+        [todayId, todayEn, todayIdShort, todayEnShort].forEach(d => {
+          if (d) {
+            targetSet.add(d);
+            targetSet.add('RUTE ' + d);
+            targetSet.add('RUTE-' + d);
+            targetSet.add('R ' + d);
+            targetSet.add('R-' + d);
+            targetSet.add('HARI ' + d);
+          }
+        });
+      }
 
       return targetSet;
     },
