@@ -955,91 +955,288 @@
                 class="text-indigo-600 dark:text-indigo-400" x-text="`${selectedMds.maxDistanceKm} km`"></b>
             </div>
           </div>
+
+          <!-- Data Justification for Vacant / Proposed New Hires -->
+          <template x-if="selectedMds.isVirtual && selectedMds.vacantReason">
+            <div class="mt-2 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-200 text-[11px] flex items-start gap-2">
+              <i data-lucide="info" class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5"></i>
+              <div>
+                <span class="font-extrabold uppercase tracking-wide text-[9.5px] block text-amber-600 dark:text-amber-400">Justifikasi Data Usulan Rekrut (Vacant):</span>
+                <span x-text="selectedMds.vacantReason"></span>
+              </div>
+            </div>
+          </template>
         </template>
       </div>
 
-      <!-- 2. DAY SELECTOR & STEPPER BAR (FULL WIDTH) -->
-      <div
-        class="glass-card rounded-2xl p-3 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <!-- 2. GOOGLE EARTH STYLE MAP & PLACES TREE CONTROLLER -->
+      <div class="glass-card rounded-2xl p-3 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3">
 
-        <!-- Left: Day Picker with Quick Navigation Stepper -->
-        <div class="flex items-center gap-2">
+        <!-- Left: Day Picker Stepper & Scope Switcher -->
+        <div class="flex flex-wrap items-center gap-2">
 
-          <button type="button" @click="prevDay()" :disabled="selectedDayIndex <= 1"
-            class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
-            title="Hari Sebelumnya">
-            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+          <!-- Toggle Places Tree Sidebar Button -->
+          <button type="button" @click="showPlacesSidebar = !showPlacesSidebar"
+            class="px-3 py-1.5 rounded-xl border text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+            :class="showPlacesSidebar ? 'bg-brand-600 text-white border-brand-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'">
+            <i data-lucide="layers" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Places & Layers</span>
+            <span class="sm:hidden">Places</span>
+            <span class="px-1.5 py-0.2 rounded text-[10px] font-black"
+              :class="showPlacesSidebar ? 'bg-white/20 text-white' : 'bg-brand-500 text-white'"
+              x-text="selectedMdsIds.length"></span>
           </button>
 
-          <!-- Day Dropdown -->
-          <div class="relative min-w-[240px] sm:min-w-[300px]">
-            <select :value="selectedDayIndex" @change="setDay($event.target.value)"
-              class="w-full appearance-none pl-8 pr-8 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-extrabold text-xs border border-indigo-200 dark:border-indigo-800 shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500">
-              <template x-for="day in (selectedMds ? selectedMds.dailySchedule : [])" :key="day.dayNumber">
-                <option :value="day.dayNumber" :selected="selectedDayIndex === day.dayNumber"
-                  x-text="`${day.isPerdin ? '🏨' : (day.type === 'DC' ? '🏭' : '🚗')} Hari ke-${day.dayNumber} (${day.isPerdin ? 'Perdin ' + day.primaryArea : (day.type === 'DC' ? 'Kunjungan DC' : 'Non Perdin')} • ${day.stores ? day.stores.length : 0} Titik)`">
-                </option>
-              </template>
-            </select>
-            <span class="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-indigo-500 text-xs">
-              🗓️
-            </span>
-            <span class="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-indigo-400">
-              <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
-            </span>
-          </div>
+          <!-- Day Navigation Stepper -->
+          <div class="flex items-center gap-1.5">
+            <button type="button" @click="prevDay()" :disabled="selectedDayIndex <= 1"
+              class="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
+              title="Hari Sebelumnya">
+              <i data-lucide="chevron-left" class="w-4 h-4"></i>
+            </button>
 
-          <button type="button" @click="nextDay()"
-            :disabled="selectedDayIndex >= (selectedMds?.dailySchedule?.length || 25)"
-            class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
-            title="Hari Berikutnya">
-            <i data-lucide="chevron-right" class="w-4 h-4"></i>
-          </button>
-
-        </div>
-
-        <!-- Right: Active Day Summary Status Badge -->
-        <template x-if="currentDaySummary">
-          <div class="flex items-center gap-2 text-xs">
-            <div class="px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 shadow-sm"
-              :class="currentDaySummary.isPerdin ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' : (currentDaySummary.type === 'DC' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20')">
-              <span x-text="currentDaySummary.isPerdin ? '🏨' : (currentDaySummary.type === 'DC' ? '🏭' : '🚗')"></span>
-              <span x-text="currentDaySummary.title"></span>
-            </div>
-            <div class="hidden sm:flex items-center gap-2 text-[11px] text-slate-500">
-              <span>Beban: <b class="text-slate-700 dark:text-slate-300"
-                  x-text="`${currentDaySummary.totalStores} Kunjungan`"></b></span>
-              <span>&bull;</span>
-              <span>Rata-rata: <b class="text-slate-700 dark:text-slate-300"
-                  x-text="`~${currentDaySummary.avgDistanceKm} km`"></b></span>
-            </div>
-          </div>
-        </template>
-
-      </div>
-
-      <!-- 3. FULL WIDTH MAP CONTAINER -->
-      <div class="glass-card rounded-2xl p-2 border border-slate-200 dark:border-slate-800 shadow-sm relative">
-        <div id="route-map" x-ignore class="w-full h-[540px] rounded-2xl"></div>
-
-        <!-- Map Overlay Guide with Perdin Indicator -->
-        <div
-          class="absolute bottom-4 left-4 z-20 glass-card px-3.5 py-2.5 rounded-xl text-[11px] border border-slate-200 dark:border-slate-800 shadow-lg space-y-1 pointer-events-none">
-          <div class="flex items-center gap-1.5 font-bold">
-            <span>🏠 Domisili MDS</span>
-            <span class="text-slate-400">&bull;</span>
-            <span>🏪 Urutan Rute Stop #1 s/d #20</span>
-          </div>
-          <div class="flex items-center gap-2 text-[10.5px]">
-            <span
-              x-text="`Hari ke-${selectedDayIndex} (${(selectedMds?.dailySchedule?.find(d => d.dayNumber === selectedDayIndex)?.stores?.length || 0)} Titik Kunjungan)`"></span>
-            <template x-if="selectedMds?.dailySchedule?.find(d => d.dayNumber === selectedDayIndex)?.isPerdin">
-              <span class="px-2 py-0.5 rounded font-extrabold bg-amber-500 text-white text-[9.5px]">
-                🏨 PERJALANAN DINAS
+            <!-- Day Dropdown -->
+            <div class="relative min-w-[210px] sm:min-w-[260px]">
+              <select :value="selectedDayIndex" @change="setDay($event.target.value)"
+                class="w-full appearance-none pl-7 pr-8 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-extrabold text-xs border border-indigo-200 dark:border-indigo-800 shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <template x-for="day in (selectedMds ? selectedMds.dailySchedule : [])" :key="day.dayNumber">
+                  <option :value="day.dayNumber" :selected="selectedDayIndex === day.dayNumber"
+                    x-text="`${day.isPerdin ? '🏨' : (day.type === 'DC' ? '🏭' : '🚗')} Hari ke-${day.dayNumber} (${day.isPerdin ? 'Perdin' : (day.type === 'DC' ? 'DC' : 'Reguler')} • ${day.stores ? day.stores.length : 0} Titik)`">
+                  </option>
+                </template>
+              </select>
+              <span class="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none text-indigo-500 text-xs">
+                🗓️
               </span>
-            </template>
+              <span class="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-indigo-400">
+                <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
+              </span>
+            </div>
+
+            <button type="button" @click="nextDay()"
+              :disabled="selectedDayIndex >= (selectedMds?.dailySchedule?.length || 25)"
+              class="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
+              title="Hari Berikutnya">
+              <i data-lucide="chevron-right" class="w-4 h-4"></i>
+            </button>
           </div>
+
+          <!-- Toggle View All Days on Map -->
+          <button type="button" @click="showAllDaysOnMap = !showAllDaysOnMap; renderMap();"
+            class="px-2.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            :class="showAllDaysOnMap ? 'bg-amber-500 text-white border-amber-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'"
+            :title="showAllDaysOnMap ? 'Menampilkan seluruh 25 hari rute di peta' : 'Menampilkan rute hari aktif saja'">
+            <span>🌐</span>
+            <span x-text="showAllDaysOnMap ? 'Full 25 Hari' : `Hari #${selectedDayIndex} Saja`"></span>
+          </button>
+
         </div>
+
+        <!-- Right: Active Multi-Personnel Badges & Quick Tools -->
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+          
+          <!-- Fit All Bounds Button -->
+          <button type="button" @click="fitSelectedBounds()" title="Pusatkan Peta ke Seluruh Titik Terpilih"
+            class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-bold flex items-center gap-1 transition-colors cursor-pointer">
+            <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
+            <span>Fit Zoom</span>
+          </button>
+
+          <!-- Quick Swap Tool Trigger -->
+          <button type="button" @click="openSwapDayModal(selectedMds ? selectedMds.id : '', selectedDayIndex)"
+            class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer">
+            <span>🔄</span>
+            <span>Tukar Toko / Rute</span>
+          </button>
+
+        </div>
+
+      </div>
+
+      <!-- 3. GOOGLE EARTH TWO-COLUMN SPLIT CONTAINER (PLACES TREE + LEAFLET MAP) -->
+      <div class="flex flex-col lg:flex-row gap-4 items-stretch">
+
+        <!-- LEFT COLUMN: GOOGLE EARTH PLACES & LAYERS TREE PANEL -->
+        <div x-show="showPlacesSidebar" x-transition
+          class="w-full lg:w-[340px] flex-shrink-0 glass-card rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col overflow-hidden max-h-[620px]">
+          
+          <!-- Tree Panel Header -->
+          <div class="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/60 space-y-2">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5 font-display font-extrabold text-xs text-slate-900 dark:text-white">
+                <i data-lucide="folder-tree" class="w-4 h-4 text-brand-500"></i>
+                <span>Places & Layers</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <button type="button" @click="selectAllMds()" title="Pilih / Centang Semua Personil"
+                  class="px-2 py-0.5 rounded text-[10.5px] font-bold bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/50 text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800 cursor-pointer">
+                  Pilih Semua
+                </button>
+                <button type="button" @click="deselectAllMds()" title="Hanya Personil Utama"
+                  class="px-2 py-0.5 rounded text-[10.5px] font-bold bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300 cursor-pointer">
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            <!-- Search MDS filter within tree -->
+            <div class="relative">
+              <input type="text" x-model="searchQuery" placeholder="Filter personil MDS..."
+                class="w-full h-7 text-[11px] pl-6 pr-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:ring-1 focus:ring-brand-500">
+              <div class="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                <i data-lucide="search" class="w-3 h-3"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tree Scrollable Hierarchy -->
+          <div class="flex-1 overflow-y-auto p-2 space-y-1 text-xs select-none">
+
+            <!-- Scope Root Node & Custom Edits Banner -->
+            <div class="flex items-center justify-between px-2 py-1 text-slate-500 dark:text-slate-400 font-extrabold text-[11px] uppercase tracking-wider">
+              <div class="flex items-center gap-1.5 truncate">
+                <i data-lucide="folder" class="w-3.5 h-3.5 text-amber-500 flex-shrink-0"></i>
+                <span class="truncate" x-text="`Cimory MDS - ${selectedScope === 'JAWA' ? 'Pulau Jawa' : (selectedScope === 'LUAR_PULAU' ? 'Luar Pulau' : 'Nasional')}`"></span>
+              </div>
+            </div>
+
+            <!-- Auto-save notification badge & reset button if modified -->
+            <div x-show="customSwaps && customSwaps.length > 0" x-transition
+              class="mx-1 my-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between gap-1 text-[10.5px]">
+              <div class="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 font-medium">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span><b x-text="customSwaps.length"></b> edit tersimpan (Auto-save)</span>
+              </div>
+              <button type="button" @click="resetCustomSwaps()" title="Batalkan semua editan & kembali ke kalkulasi awal"
+                class="px-1.5 py-0.5 rounded text-[10px] font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:bg-rose-100/50 dark:hover:bg-rose-950/50 cursor-pointer">
+                Reset ke Awal
+              </button>
+            </div>
+
+            <!-- MDS Personil Tree Nodes -->
+            <template x-for="m in filteredAssignments" :key="m.id">
+              <div class="rounded-xl transition-colors border"
+                :class="isMdsSelected(m.id) ? 'bg-slate-50/90 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/80' : 'border-transparent hover:bg-slate-100/60 dark:hover:bg-slate-800/30'">
+                
+                <!-- Personil Header Row -->
+                <div class="flex items-center gap-2 px-2 py-1.5">
+                  
+                  <!-- Multi-Select Checkbox -->
+                  <input type="checkbox" :checked="isMdsSelected(m.id)" @change="toggleMdsSelection(m.id)"
+                    class="w-3.5 h-3.5 rounded text-brand-600 focus:ring-brand-500 border-slate-300 dark:border-slate-600 cursor-pointer">
+
+                  <!-- Tree Expand / Collapse Arrow -->
+                  <button type="button" @click="toggleMdsTreeExpand(m.id)"
+                    class="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer">
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5 transition-transform"
+                      :class="isMdsTreeExpanded(m.id) ? 'rotate-90' : ''"></i>
+                  </button>
+
+                  <!-- Color Bullet -->
+                  <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="`background-color: ${m.color}`"></span>
+
+                  <!-- Name & City (Click to focus MDS) -->
+                  <div class="flex-1 min-w-0 cursor-pointer" @click="selectMds(m)">
+                    <div class="font-extrabold text-[11.5px] truncate"
+                      :class="selectedMds && selectedMds.id === m.id ? 'text-brand-600 dark:text-brand-400' : 'text-slate-800 dark:text-slate-200'"
+                      x-text="m.nama"></div>
+                    <div class="text-[10px] text-slate-400 truncate" x-text="`${m.kota} • ${m.modul}`"></div>
+                  </div>
+
+                  <!-- Store Count Badge -->
+                  <span class="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-slate-200/70 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                    x-text="`${m.assignedStores.length} Toko`"></span>
+
+                </div>
+
+                <!-- Expanded Sub-tree (Base Domisili & 25 Days List) -->
+                <div x-show="isMdsTreeExpanded(m.id)" x-transition class="pl-7 pr-2 pb-2 space-y-1 text-[11px] border-t border-slate-100 dark:border-slate-800/60 pt-1.5 mt-0.5">
+
+                  <!-- 1. Base / Home Marker Toggle -->
+                  <div class="flex items-center justify-between py-0.5 hover:bg-slate-200/50 dark:hover:bg-slate-700/50 rounded px-1.5">
+                    <label class="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
+                      <input type="checkbox" :checked="isHomeVisible(m.id)" @change="toggleHomeVisibility(m.id)"
+                        class="w-3 h-3 rounded text-brand-600 border-slate-300 cursor-pointer">
+                      <span class="truncate">🏠 Domisili: <b class="text-slate-600 dark:text-slate-300" x-text="m.alamat"></b></span>
+                    </label>
+                  </div>
+
+                  <!-- 2. Daily Routes List (Hari 1 s/d 25) -->
+                  <template x-for="day in m.dailySchedule" :key="day.dayNumber">
+                    <div class="flex items-center justify-between py-0.5 hover:bg-slate-200/50 dark:hover:bg-slate-700/50 rounded px-1.5 group">
+                      
+                      <!-- Day Checkbox & Title -->
+                      <label class="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
+                        <input type="checkbox" :checked="isDayVisible(m.id, day.dayNumber)" @change="toggleDayVisibility(m.id, day.dayNumber)"
+                          class="w-3 h-3 rounded text-brand-600 border-slate-300 cursor-pointer">
+                        <span class="truncate" :class="selectedDayIndex === day.dayNumber && selectedMds?.id === m.id ? 'font-black text-brand-600 dark:text-brand-400' : ''">
+                          <span x-text="day.isPerdin ? '🏨' : (day.type === 'DC' ? '🏭' : '🚗')"></span>
+                          <span x-text="`Hari #${day.dayNumber} (${day.stores ? day.stores.length : 0} Stop)`"></span>
+                        </span>
+                      </label>
+
+                      <!-- Quick Swap Day Route Button -->
+                      <button type="button" @click.stop="openSwapDayModal(m.id, day.dayNumber)" title="Pindahkan Rute Hari Ini ke Personil Lain"
+                        class="hidden group-hover:inline-flex p-1 rounded hover:bg-brand-500 hover:text-white text-slate-400 transition-colors cursor-pointer">
+                        <i data-lucide="arrow-left-right" class="w-3 h-3"></i>
+                      </button>
+
+                    </div>
+                  </template>
+
+                </div>
+
+              </div>
+            </template>
+
+          </div>
+
+          <!-- Tree Panel Footer Info -->
+          <div class="p-2 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-[10.5px] text-slate-400 flex items-center justify-between">
+            <span>Tercentang: <b class="text-brand-600 dark:text-brand-400" x-text="selectedMdsIds.length"></b> MDS</span>
+            <span x-text="`Total: ${filteredAssignments.length} Tim`"></span>
+          </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN: LEAFLET MAP CONTAINER -->
+        <div class="flex-1 glass-card rounded-2xl p-2 border border-slate-200 dark:border-slate-800 shadow-sm relative min-w-0">
+          
+          <div id="route-map" x-ignore class="w-full h-[600px] rounded-2xl"></div>
+
+          <!-- Map Active Personnel Floating Legend -->
+          <div class="absolute top-4 right-4 z-20 max-w-[260px] glass-card p-2.5 rounded-xl text-[11px] border border-slate-200 dark:border-slate-800 shadow-xl space-y-1.5 backdrop-blur-md">
+            <div class="flex items-center justify-between font-bold text-[10.5px] text-slate-500 uppercase tracking-wider">
+              <span>Personil di Peta:</span>
+              <span class="px-1.5 py-0.2 rounded bg-brand-500 text-white text-[9.5px]" x-text="selectedMdsIds.length"></span>
+            </div>
+            <div class="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
+              <template x-for="mId in selectedMdsIds" :key="mId">
+                <template x-if="simulationResult?.assignments?.find(a => a.id === mId)">
+                  <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold text-white shadow-sm"
+                    :style="`background-color: ${simulationResult.assignments.find(a => a.id === mId).color}`">
+                    <span x-text="simulationResult.assignments.find(a => a.id === mId).nama"></span>
+                    <button type="button" @click="toggleMdsSelection(mId)" class="hover:text-red-200 cursor-pointer">&times;</button>
+                  </div>
+                </template>
+              </template>
+            </div>
+          </div>
+
+          <!-- Map Overlay Guide -->
+          <div class="absolute bottom-4 left-4 z-20 glass-card px-3.5 py-2.5 rounded-xl text-[11px] border border-slate-200 dark:border-slate-800 shadow-lg space-y-1 pointer-events-none backdrop-blur-md">
+            <div class="flex items-center gap-1.5 font-bold">
+              <span>🏠 Domisili MDS</span>
+              <span class="text-slate-400">&bull;</span>
+              <span>🏪 Urutan Rute Stop #1 s/d #20</span>
+            </div>
+            <div class="flex items-center gap-2 text-[10.5px] text-slate-500">
+              <span>💡 Klik marker pin toko untuk memindahkan toko ke MDS lain secara instan</span>
+            </div>
+          </div>
+
+        </div>
+
       </div>
 
       <!-- 4. DEDICATED FULL-WIDTH ROUTE DETAIL TABLE -->
@@ -1186,13 +1383,21 @@
                   <td class="py-2.5 px-3 font-semibold text-slate-700 dark:text-slate-300"
                     x-text="st.kabKota || selectedMds?.kota || '-'"></td>
 
-                  <!-- Jarak dari Rumah -->
-                  <td class="py-2.5 px-3 font-bold"
-                    :class="st.isPerdin ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-600 dark:text-indigo-400'"
-                    x-text="`${st.distanceFromHomeKm} km`"></td>
+                  <!-- Jarak dari Titik Acuan -->
+                  <td class="py-2.5 px-3">
+                    <div class="font-bold text-xs"
+                      :class="st.isPerdin ? 'text-amber-600 dark:text-amber-400' : (selectedMds?.isVirtual ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-600 dark:text-indigo-400')"
+                      x-text="`${st.distanceFromHomeKm} km`"></div>
+                    <template x-if="selectedMds?.isVirtual">
+                      <div class="text-[9.5px] leading-tight text-slate-500 dark:text-slate-400 mt-0.5" :title="st.vacantReason || selectedMds?.vacantReason">
+                        <span class="inline-block px-1 py-0.2 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-semibold text-[9px]">Acuan Sentra</span>
+                        <span x-show="st.distToNearestActiveMdsKm" class="block text-red-500 dark:text-red-400 font-semibold" x-text="`(${st.distToNearestActiveMdsKm} km dr ${st.nearestActiveMdsName || selectedMds?.nearestActiveMdsName})`"></span>
+                      </div>
+                    </template>
+                  </td>
 
                   <!-- Estimasi Tempuh -->
-                  <td class="py-2.5 px-3 text-slate-500 font-semibold" x-text="`~${st.travelTimeMins} Menit`"></td>
+                  <td class="py-2.5 px-3 text-slate-500 font-semibold text-xs" x-text="`~${st.travelTimeMins} Menit`"></td>
 
                   <!-- Fasilitas Perdin -->
                   <td class="py-2.5 px-3">
@@ -1205,13 +1410,20 @@
                     </template>
                   </td>
 
-                  <!-- Action: Focus Map Pin -->
+                  <!-- Action: Focus Map Pin & Swap Store -->
                   <td class="py-2.5 px-3 text-center">
-                    <button type="button" @click="focusStoreOnMap(st)" title="Lihat & Fokus Pin di Peta"
-                      class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-brand-600 hover:text-white dark:hover:bg-brand-600 text-slate-700 dark:text-slate-300 font-bold text-[10.5px] flex items-center gap-1 transition-colors cursor-pointer mx-auto shadow-sm">
-                      <i data-lucide="crosshair" class="w-3 h-3"></i>
-                      <span>Lihat Peta</span>
-                    </button>
+                    <div class="inline-flex items-center gap-1.5 mx-auto">
+                      <button type="button" @click="focusStoreOnMap(st)" title="Lihat & Fokus Pin di Peta"
+                        class="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-brand-600 hover:text-white dark:hover:bg-brand-600 text-slate-700 dark:text-slate-300 font-bold text-[10.5px] flex items-center gap-1 transition-colors cursor-pointer shadow-sm">
+                        <i data-lucide="crosshair" class="w-3 h-3"></i>
+                        <span>Peta</span>
+                      </button>
+                      <button type="button" @click="openSwapStoreModal(selectedMds.id, st.dayNumber || selectedDayIndex, st.storeCode || st.id)" title="Pindahkan Toko Ini ke MDS / Hari Lain"
+                        class="px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-600 hover:text-white text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 font-bold text-[10.5px] flex items-center gap-1 transition-colors cursor-pointer shadow-sm">
+                        <i data-lucide="arrow-left-right" class="w-3 h-3"></i>
+                        <span>Pindah</span>
+                      </button>
+                    </div>
                   </td>
 
                 </tr>
@@ -1542,6 +1754,122 @@
       </div>
 
     </div>
+  </div>
+
+  <!-- ============================================================================== -->
+  <!-- MODAL: INTERACTIVE STORE & DAY ROUTE SWAP (LIVE REALLOCATION) -->
+  <!-- ============================================================================== -->
+  <div x-show="showSwapModal" x-cloak
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+    x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0"
+    x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+
+    <div class="glass-card rounded-2xl max-w-lg w-full p-5 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4 bg-white dark:bg-slate-900"
+      @click.outside="showSwapModal = false">
+
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm">
+            🔄
+          </div>
+          <div>
+            <h3 class="font-display font-extrabold text-sm text-slate-900 dark:text-white"
+              x-text="swapData.mode === 'STORE' ? 'Pindahkan Toko Antar MDS / Hari' : 'Pindahkan Seluruh Rute Harian'"></h3>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400">Re-alokasi rute instan tanpa perlu edit Excel manual</p>
+          </div>
+        </div>
+        <button type="button" @click="showSwapModal = false" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Mode Switcher -->
+      <div class="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold shadow-inner">
+        <button type="button" @click="swapData.mode = 'STORE'"
+          class="flex-1 py-1.5 rounded-lg transition-all cursor-pointer text-center"
+          :class="swapData.mode === 'STORE' ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm' : 'text-slate-500 hover:text-slate-800'">
+          🏪 Toko Individual
+        </button>
+        <button type="button" @click="swapData.mode = 'DAY_ROUTE'"
+          class="flex-1 py-1.5 rounded-lg transition-all cursor-pointer text-center"
+          :class="swapData.mode === 'DAY_ROUTE' ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm' : 'text-slate-500 hover:text-slate-800'">
+          📅 Rute 1 Hari Penuh (Batch)
+        </button>
+      </div>
+
+      <!-- Detail Toko / Rute yang mau dipindah -->
+      <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-1.5 text-xs">
+        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sumber Alokasi Saat Ini:</div>
+        <template x-if="swapData.mode === 'STORE' && swapData.store">
+          <div>
+            <div class="font-extrabold text-slate-900 dark:text-white" x-text="`${swapData.store.storeName} [${swapData.store.storeCode || ''}]`"></div>
+            <div class="text-slate-500 text-[11px]" x-text="`${swapData.store.account} • ${swapData.store.kabKota} • Asal: Hari #${swapData.sourceDayNum} (${simulationResult?.assignments?.find(a => a.id === swapData.sourceMdsId)?.nama})`"></div>
+          </div>
+        </template>
+        <template x-if="swapData.mode === 'DAY_ROUTE'">
+          <div>
+            <div class="font-extrabold text-slate-900 dark:text-white" x-text="`Seluruh Toko di Hari ke-${swapData.sourceDayNum}`"></div>
+            <div class="text-slate-500 text-[11px]" x-text="`Personil Asal: ${simulationResult?.assignments?.find(a => a.id === swapData.sourceMdsId)?.nama} (${simulationResult?.assignments?.find(a => a.id === swapData.sourceMdsId)?.dailySchedule?.find(d => d.dayNumber === swapData.sourceDayNum)?.stores?.length || 0} Toko)`"></div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Destination Controls -->
+      <div class="space-y-3 text-xs">
+        
+        <!-- Target MDS Dropdown -->
+        <div>
+          <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">Pindahkan ke Personil MDS Tujuan:</label>
+          <select x-model="swapData.targetMdsId"
+            class="w-full h-9 px-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+            <template x-for="m in filteredAssignments" :key="m.id">
+              <option :value="m.id" x-text="`👤 ${m.nama} (${m.kota} • ${m.modul}) - Total ${m.assignedStores.length} Toko`"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Target Day Dropdown -->
+        <div>
+          <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">Jadwalkan di Hari Kerja ke- (1 s/d 25):</label>
+          <select x-model.number="swapData.targetDayNum"
+            class="w-full h-9 px-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+            <template x-for="d in 25" :key="d">
+              <option :value="d" x-text="`Hari ke-${d} ${d > 21 ? '(Kunjungan DC)' : '(Toko Reguler)'}`"></option>
+            </template>
+          </select>
+        </div>
+
+      </div>
+
+      <!-- Modal Actions -->
+      <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800 text-xs">
+        <button type="button" @click="showSwapModal = false"
+          class="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold cursor-pointer">
+          Batal
+        </button>
+        <button type="button" @click="executeSwap()"
+          class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold flex items-center gap-1.5 shadow-md shadow-indigo-500/20 active:scale-95 cursor-pointer">
+          <i data-lucide="check" class="w-4 h-4"></i>
+          <span>Konfirmasi Pindahkan</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Global Toast Notification -->
+  <div x-show="toastVisible" x-cloak
+    x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4"
+    x-transition:enter-end="opacity-100 translate-y-0" x-transition:leave="transition ease-in duration-200"
+    x-transition:leave-start="opacity-100 translate-y-0" x-transition:leave-end="opacity-0 translate-y-4"
+    class="fixed bottom-6 right-6 z-50 max-w-md glass-card px-4 py-3 rounded-2xl border border-indigo-300 dark:border-indigo-700 shadow-2xl bg-indigo-900/90 text-white flex items-center gap-3 backdrop-blur-md">
+    <div class="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center font-bold text-base flex-shrink-0">
+      ⚡
+    </div>
+    <div class="flex-1 text-xs font-semibold leading-relaxed" x-text="toastMessage"></div>
+    <button type="button" @click="toastVisible = false" class="text-white/60 hover:text-white cursor-pointer font-bold text-sm">&times;</button>
   </div>
 
   <!-- ============================================================================== -->

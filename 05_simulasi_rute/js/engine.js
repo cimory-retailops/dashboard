@@ -8,7 +8,8 @@
 const RouteEngine = {
 
   /**
-   * Calculate Geodesic Haversine Distance in Kilometers
+   * Calculate Realistic Road Network Distance in Kilometers
+   * (Haversine + Indonesian Road Tortuosity / Detour Factor)
    */
   getDistanceKm(lat1, lon1, lat2, lon2) {
     if (lat1 === undefined || lon1 === undefined || lat2 === undefined || lon2 === undefined) return 99999;
@@ -20,16 +21,26 @@ const RouteEngine = {
       Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
       Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return Math.round(R * c * 100) / 100;
+    const straightKm = R * c;
+
+    // Road Tortuosity Factor di Indonesia (Jarak aspal vs garis lurus):
+    // - Jarak mikro (< 5 km): 1.22x (gang, putaran U-turn, akses toko)
+    // - Jarak menengah (5 - 35 km): 1.28x (jalan arteri/kolektor)
+    // - Jarak jauh (> 35 km): 1.32x (jalan provinsi / luar kota berliku)
+    let detourFactor = 1.28;
+    if (straightKm < 5) detourFactor = 1.22;
+    else if (straightKm > 35) detourFactor = 1.32;
+
+    return Math.round(straightKm * detourFactor * 10) / 10;
   },
 
   /**
-   * Estimate Travel Time in Minutes based on speed & urban traffic penalty
+   * Estimate Travel Time in Minutes based on realistic road speed & congestion
    */
-  getEstimatedTravelTimeMins(distanceKm, speedKmh = 25) {
-    if (distanceKm === 0) return 0;
-    const timeHours = (distanceKm / speedKmh) * 1.15;
-    return Math.round(timeHours * 60);
+  getEstimatedTravelTimeMins(roadDistanceKm, speedKmh = 25) {
+    if (!roadDistanceKm || roadDistanceKm <= 0) return 0;
+    const timeHours = roadDistanceKm / speedKmh;
+    return Math.max(1, Math.round(timeHours * 60));
   },
 
   /**
@@ -72,8 +83,8 @@ const RouteEngine = {
       return { key: 'SULAWESI_SELATAN', name: 'Sulawesi Bagian Selatan', island: 'SULAWESI' };
     }
 
-    // C. Sumatera Island Fence: Lat -6.5 to +6.5, Lng 94.5 to 106.2
-    if (hasCoord && numLat >= -6.5 && numLat <= 6.5 && numLng >= 94.5 && numLng <= 106.2) {
+    // C. Sumatera Island Fence: Lat -5.92 to +6.5, Lng 94.5 to 106.2 (Strictly exclude Banten/Java)
+    if (hasCoord && numLat >= -5.92 && numLat <= 6.5 && numLng >= 94.5 && numLng <= 106.2 && !/\b(BANTEN|SERANG|CILEGON|LEBAK|PANDEGLANG|TANGERANG|JAKARTA|BOGOR|DEPOK|BEKASI|JABODETABEK|JAWA)\b/.test(text)) {
       if (numLat > 2.0 || /\b(MEDAN|DELI|BINJAI|ASAHAN|SIMALUNGUN|SIANTAR|KARO|TEBING TINGGI|BATU BARA|LABUHAN|TAPANULI|TOBA|DAIRI|SIBOLGA|PADANG SIDEMPUAN|MANDAILING|NIAS|ACEH|BANDA ACEH|LHOKSEUMAWE|LANGSA|PIDIE|BIREUEN|TAKENGON)\b/.test(text)) {
         return { key: 'SUMATERA_UTARA_ACEH', name: 'Sumatera Bagian Utara', island: 'SUMATERA' };
       }
@@ -471,8 +482,25 @@ const RouteEngine = {
           const c = (rawCity && rawCity !== 'LAINNYA') ? rawCity : regionName.toUpperCase();
           cityCounts.set(c, (cityCounts.get(c) || 0) + 1);
         });
+
         const topCities = Array.from(cityCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 2).map(e => e[0]);
         const areaCorridor = topCities.join(' - ') || regionName;
+
+        // Find nearest active MDS and evaluate why absorption was not feasible
+        let nearestActiveMds = null;
+        let minMdsDist = Infinity;
+        mdsAssignments.forEach(act => {
+          const d = this.getDistanceKm(avgLat, avgLng, act.lat, act.lng);
+          if (d < minMdsDist) {
+            minMdsDist = d;
+            nearestActiveMds = act;
+          }
+        });
+
+        const nearestDistKm = Math.round(minMdsDist * 10) / 10;
+        const vacantReason = nearestActiveMds
+          ? `Klaster ${cluster.length} toko di koridor ${areaCorridor}. MDS aktif terdekat adalah ${nearestActiveMds.nama} (${nearestActiveMds.kota}) berjarak ${nearestDistKm} km (kapasitas sudah terisi ${nearestActiveMds.assignedStores?.length || 450} toko). Karena jarak > 45 km dan personil terdekat sudah terutilisasi optimal, disarankan alokasi 1 Personil Usulan Baru.`
+          : `Klaster ${cluster.length} toko di koridor ${areaCorridor} terisolir dari personil aktif existing.`;
 
         const vCode = `REKRUT_${String(virtualCounter).padStart(2, '0')}`;
         const uniqueId = `VAC_${rKey}_${vCode}_${virtualCounter}`;
@@ -496,8 +524,15 @@ const RouteEngine = {
           isVirtual: true,
           status: 'VACANT',
           color: '#f59e0b',
+          vacantReason: vacantReason,
+          nearestActiveMdsName: nearestActiveMds?.nama || '-',
+          nearestActiveMdsKota: nearestActiveMds?.kota || '-',
+          nearestActiveMdsDistanceKm: nearestDistKm,
+          homeBaseType: 'SENTRA_USULAN',
+          homeBaseName: `Sentra Operasional Usulan Rekrut (${areaCorridor})`,
           assignedStores: cluster.map(st => {
             const d = this.getDistanceKm(avgLat, avgLng, st.lat, st.lng);
+            const distToActive = nearestActiveMds ? Math.round(this.getDistanceKm(nearestActiveMds.lat, nearestActiveMds.lng, st.lat, st.lng) * 10) / 10 : null;
             return {
               ...st,
               distanceFromHomeKm: Math.round(d * 10) / 10,
@@ -505,7 +540,15 @@ const RouteEngine = {
               isPerdin: false,
               tipeKunjungan: 'NON PERDIN',
               perdinBadge: '🚗 NON PERDIN',
-              isVirtualCover: true
+              isVirtualCover: true,
+              isVirtual: true,
+              homeBaseType: 'SENTRA_USULAN',
+              homeBaseName: `Sentra Operasional Usulan Rekrut (${areaCorridor})`,
+              nearestActiveMdsName: nearestActiveMds?.nama || '-',
+              nearestActiveMdsKota: nearestActiveMds?.kota || '-',
+              nearestActiveMdsDistanceKm: nearestDistKm,
+              distToNearestActiveMdsKm: distToActive,
+              vacantReason: vacantReason
             };
           }),
           assignedDc: [],
@@ -674,18 +717,32 @@ const RouteEngine = {
       let localDaysCount = 0;
       let perdinDaysCount = 0;
 
+      const mLat = mds.lat || 0;
+      const mLng = mds.lng || 0;
+      const cosLat = Math.cos((mLat * Math.PI) / 180);
+
       // Separate regular pool from DC pool
       const regularPool = mds.assignedStores.filter(s => !s.isDcDayStore);
 
-      const mLat = mds.lat;
-      const mLng = mds.lng;
-      const cosLat = Math.cos((mLat * Math.PI) / 180);
+      // Polar Angular Sectoring & Distance Corridor Clustering (Tight daily corridors from home base)
       regularPool.forEach(s => {
-        const dLat = s.lat - mLat;
-        const dLng = (s.lng - mLng) * cosLat;
+        const dLat = (s.lat || 0) - mLat;
+        const dLng = ((s.lng || 0) - mLng) * cosLat;
         s._dsqHome = dLat * dLat + dLng * dLng;
+        let angle = Math.atan2(dLat, dLng) * (180 / Math.PI);
+        if (angle < 0) angle += 360;
+        s._angle = angle;
+        // Segment into 20-degree angular corridor wedges
+        s._corridorBin = Math.floor(angle / 20);
       });
-      regularPool.sort((a, b) => a._dsqHome - b._dsqHome);
+
+      // Sort regular pool by corridor sector first, then by distance from home within that sector
+      regularPool.sort((a, b) => {
+        if (a._corridorBin !== b._corridorBin) {
+          return a._corridorBin - b._corridorBin;
+        }
+        return a._dsqHome - b._dsqHome;
+      });
 
       // Days 1 to 21: Regular Stores
       for (let day = 1; day <= config.regularDays; day++) {
