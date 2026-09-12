@@ -67,6 +67,18 @@ function doGet(e) {
       });
     }
 
+    if (action === "search_stores" || action === "search") {
+      const q = (e.parameter.q || e.parameter.query || "").toString().trim();
+      const acc = (e.parameter.account || "ALL").toString().trim();
+      const limit = parseInt(e.parameter.limit || "50", 10);
+      const stores = searchMasterDatabaseStores(q, acc, limit);
+      return jsonResponse({
+        status: "success",
+        total: stores.length,
+        data: stores
+      });
+    }
+
     return jsonResponse({
       status: "error",
       message: "Action tidak dikenal"
@@ -120,13 +132,22 @@ function doPost(e) {
       });
     }
 
-    const { module, crewCode, crewName, rute, stores } = payload;
+    const { module, crewCode, crewName, rute, stores, isEditMode } = payload;
 
     if (!module || !crewName || !rute || !stores || !stores.length) {
       throw new Error("Data input tidak lengkap. Harap periksa modul, crew, rute, dan daftar toko.");
     }
 
     const cleanModule = module.toUpperCase().replace(/\s+/g, "");
+
+    // Jika mode Edit, hapus terlebih dahulu jadwal lama crew untuk rute ini agar tidak menumpuk
+    if (isEditMode) {
+      try {
+        deleteStoreFromAllSpreadsheets(cleanModule, rute, crewCode, "");
+      } catch (delErr) {
+        console.warn("Gagal membersihkan jadwal lama saat edit mode:", delErr);
+      }
+    }
 
     const results = {
       pipelineTarget: { success: false, name: `Unified Pipeline (${SHEET_NAMES.TARGET_ROUTE_SHEET})`, count: 0 }
@@ -165,9 +186,14 @@ function doPost(e) {
       results.masterRekap = { success: false, error: err.toString() };
     }
 
+    let successMsg = `Berhasil menginput ${stores.length} toko ke Rute ${rute} untuk ${crewName} (${cleanModule}) [1 Pintu]`;
+    if (results.pipelineTarget.count === 0 && !isEditMode) {
+      successMsg = `Jadwal Rute ${rute} untuk ${crewName} sudah terdaftar sebelumnya di sistem. Buka tab Jadwal untuk melihat atau mengedit.`;
+    }
+
     return jsonResponse({
       status: "success",
-      message: `Berhasil menginput ${stores.length} toko ke Rute ${rute} untuk ${crewName} (${cleanModule}) [1 Pintu]`,
+      message: successMsg,
       timestamp: new Date().toISOString(),
       details: results
     });
@@ -598,6 +624,71 @@ function deleteStoreFromAllSpreadsheets(moduleName, rute, crewCode, kodeToko) {
   const targetKode = kodeToko.toString().trim().toUpperCase();
   const targetCrew = crewCode ? crewCode.toString().trim() : "";
 
+  return { success: true };
+}
+
+function searchMasterDatabaseStores(query, accountFilter, limit) {
+  if (!query) return [];
+  const maxLimit = limit || 50;
+  const cleanQ = query.toLowerCase();
+  const tokens = cleanQ.split(/\s+/).filter(t => t.length > 0);
+  const cleanAcc = (accountFilter || "ALL").toUpperCase();
+
+  const ss = SpreadsheetApp.openById(CONFIG.MASTER_DATABASE_ID);
+  const sheet = ss.getSheetByName(SHEET_NAMES.MASTER_DATABASE_TOKO) || ss.getSheets()[0];
+  const values = sheet.getDataRange().getValues();
+
+  if (values.length < 2) return [];
+
+  const results = [];
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const kode = (row[0] || "").toString().trim().toUpperCase();
+    const nama = (row[3] || "").toString().trim();
+    const account = (row[9] || "ALFAMART").toString().trim().toUpperCase();
+    const dcName = (row[2] || "").toString().trim();
+    const kec = (row[4] || "").toString().trim();
+    const kota = (row[5] || "").toString().trim();
+    const lat = row[7] ? parseFloat(row[7]) : null;
+    const lon = row[8] ? parseFloat(row[8]) : null;
+
+    if (cleanAcc !== "ALL" && !account.includes(cleanAcc)) {
+      continue;
+    }
+
+    const searchStr = `${kode} ${nama} ${account} ${dcName} ${kec} ${kota}`.toLowerCase();
+    let match = true;
+    for (let t = 0; t < tokens.length; t++) {
+      if (!searchStr.includes(tokens[t])) {
+        match = false;
+        break;
+      }
+    }
+
+    if (match) {
+      results.push({
+        kodeToko: kode,
+        namaToko: nama,
+        account: account,
+        dcName: dcName,
+        kecamatan: kec,
+        kota: kota,
+        lat: lat,
+        lon: lon
+      });
+      if (results.length >= maxLimit) break;
+    }
+  }
+
+  return results;
+}
+
+function deleteStoreFromAllSpreadsheets(module, rute, crewCode, kodeToko) {
+  const cleanModule = (module || "").toString().toUpperCase().replace(/\s+/g, "");
+  const targetRute = (rute || "").toString().trim().replace(/^rute\s*/i, "");
+  const targetCrew = (crewCode || "").toString().trim();
+  const targetKode = (kodeToko || "").toString().trim().toUpperCase();
+
   const results = {};
 
   try {
@@ -623,7 +714,7 @@ function deleteStoreFromAllSpreadsheets(moduleName, rute, crewCode, kodeToko) {
       const rowCrew = (row[cCrewCode] || "").toString().trim();
       const rowMod = (row[cMod] || "").toString().trim().toUpperCase().replace(/\s+/g, "");
 
-      const matchKode = rowKode === targetKode;
+      const matchKode = !targetKode || rowKode === targetKode;
       const matchRute = !targetRute || rowRute === targetRute;
       const matchCrew = !targetCrew || rowCrew === targetCrew;
       const matchMod = !cleanModule || rowMod === cleanModule;
@@ -648,7 +739,7 @@ function deleteStoreFromAllSpreadsheets(moduleName, rute, crewCode, kodeToko) {
         const rowCrew = (row[3] || "").toString().trim();
         const rowRute = (row[5] || "").toString().trim().replace(/^rute\s*/i, "");
 
-        if (rowKode === targetKode && (!targetRute || rowRute === targetRute) && (!targetCrew || rowCrew === targetCrew)) {
+        if ((!targetKode || rowKode === targetKode) && (!targetRute || rowRute === targetRute) && (!targetCrew || rowCrew === targetCrew)) {
           rekapSheet.deleteRow(i + 1);
         }
       }

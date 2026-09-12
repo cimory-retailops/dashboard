@@ -31,15 +31,10 @@ const MapService = {
       scrollWheelZoom: true
     }).setView([-2.5489, 118.0149], 5);
 
-    const tileUrl = isDark
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-    const attribution = isDark
-      ? '&copy; <a href="https://carto.com/">CARTO</a>'
-      : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-
-    L.tileLayer(tileUrl, { attribution, maxZoom: 18 }).addTo(this.mapInstance);
+    L.tileLayer(tileUrl, { attribution, maxZoom: 19 }).addTo(this.mapInstance);
     
     // Polyline layer di bawah marker layer
     this.polylineLayerGroup = L.layerGroup().addTo(this.mapInstance);
@@ -299,15 +294,10 @@ const MapService = {
       scrollWheelZoom: true
     }).setView([-6.2088, 106.8456], 11);
 
-    const tileUrl = isDark
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-    const attribution = isDark
-      ? '&copy; <a href="https://carto.com/">CARTO</a>'
-      : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-
-    L.tileLayer(tileUrl, { attribution, maxZoom: 18 }).addTo(this.jadwalMapInstance);
+    L.tileLayer(tileUrl, { attribution, maxZoom: 19 }).addTo(this.jadwalMapInstance);
 
     this.jadwalPolylineGroup = L.layerGroup().addTo(this.jadwalMapInstance);
     this.jadwalMarkerGroup = L.layerGroup().addTo(this.jadwalMapInstance);
@@ -431,15 +421,10 @@ const MapService = {
       scrollWheelZoom: true
     }).setView([-6.2088, 106.8456], 12);
 
-    const tileUrl = isDark
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-    const attribution = isDark
-      ? '&copy; <a href="https://carto.com/">CARTO</a>'
-      : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-
-    L.tileLayer(tileUrl, { attribution, maxZoom: 18 }).addTo(this.tokoMapInstance);
+    L.tileLayer(tileUrl, { attribution, maxZoom: 19 }).addTo(this.tokoMapInstance);
 
     this.tokoPolylineGroup = L.layerGroup().addTo(this.tokoMapInstance);
     this.tokoMarkerGroup = L.layerGroup().addTo(this.tokoMapInstance);

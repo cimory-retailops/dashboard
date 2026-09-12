@@ -46,6 +46,13 @@ function dashboardApp() {
     showSpvTeamModal: false,
     activeSpvTeamUser: null,
     spvMdsSearch: '',
+    // Anomaly Trend & Monthly Leaderboard State
+    anomalyViewMode: 'DAILY', // 'DAILY' | 'TREND'
+    anomalyTrendCategory: 'ALL', // 'ALL' | 'terlambat' | 'absenNoVisit' | 'visitNoAbsen' | 'lupaPulang' | 'gpsIssue' | 'alpha'
+    anomalyLeaderboardFilterModul: 'ALL',
+    anomalyLeaderboardSearch: '',
+    anomalyLeaderboardPage: 1,
+    anomalyLeaderboardPageSize: 10,
     newUserForm: {
       name: '',
       email: '',
@@ -69,6 +76,16 @@ function dashboardApp() {
     // 1. Filters Tab 1: Kunjungan Lapangan & KPI
     selectedModul: 'ALL',
     dateFilter: 'LATEST_DAY', // 'LATEST_DAY' | 'TODAY' | '7_DAYS' | 'THIS_MONTH' | 'CUSTOM'
+    isCustomDateOpen: false, // Lightweight state for custom date picker box (Zero reactivity spike)
+    dateDropdownOpen: false, // Custom popover state (Instant 0ms opening matching MDS dropdown)
+    dateOptions: [
+      { value: 'LATEST_DAY', label: '⚡ Hari Terakhir Aktif (Auto)' },
+      { value: 'YESTERDAY', label: '🕒 Kemarin / H-1 (Evaluasi)' },
+      { value: 'TODAY', label: '📅 Hari Ini Saja (Real-time)' },
+      { value: '7_DAYS', label: '📊 7 Hari Terakhir' },
+      { value: 'THIS_MONTH', label: '🗓️ Bulan Ini (Semua)' },
+      { value: 'CUSTOM', label: '📆 Pilih Rentang Tanggal...' }
+    ],
     activeDateLabel: '',
     startDate: '',
     endDate: '',
@@ -390,42 +407,50 @@ function dashboardApp() {
         this.isLoading = false;
         this.currentPage = 1;
 
-        this.$nextTick(() => {
+        requestAnimationFrame(() => {
           this.refreshCharts();
           if (window.lucide) lucide.createIcons();
-          if (document.getElementById('visits-map')) {
+          if (this.activeTab === 'kunjungan' && document.getElementById('visits-map')) {
             MapService.initMap('visits-map', this.theme === 'dark');
             MapService.renderVisitsOnMap(this.filteredVisits);
           }
         });
 
-        // Load archive list in background
-        this.loadArchiveMonths();
+        // Background Silent Revalidation: Refresh data quietly without blocking user screen
+        setTimeout(() => {
+          this.refreshAllData(false);
+          this.loadArchiveMonths();
+        }, 150);
       } else {
-        // Initial Fetch
+        // Initial Cold Fetch (Only when no cache in IndexedDB)
         await this.refreshAllData(true);
         this.loadArchiveMonths();
       }
 
-      // Setup Lucide icons & Watch activeTab for Evaluasi MTD chart and Lazy Master 49k
+      // Setup Lucide icons & Watch activeTab for Lazy Loading heavy modules
       this.$nextTick(() => {
         if (window.lucide) lucide.createIcons();
       });
 
       if (typeof this.$watch === 'function') {
         this.$watch('activeTab', (newTab) => {
-          if (newTab === 'evaluasi') {
-            this.$nextTick(() => {
+          this.$nextTick(() => {
+            if (window.lucide) lucide.createIcons();
+            if (newTab === 'evaluasi') {
+              setTimeout(() => this.refreshSpvCharts(), 80);
+            } else if (newTab === 'tokonasional') {
+              if (!this.stores49k || this.stores49k.length === 0) {
+                this.initStores49k();
+              }
+            } else if (newTab === 'kunjungan') {
               setTimeout(() => {
-                this.refreshSpvCharts();
-                if (window.lucide) lucide.createIcons();
+                if (document.getElementById('visits-map')) {
+                  MapService.initMap('visits-map', this.theme === 'dark');
+                  MapService.renderVisitsOnMap(this.filteredVisits);
+                }
               }, 80);
-            });
-          } else if (newTab === 'tokonasional') {
-            if (!this.stores49k || this.stores49k.length === 0) {
-              this.initStores49k();
             }
-          }
+          });
         });
       }
 
@@ -511,16 +536,28 @@ function dashboardApp() {
     },
 
     clearSearch() {
+      this.isLoading = true;
+      this.loadingMessage = 'Mereset Pencarian & Filter...';
+      this.loadingStage = 3;
       this.selectedCrew = '';
       this.searchInputText = '';
-      this.searchQuery = '';
-      this.currentPage = 1;
-      this.$nextTick(() => {
-        if (window.lucide) lucide.createIcons();
-        if (typeof MapService !== 'undefined' && MapService.renderVisitsOnMap) {
-          MapService.renderVisitsOnMap(this.filteredVisits, '');
-        }
-      });
+
+      setTimeout(() => {
+        this.searchQuery = '';
+        this.currentPage = 1;
+
+        requestAnimationFrame(() => {
+          if (window.lucide) lucide.createIcons();
+          if (typeof MapService !== 'undefined' && MapService.renderVisitsOnMap) {
+            MapService.renderVisitsOnMap(this.filteredVisits, '');
+          }
+          if (this.initCharts) this.initCharts();
+
+          setTimeout(() => {
+            this.isLoading = false;
+          }, 200);
+        });
+      }, 30);
     },
 
     flyToVisit(visit) {
@@ -747,51 +784,126 @@ function dashboardApp() {
     },
 
     /**
-     * Handle Date Filter Change (Instantaneous In-Memory Filtering < 10ms)
+     * Handle Date Select Dropdown Change (Instant Overlay, Zero Race Condition)
      */
-    onDateFilterChange() {
+    handleDateSelectChange(event) {
+      const val = event.target.value;
       const now = new Date();
       const yyyy = now.getFullYear();
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       const dd = String(now.getDate()).padStart(2, '0');
 
-      if (this.dateFilter === 'TODAY') {
-        this.startDate = `${yyyy}-${mm}-${dd}`;
-        this.endDate = `${yyyy}-${mm}-${dd}`;
-      } else if (this.dateFilter === 'YESTERDAY') {
-        const yDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        const y_yyyy = yDate.getFullYear();
-        const y_mm = String(yDate.getMonth() + 1).padStart(2, '0');
-        const y_dd = String(yDate.getDate()).padStart(2, '0');
-        this.startDate = `${y_yyyy}-${y_mm}-${y_dd}`;
-        this.endDate = `${y_yyyy}-${y_mm}-${y_dd}`;
-      } else if (this.dateFilter === '7_DAYS') {
-        const past7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        this.startDate = past7.toISOString().split('T')[0];
-        this.endDate = `${yyyy}-${mm}-${dd}`;
-      } else if (this.dateFilter === 'THIS_MONTH') {
-        this.startDate = `${yyyy}-${mm}-01`;
-        this.endDate = `${yyyy}-${mm}-${dd}`;
-      } else if (this.dateFilter === 'LATEST_DAY') {
-        // Will automatically resolve to the latest day present in the active dataset
-      } else if (this.dateFilter === 'CUSTOM') {
-        // Initialize temporary inputs without triggering reactive recomputation
+      if (val === 'CUSTOM') {
+        this.isCustomDateOpen = true;
         this.customStartInput = this.startDate || `${yyyy}-${mm}-${dd}`;
         this.customEndInput = this.endDate || `${yyyy}-${mm}-${dd}`;
-        return; // Don't re-filter until user clicks 'Terapkan Rentang'
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        return;
       }
 
-      this.currentPage = 1;
-      this.updateActiveDateLabel(this.visits);
-      this.saveSessionState();
+      this.isCustomDateOpen = false;
+      // 1. Render overlay loading immediately to DOM before heavy operations
+      this.isLoading = true;
+      this.loadingStage = 3;
+      const periodNames = {
+        'LATEST_DAY': 'Hari Terakhir Aktif',
+        'YESTERDAY': 'Kemarin / H-1',
+        'TODAY': 'Hari Ini Saja',
+        '7_DAYS': '7 Hari Terakhir',
+        'THIS_MONTH': 'Bulan Ini'
+      };
+      this.loadingMessage = `Menyaring Data: ${periodNames[val] || val}...`;
 
-      this.$nextTick(() => {
-        this.refreshCharts();
-        if (window.lucide) lucide.createIcons();
-        if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
-          MapService.renderVisitsOnMap(this.filteredVisits);
+      // 2. Defer computation slightly (40ms) so browser paint cycle renders overlay first
+      setTimeout(() => {
+        let sDate = '';
+        let eDate = '';
+
+        if (val === 'TODAY') {
+          sDate = `${yyyy}-${mm}-${dd}`;
+          eDate = `${yyyy}-${mm}-${dd}`;
+        } else if (val === 'YESTERDAY') {
+          const yDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          const y_yyyy = yDate.getFullYear();
+          const y_mm = String(yDate.getMonth() + 1).padStart(2, '0');
+          const y_dd = String(yDate.getDate()).padStart(2, '0');
+          sDate = `${y_yyyy}-${y_mm}-${y_dd}`;
+          eDate = `${y_yyyy}-${y_mm}-${y_dd}`;
+        } else if (val === '7_DAYS') {
+          const past7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          sDate = past7.toISOString().split('T')[0];
+          eDate = `${yyyy}-${mm}-${dd}`;
+        } else if (val === 'THIS_MONTH') {
+          sDate = `${yyyy}-${mm}-01`;
+          eDate = `${yyyy}-${mm}-${dd}`;
         }
-      });
+
+        // Batch update state in one single reactive tick
+        this.startDate = sDate;
+        this.endDate = eDate;
+        this.dateFilter = val;
+        this.currentPage = 1;
+        this.updateActiveDateLabel(this.visits);
+        this.saveSessionState();
+
+        requestAnimationFrame(() => {
+          this.refreshCharts();
+          if (window.lucide) lucide.createIcons();
+          if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
+            MapService.renderVisitsOnMap(this.filteredVisits);
+          }
+          if (this.activeTab === 'evaluasi') {
+            this.refreshSpvCharts();
+          }
+
+          setTimeout(() => {
+            this.isLoading = false;
+          }, 200);
+        });
+      }, 40);
+    },
+
+    getDateFilterLabel(val) {
+      const map = {
+        'LATEST_DAY': '⚡ Hari Terakhir Aktif (Auto)',
+        'YESTERDAY': '🕒 Kemarin / H-1 (Evaluasi)',
+        'TODAY': '📅 Hari Ini Saja (Real-time)',
+        '7_DAYS': '📊 7 Hari Terakhir',
+        'THIS_MONTH': '🗓️ Bulan Ini (Semua)',
+        'CUSTOM': '📆 Rentang Tanggal Kustom'
+      };
+      return map[val] || val || 'Pilih Periode';
+    },
+
+    selectDateOption(val) {
+      this.dateDropdownOpen = false;
+      this.handleDateSelectChange({ target: { value: val } });
+    },
+
+    /**
+     * Handle Account Filter Change (Smooth & Non-Blocking)
+     */
+    onAccountChange() {
+      this.isLoading = true;
+      this.loadingMessage = `Memfilter Account: ${this.selectedAccount === 'ALL' ? 'Semua Account' : this.selectedAccount}...`;
+      this.loadingStage = 3;
+
+      setTimeout(() => {
+        this.currentPage = 1;
+        this.saveSessionState();
+
+        requestAnimationFrame(() => {
+          if (window.lucide) lucide.createIcons();
+          if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
+            MapService.renderVisitsOnMap(this.filteredVisits);
+          }
+          if (this.initCharts) this.initCharts();
+
+          setTimeout(() => {
+            this.isLoading = false;
+          }, 200);
+        });
+      }, 30);
     },
 
     /**
@@ -815,6 +927,8 @@ function dashboardApp() {
       this.loadingMessage = `Menyaring & mengolah data rentang ${this.customStartInput} s/d ${this.customEndInput}...`;
 
       setTimeout(() => {
+        this.dateFilter = 'CUSTOM';
+        this.isCustomDateOpen = true;
         this.startDate = this.customStartInput;
         this.endDate = this.customEndInput;
         this.currentPage = 1;
@@ -832,9 +946,9 @@ function dashboardApp() {
           }
           setTimeout(() => {
             this.isLoading = false;
-          }, 250);
+          }, 200);
         });
-      }, 80);
+      }, 30);
     },
 
     onPeriodChange() {
@@ -1065,11 +1179,50 @@ function dashboardApp() {
       console.log(`%c[Data Kunjungan Ready]%c Total: ${(this.visits || []).length} baris | Distribusi Tanggal:`, 'background:#6366f1;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#a5b4fc;', vDates);
       console.log(`%c[Data Absensi Ready]%c Total: ${(this.absensi || []).length} baris | Distribusi Tanggal:`, 'background:#10b981;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#6ee7b7;', aDates);
 
+      this.crewMasterStoresMap = new Map();
+      this.crewMasterRoutesMap = new Map();
+
+      const normKey = (str) => {
+        if (!str) return '';
+        return String(str).toUpperCase()
+          .replace(/[\.\,\-\_\(\)\/]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .replace(/SULISTIYO/g, 'SULISTIO')
+          .trim();
+      };
+
+      const cleanCrewToken = (str) => {
+        if (!str) return '';
+        return normKey(str)
+          .replace(/\s*[\(\[\-]?\s*(DK|LK|LP)[0-9]?\s*[\)\]]?\s*$/i, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+
       if (this.masterToko && this.masterToko.length > 0) {
         this.masterToko.forEach(m => {
           m._officialModul = this.getCrewOfficialModul(m.namaCrew || m.kodeCrew, m.modul);
           m._accUpper = (m.account || '').toUpperCase();
           m._searchStr = `${m.namaToko || ''} ${m.kodeToko || ''} ${m.namaCrew || ''} ${m.kodeCrew || ''} ${m.account || ''}`.toUpperCase();
+
+          const kName = normKey(m.namaCrew);
+          const kCode = normKey(m.kodeCrew);
+          const baseName = cleanCrewToken(m.namaCrew);
+          const ruteStr = m.rute ? String(m.rute).trim().toUpperCase() : '';
+
+          const registerToCrew = (key) => {
+            if (!key) return;
+            if (!this.crewMasterStoresMap.has(key)) {
+              this.crewMasterStoresMap.set(key, []);
+              this.crewMasterRoutesMap.set(key, new Set());
+            }
+            this.crewMasterStoresMap.get(key).push(m);
+            if (ruteStr) this.crewMasterRoutesMap.get(key).add(ruteStr);
+          };
+
+          if (kName) registerToCrew(kName);
+          if (kCode && kCode !== kName) registerToCrew(kCode);
+          if (baseName && baseName !== kName) registerToCrew(baseName);
         });
       }
     },
@@ -1135,14 +1288,23 @@ function dashboardApp() {
         const y_d = String(yDate.getDate()).padStart(2, '0');
         const yIso = `${y_y}-${y_m}-${y_d}`;
         data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === yIso);
-      } else if (this.dateFilter === 'CUSTOM' && this.startDate && this.endDate) {
-        const start = this.startDate;
-        const end = this.endDate;
-        data = data.filter(v => {
-          if (!v) return false;
-          const vIso = v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
-          return vIso && vIso >= start && vIso <= end;
-        });
+      } else if (this.dateFilter === 'CUSTOM') {
+        if (this.startDate && this.endDate) {
+          const start = this.startDate;
+          const end = this.endDate;
+          data = data.filter(v => {
+            if (!v) return false;
+            const vIso = v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
+            return vIso && vIso >= start && vIso <= end;
+          });
+        } else {
+          // Safe Fallback before "Terapkan Rentang" is clicked: keep latest active day instead of dumping 50k rows
+          const first = data[0];
+          const latestIso = first ? (first._iso || this.normalizeIsoDate(first.dateIso || first.date || first.tanggal)) : null;
+          if (latestIso) {
+            data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === latestIso);
+          }
+        }
       } else if (this.dateFilter === '7_DAYS' && this.startDate && this.endDate) {
         const start = this.startDate;
         const end = this.endDate;
@@ -1267,14 +1429,26 @@ function dashboardApp() {
         const y_d = String(yDate.getDate()).padStart(2, '0');
         const yIso = `${y_y}-${y_m}-${y_d}`;
         data = data.filter(a => a && (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === yIso);
-      } else if (dFilter === 'CUSTOM' && f.startDate && f.endDate) {
-        const start = f.startDate;
-        const end = f.endDate;
-        data = data.filter(a => {
-          if (!a) return false;
-          const aIso = a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date);
-          return aIso && aIso >= start && aIso <= end;
-        });
+      } else if (dFilter === 'CUSTOM') {
+        if (f.startDate && f.endDate) {
+          const start = f.startDate;
+          const end = f.endDate;
+          data = data.filter(a => {
+            if (!a) return false;
+            const aIso = a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date);
+            return aIso && aIso >= start && aIso <= end;
+          });
+        } else {
+          // Safe Fallback before custom dates are applied
+          const firstVisit = (this.visits && this.visits.length > 0) ? this.visits[0] : null;
+          const firstData = (data && data.length > 0) ? data[0] : null;
+          const latestIso = (firstVisit && firstVisit._iso)
+            ? firstVisit._iso
+            : (firstData ? (firstData._iso || this.normalizeIsoDate(firstData.tanggal || firstData.dateIso || firstData.date)) : null);
+          if (latestIso) {
+            data = data.filter(a => a && (a._iso || this.normalizeIsoDate(a.tanggal || a.dateIso || a.date)) === latestIso);
+          }
+        }
       } else if (dFilter === '7_DAYS' && f.startDate && f.endDate) {
         const start = f.startDate;
         const end = f.endDate;
@@ -2054,6 +2228,16 @@ function dashboardApp() {
         if (dateStr && dateStr.length >= 10) {
           targetDate = new Date(dateStr);
         }
+      } else if (this.dateFilter === 'CUSTOM') {
+        if (this.startDate && this.endDate && this.startDate === this.endDate) {
+          targetDate = new Date(this.startDate);
+        } else if (this.startDate && this.endDate) {
+          return null; // Multi-day range: all match
+        } else if (this.visits && this.visits.length > 0) {
+          const first = this.visits[0];
+          const dateStr = this.normalizeIsoDate(first.dateIso || first.date || first.tanggal, first.hariKe);
+          if (dateStr && dateStr.length >= 10) targetDate = new Date(dateStr);
+        }
       } else if (this.startDate) {
         if (!this.endDate || this.startDate === this.endDate) {
           targetDate = new Date(this.startDate);
@@ -2370,29 +2554,34 @@ function dashboardApp() {
         return key && crewMap[key] ? crewMap[key] : null;
       };
 
-      // 2. Pass 1: Collect all assigned routes for each official crew
-      (this.masterToko || []).forEach(m => {
-        const crewObj = findOfficialCrew(m.namaCrew, m.kodeCrew);
-        if (!crewObj) return;
-        if (m.rute) crewObj.allRoutes.add(String(m.rute).trim().toUpperCase());
-      });
-
-      // Pass 2: Map Target Stores from Master Toko ONLY based on crew's specific schedule pattern
+      // 2. Map assigned routes & Target Stores from Pre-Indexed Master Toko (O(1) Instant Lookup - Zero Lag)
       const targetDate = this.getActiveTargetDate();
-      (this.masterToko || []).forEach(m => {
-        const crewObj = findOfficialCrew(m.namaCrew, m.kodeCrew);
-        if (!crewObj) return;
+      const masterStoreMap = this.crewMasterStoresMap || new Map();
+      const masterRouteMap = this.crewMasterRoutesMap || new Map();
 
-        const storeKey = normKey(m.kodeToko) || normKey(m.namaToko);
-        if (storeKey) {
-          crewObj.allStores.add(storeKey);
-          const ruteStr = String(m.rute || '').toUpperCase().trim();
-          const crewTargetRoutes = this.getCrewTargetRouteSet(crewObj.allRoutes, targetDate);
-          
-          if (this.isRouteMatched(ruteStr, crewTargetRoutes)) {
-            crewObj.targetStores.add(storeKey);
-          }
+      Object.values(crewMap).forEach(crewObj => {
+        const cKey = normKey(crewObj.namaCrew);
+        const cCode = normKey(crewObj.kodeCrew);
+        const baseKey = cleanCrewToken(crewObj.namaCrew);
+
+        const assignedRoutes = masterRouteMap.get(cKey) || masterRouteMap.get(cCode) || masterRouteMap.get(baseKey);
+        if (assignedRoutes) {
+          assignedRoutes.forEach(r => crewObj.allRoutes.add(r));
         }
+
+        const assignedStores = masterStoreMap.get(cKey) || masterStoreMap.get(cCode) || masterStoreMap.get(baseKey) || [];
+        const crewTargetRoutes = this.getCrewTargetRouteSet(crewObj.allRoutes, targetDate);
+
+        assignedStores.forEach(m => {
+          const storeKey = normKey(m.kodeToko) || normKey(m.namaToko);
+          if (storeKey) {
+            crewObj.allStores.add(storeKey);
+            const ruteStr = String(m.rute || '').toUpperCase().trim();
+            if (this.isRouteMatched(ruteStr, crewTargetRoutes)) {
+              crewObj.targetStores.add(storeKey);
+            }
+          }
+        });
       });
 
       // Pass 2.1: Safety Fallback for crews where targetStores is 0 but they have assigned stores in Master Toko or Visits
@@ -2653,32 +2842,61 @@ function dashboardApp() {
     },
 
     applyCrewSelection() {
-      this.selectedCrews = [...(this.tempSelectedCrews || [])];
+      const selected = [...(this.tempSelectedCrews || [])];
       this.crewDropdownOpen = false;
       this.selectedCrew = '';
 
-      // Tampilkan animasi overlay loading agar transisi terasa responsif & visual WOW
+      // Tampilkan animasi overlay loading secara instan sebelum komputasi berat dimulai
       this.isLoading = true;
-      const count = this.selectedCrews.length;
+      const count = selected.length;
       this.loadingMessage = count > 0 
-        ? `Memfilter & Menyiapkan Data ${count} MDS Terpilih...` 
+        ? `Memfilter Data ${count} MDS Terpilih...` 
         : 'Memuat Semua Data Monitoring...';
       this.loadingStage = 3;
 
+      // Beri jeda 30ms agar browser merender overlay loading terlebih dahulu sebelum Alpine recompute
       setTimeout(() => {
-        this.isLoading = false;
-        this.$nextTick(() => {
+        this.selectedCrews = selected;
+        this.currentPage = 1;
+
+        requestAnimationFrame(() => {
+          if (this.activeTab === 'kunjungan' && document.getElementById('visits-map')) {
+            MapService.renderVisitsOnMap(this.filteredVisits);
+          }
           if (window.lucide) window.lucide.createIcons();
           if (this.initCharts) this.initCharts();
+
+          setTimeout(() => {
+            this.isLoading = false;
+          }, 200);
         });
-      }, 400);
+      }, 30);
     },
 
     clearAllSelectedCrews() {
-      this.selectedCrews = [];
+      this.isLoading = true;
+      this.loadingMessage = 'Mereset Filter MDS...';
+      this.loadingStage = 3;
       this.tempSelectedCrews = [];
       this.selectedCrew = '';
       this.crewDropdownSearch = '';
+
+      setTimeout(() => {
+        this.selectedCrews = [];
+        this.currentPage = 1;
+
+        requestAnimationFrame(() => {
+          if (this.activeTab === 'kunjungan' && document.getElementById('visits-map')) {
+            MapService.renderVisitsOnMap(this.filteredVisits);
+          }
+          if (window.lucide) window.lucide.createIcons();
+          if (this.initCharts) this.initCharts();
+
+          setTimeout(() => {
+            this.isLoading = false;
+          }, 200);
+        });
+      }, 30);
     },
 
     toggleCrewCardExpand(crewKey) {
@@ -2764,19 +2982,7 @@ function dashboardApp() {
         if (base && !absensiByCrew.has(base)) absensiByCrew.set(base, a);
       });
 
-      const masterByCrew = new Map();
-      allMaster.forEach(m => {
-        const k = normKey(m.namaCrew);
-        const base = cleanCrewToken(m.namaCrew);
-        if (k) {
-          if (!masterByCrew.has(k)) masterByCrew.set(k, []);
-          masterByCrew.get(k).push(m);
-        }
-        if (base && base !== k) {
-          if (!masterByCrew.has(base)) masterByCrew.set(base, []);
-          masterByCrew.get(base).push(m);
-        }
-      });
+      const masterStoreMap = this.crewMasterStoresMap || new Map();
 
       return compList.map(c => {
         const cKey = normKey(c.namaCrew);
@@ -2784,7 +2990,7 @@ function dashboardApp() {
         
         const crewVisits = visitsByCrew.get(cKey) || visitsByCrew.get(baseKey) || [];
         const crewAbsen = absensiByCrew.get(cKey) || absensiByCrew.get(baseKey) || null;
-        const crewMasterStores = masterByCrew.get(cKey) || masterByCrew.get(baseKey) || [];
+        const crewMasterStores = masterStoreMap.get(cKey) || masterStoreMap.get(baseKey) || [];
 
         const crewRoutes = new Set();
         crewMasterStores.forEach(m => {
@@ -3641,6 +3847,478 @@ function dashboardApp() {
     },
 
     /**
+     * Getter: Analisis Trend Anomali Historis & Rekap Bulanan Lintas Seluruh Tanggal
+     */
+    get monthlyAnomalyAnalysis() {
+      try {
+        const allVisits = this.visits || [];
+        const allAbsensi = this.absensi || [];
+        const masterUsers = this.masterUser || [];
+        
+        const normKey = (str) => {
+          if (!str) return '';
+          return String(str).toUpperCase()
+            .replace(/[\.\,\-\_\(\)\/]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .replace(/SULISTIYO/g, 'SULISTIO')
+            .trim();
+        };
+
+        const isDcRecord = (cat, st, toko) => {
+          const combined = `${cat || ''} ${st || ''} ${toko || ''}`.toUpperCase();
+          return /\bDC\b|KUNJUNGAN DC|VISIT DC|TUGAS DC|DC SAT|DC SERANG|DC LEBAK|DC PARUNG|DC JKT|DC CIREBON|OFFICE|KANTOR/i.test(combined);
+        };
+
+        const isZeroGps = (kStr) => {
+          if (!kStr) return true;
+          const s = String(kStr).trim().toLowerCase();
+          if (s === '-' || s === '0' || s.includes('null') || s.includes('undefined') || s.includes('off') || s.includes('error')) return true;
+          const parts = s.split(',').map(p => parseFloat(p.trim()));
+          if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return true;
+          if (Math.abs(parts[0]) < 0.0001 && Math.abs(parts[1]) < 0.0001) return true;
+          return false;
+        };
+
+        // 1. Build roster map
+        const rosterMap = new Map();
+        const userPhoneMap = {};
+        masterUsers.forEach(u => {
+          const cleanN = normKey(u.nama);
+          if (!cleanN) return;
+          if (u.noWa) userPhoneMap[cleanN] = u.noWa;
+          if (u.id) userPhoneMap[normKey(u.id)] = u.noWa;
+          if (!rosterMap.has(cleanN)) {
+            rosterMap.set(cleanN, {
+              nama: (u.nama || '').trim(),
+              id: (u.id || '').trim(),
+              modul: (u.modul || this.getCrewOfficialModul(u.nama, '-')).toUpperCase().trim(),
+              noWa: (u.noWa || '').trim()
+            });
+          }
+        });
+
+        // 2. Kumpulkan seluruh tanggal unik dalam dataset bulan ini
+        const dateSet = new Set();
+        allAbsensi.forEach(a => {
+          const d = a.tanggal || a.dateIso;
+          if (d && d.length >= 8) dateSet.add(d);
+        });
+        allVisits.forEach(v => {
+          const d = v.dateIso || v.date;
+          if (d && d.length >= 8) dateSet.add(d);
+        });
+
+        const sortedDates = Array.from(dateSet).sort();
+
+        // 3. Kelompokkan record by Tanggal
+        const absensiByDate = {};
+        const visitsByDate = {};
+
+        sortedDates.forEach(d => {
+          absensiByDate[d] = [];
+          visitsByDate[d] = [];
+        });
+
+        allAbsensi.forEach(a => {
+          const d = a.tanggal || a.dateIso;
+          if (d && absensiByDate[d]) absensiByDate[d].push(a);
+        });
+
+        allVisits.forEach(v => {
+          const d = v.dateIso || v.date;
+          if (d && visitsByDate[d]) visitsByDate[d].push(v);
+        });
+
+        // 4. Trend Series & MDS Anomaly Tracking
+        const trendData = {
+          dates: sortedDates,
+          categories: {
+            total: [],
+            terlambat: [],
+            absenNoVisit: [],
+            visitNoAbsen: [],
+            lupaPulang: [],
+            gpsIssue: [],
+            alpha: []
+          }
+        };
+
+        const mdsAnomalyMap = new Map();
+
+        // Inisialisasi master users ke map
+        rosterMap.forEach((u, cleanN) => {
+          mdsAnomalyMap.set(cleanN, {
+            nama: u.nama,
+            id: u.id,
+            modul: u.modul,
+            noWa: u.noWa || userPhoneMap[cleanN] || '',
+            total: 0,
+            terlambat: 0,
+            absenNoVisit: 0,
+            visitNoAbsen: 0,
+            lupaPulang: 0,
+            gpsIssue: 0,
+            alpha: 0,
+            incidentDates: new Set(),
+            incidents: []
+          });
+        });
+
+        let totalIncidentSum = 0;
+        let catTotals = {
+          terlambat: 0,
+          absenNoVisit: 0,
+          visitNoAbsen: 0,
+          lupaPulang: 0,
+          gpsIssue: 0,
+          alpha: 0
+        };
+
+        sortedDates.forEach(d => {
+          const dayAbsensi = absensiByDate[d] || [];
+          const dayVisits = visitsByDate[d] || [];
+
+          const dayMasukMap = {};
+          const dayMasukKeys = new Set();
+          const dayPulangKeys = new Set();
+          const dayIzinKeys = new Set();
+          const dayDcKeys = new Set();
+
+          let dayTerlambat = 0;
+          let dayGpsIssue = 0;
+
+          dayAbsensi.forEach(a => {
+            const rawName = (a.namaCrew || a.kodeCrew || '').trim();
+            if (!rawName) return;
+            const cleanN = normKey(rawName);
+            const cleanId = normKey(a.kodeCrew);
+            const st = (a.status || '').toUpperCase().trim() || 'MASUK';
+            const w = (a.waktu || a.time || '').trim();
+            const k = (a.koordinat || '').trim();
+
+            if (!mdsAnomalyMap.has(cleanN)) {
+              mdsAnomalyMap.set(cleanN, {
+                nama: rawName,
+                id: a.kodeCrew || '-',
+                modul: (a._officialModul || this.getCrewOfficialModul(rawName, a.modul || '-')).toUpperCase().trim(),
+                noWa: userPhoneMap[cleanN] || (cleanId ? userPhoneMap[cleanId] : '') || '',
+                total: 0,
+                terlambat: 0,
+                absenNoVisit: 0,
+                visitNoAbsen: 0,
+                lupaPulang: 0,
+                gpsIssue: 0,
+                alpha: 0,
+                incidentDates: new Set(),
+                incidents: []
+              });
+            }
+
+            const mdsEntry = mdsAnomalyMap.get(cleanN);
+
+            // GPS Check
+            if (isZeroGps(k)) {
+              dayGpsIssue++;
+              catTotals.gpsIssue++;
+              mdsEntry.gpsIssue++;
+              mdsEntry.total++;
+              mdsEntry.incidentDates.add(d);
+              mdsEntry.incidents.push({ date: d, type: 'GPS Issue (0,0)', detail: `Absen ${st} tanpa koordinat GPS` });
+            }
+
+            // DC Check
+            if (isDcRecord(a.catatan, st, a.namaToko)) {
+              if (cleanN) dayDcKeys.add(cleanN);
+              if (cleanId) dayDcKeys.add(cleanId);
+            }
+
+            if (st === 'MASUK' || st === 'HADIR' || !st) {
+              if (!dayMasukMap[cleanN]) {
+                dayMasukMap[cleanN] = a;
+                if (cleanN) dayMasukKeys.add(cleanN);
+                if (cleanId) dayMasukKeys.add(cleanId);
+
+                // Terlambat check (> 08:05)
+                if (w) {
+                  const parts = w.split(':').map(p => parseInt(p, 10));
+                  if (parts.length >= 2) {
+                    const min = parts[0] * 60 + parts[1];
+                    if (min > 8 * 60 + 5) {
+                      dayTerlambat++;
+                      catTotals.terlambat++;
+                      mdsEntry.terlambat++;
+                      mdsEntry.total++;
+                      mdsEntry.incidentDates.add(d);
+                      mdsEntry.incidents.push({ date: d, type: 'Terlambat', detail: `Masuk ${w} (lewat ${min - 480} menit)` });
+                    }
+                  }
+                }
+              }
+            } else if (st === 'PULANG') {
+              if (cleanN) dayPulangKeys.add(cleanN);
+              if (cleanId) dayPulangKeys.add(cleanId);
+            } else {
+              if (cleanN) dayIzinKeys.add(cleanN);
+              if (cleanId) dayIzinKeys.add(cleanId);
+            }
+          });
+
+          // Visits map
+          const dayVisitMap = {};
+          const dayVisitKeys = new Set();
+          dayVisits.forEach(v => {
+            const rawName = (v.namaCrew || v.kodeCrew || '').trim();
+            if (!rawName) return;
+            const cleanN = normKey(rawName);
+            const cleanId = normKey(v.kodeCrew);
+            if (cleanN) dayVisitKeys.add(cleanN);
+            if (cleanId) dayVisitKeys.add(cleanId);
+            dayVisitMap[cleanN] = (dayVisitMap[cleanN] || 0) + 1;
+
+            if (!mdsAnomalyMap.has(cleanN)) {
+              mdsAnomalyMap.set(cleanN, {
+                nama: rawName,
+                id: v.kodeCrew || '-',
+                modul: (v._officialModul || this.getCrewOfficialModul(rawName, v.modul || v.prefix || '-')).toUpperCase().trim(),
+                noWa: userPhoneMap[cleanN] || (cleanId ? userPhoneMap[cleanId] : '') || '',
+                total: 0,
+                terlambat: 0,
+                absenNoVisit: 0,
+                visitNoAbsen: 0,
+                lupaPulang: 0,
+                gpsIssue: 0,
+                alpha: 0,
+                incidentDates: new Set(),
+                incidents: []
+              });
+            }
+          });
+
+          // Absen 0 Visit
+          let dayAbsenNoVisit = 0;
+          Object.keys(dayMasukMap).forEach(cleanN => {
+            const cleanId = normKey(dayMasukMap[cleanN].kodeCrew);
+            const isDc = dayDcKeys.has(cleanN) || (cleanId && dayDcKeys.has(cleanId));
+            if (!isDc && (!dayVisitMap[cleanN] || dayVisitMap[cleanN] === 0)) {
+              dayAbsenNoVisit++;
+              catTotals.absenNoVisit++;
+              const mdsEntry = mdsAnomalyMap.get(cleanN);
+              if (mdsEntry) {
+                mdsEntry.absenNoVisit++;
+                mdsEntry.total++;
+                mdsEntry.incidentDates.add(d);
+                mdsEntry.incidents.push({ date: d, type: 'Absen 0 Visit', detail: `Absen masuk tercatat namun 0 toko dikunjungi` });
+              }
+            }
+          });
+
+          // Visit Belum Absen
+          let dayVisitNoAbsen = 0;
+          Object.keys(dayVisitMap).forEach(cleanN => {
+            if (!dayMasukKeys.has(cleanN)) {
+              dayVisitNoAbsen++;
+              catTotals.visitNoAbsen++;
+              const mdsEntry = mdsAnomalyMap.get(cleanN);
+              if (mdsEntry) {
+                mdsEntry.visitNoAbsen++;
+                mdsEntry.total++;
+                mdsEntry.incidentDates.add(d);
+                mdsEntry.incidents.push({ date: d, type: 'Visit Tanpa Absen', detail: `${dayVisitMap[cleanN]} kunjungan tanpa absen masuk` });
+              }
+            }
+          });
+
+          // Lupa Pulang
+          let dayLupaPulang = 0;
+          Object.keys(dayMasukMap).forEach(cleanN => {
+            if (!dayPulangKeys.has(cleanN)) {
+              dayLupaPulang++;
+              catTotals.lupaPulang++;
+              const mdsEntry = mdsAnomalyMap.get(cleanN);
+              if (mdsEntry) {
+                mdsEntry.lupaPulang++;
+                mdsEntry.total++;
+                mdsEntry.incidentDates.add(d);
+                mdsEntry.incidents.push({ date: d, type: 'Belum Tap Pulang', detail: `Absen masuk ada tapi belum tap pulang` });
+              }
+            }
+          });
+
+          // Alpha (Hanya dihitung pada hari operasional aktif)
+          let dayAlpha = 0;
+          if (dayVisits.length > 5 || dayAbsensi.length > 5) {
+            rosterMap.forEach((u, cleanN) => {
+              const cleanId = normKey(u.id);
+              const hasMasuk = dayMasukKeys.has(cleanN) || (cleanId && dayMasukKeys.has(cleanId));
+              const hasVisit = dayVisitKeys.has(cleanN) || (cleanId && dayVisitKeys.has(cleanId));
+              const hasIzin = dayIzinKeys.has(cleanN) || (cleanId && dayIzinKeys.has(cleanId));
+
+              if (!hasMasuk && !hasVisit && !hasIzin) {
+                dayAlpha++;
+                catTotals.alpha++;
+                const mdsEntry = mdsAnomalyMap.get(cleanN);
+                if (mdsEntry) {
+                  mdsEntry.alpha++;
+                  mdsEntry.total++;
+                  mdsEntry.incidentDates.add(d);
+                  mdsEntry.incidents.push({ date: d, type: 'Alpha', detail: `Tidak hadir tanpa keterangan izin/sakit/cuti` });
+                }
+              }
+            });
+          }
+
+          const dayTotalAnomalies = dayTerlambat + dayAbsenNoVisit + dayVisitNoAbsen + dayLupaPulang + dayGpsIssue + dayAlpha;
+          totalIncidentSum += dayTotalAnomalies;
+
+          trendData.categories.total.push(dayTotalAnomalies);
+          trendData.categories.terlambat.push(dayTerlambat);
+          trendData.categories.absenNoVisit.push(dayAbsenNoVisit);
+          trendData.categories.visitNoAbsen.push(dayVisitNoAbsen);
+          trendData.categories.lupaPulang.push(dayLupaPulang);
+          trendData.categories.gpsIssue.push(dayGpsIssue);
+          trendData.categories.alpha.push(dayAlpha);
+        });
+
+        // Convert mdsAnomalyMap to sorted array (Leaderboard)
+        const leaderboard = Array.from(mdsAnomalyMap.values())
+          .map(item => ({
+            ...item,
+            activeDaysCount: item.incidentDates.size,
+            riskLevel: item.total >= 6 ? 'KRITIS' : (item.total >= 3 ? 'PERINGATAN' : (item.total > 0 ? 'RINGAN' : 'DISIPLIN'))
+          }))
+          .sort((a, b) => b.total - a.total || b.activeDaysCount - a.activeDaysCount || a.nama.localeCompare(b.nama));
+
+        // Find top most frequent category
+        let topCategory = 'Terlambat';
+        let maxCatVal = 0;
+        Object.entries(catTotals).forEach(([k, v]) => {
+          if (v > maxCatVal) {
+            maxCatVal = v;
+            topCategory = k === 'terlambat' ? '⏰ Terlambat' : (k === 'absenNoVisit' ? '🔴 Absen 0 Visit' : (k === 'visitNoAbsen' ? '🟡 Visit Tanpa Absen' : (k === 'lupaPulang' ? '🏠 Lupa Pulang' : (k === 'gpsIssue' ? '📍 GPS Issue' : '❓ Alpha'))));
+          }
+        });
+
+        const topViolator = leaderboard.length > 0 && leaderboard[0].total > 0 ? leaderboard[0] : null;
+        const avgDaily = sortedDates.length > 0 ? (totalIncidentSum / sortedDates.length).toFixed(1) : 0;
+
+        return {
+          trendData,
+          leaderboard,
+          catTotals,
+          totalIncidentSum,
+          topCategory,
+          topViolator,
+          avgDaily,
+          totalDaysTracked: sortedDates.length
+        };
+      } catch (err) {
+        console.warn("⚠️ monthlyAnomalyAnalysis error:", err);
+        return {
+          trendData: { dates: [], categories: { total: [], terlambat: [], absenNoVisit: [], visitNoAbsen: [], lupaPulang: [], gpsIssue: [], alpha: [] } },
+          leaderboard: [],
+          catTotals: { terlambat: 0, absenNoVisit: 0, visitNoAbsen: 0, lupaPulang: 0, gpsIssue: 0, alpha: 0 },
+          totalIncidentSum: 0,
+          topCategory: '-',
+          topViolator: null,
+          avgDaily: 0,
+          totalDaysTracked: 0
+        };
+      }
+    },
+
+    get filteredAnomalyLeaderboard() {
+      const data = this.monthlyAnomalyAnalysis.leaderboard || [];
+      const modFilter = this.anomalyLeaderboardFilterModul || 'ALL';
+      const search = (this.anomalyLeaderboardSearch || '').trim().toLowerCase();
+
+      return data.filter(item => {
+        if (modFilter !== 'ALL') {
+          const m = (item.modul || '').toUpperCase();
+          if (m !== modFilter && !m.startsWith(modFilter)) return false;
+        }
+        if (search) {
+          const matchName = (item.nama || '').toLowerCase().includes(search);
+          const matchCode = (item.id || '').toLowerCase().includes(search);
+          const matchMod = (item.modul || '').toLowerCase().includes(search);
+          if (!matchName && !matchCode && !matchMod) return false;
+        }
+        return true;
+      });
+    },
+
+    get paginatedAnomalyLeaderboard() {
+      const list = this.filteredAnomalyLeaderboard;
+      const page = this.anomalyLeaderboardPage || 1;
+      const size = this.anomalyLeaderboardPageSize || 10;
+      if (size === 'ALL') return list;
+      const start = (page - 1) * parseInt(size, 10);
+      return list.slice(start, start + parseInt(size, 10));
+    },
+
+    get totalAnomalyLeaderboardPages() {
+      const total = this.filteredAnomalyLeaderboard.length;
+      const size = this.anomalyLeaderboardPageSize || 10;
+      if (size === 'ALL') return 1;
+      return Math.max(1, Math.ceil(total / parseInt(size, 10)));
+    },
+
+    setAnomalyViewMode(mode) {
+      this.anomalyViewMode = mode;
+      if (mode === 'TREND') {
+        this.$nextTick(() => {
+          this.refreshAnomalyCharts();
+          if (window.lucide) lucide.createIcons();
+        });
+      }
+    },
+
+    setAnomalyTrendCategory(cat) {
+      this.anomalyTrendCategory = cat;
+      this.$nextTick(() => {
+        this.refreshAnomalyCharts();
+      });
+    },
+
+    refreshAnomalyCharts() {
+      if (typeof ChartService === 'undefined') return;
+      const analysis = this.monthlyAnomalyAnalysis;
+      const isDark = this.theme === 'dark';
+
+      const trendCanvas = document.getElementById('anomaly-trend-canvas');
+      if (trendCanvas && analysis.trendData) {
+        ChartService.renderAnomalyTrendChart(trendCanvas, analysis.trendData, this.anomalyTrendCategory, isDark);
+      }
+
+      const pieCanvas = document.getElementById('anomaly-category-canvas');
+      if (pieCanvas && analysis.catTotals) {
+        ChartService.renderAnomalyCategoryChart(pieCanvas, analysis.catTotals, isDark);
+      }
+    },
+
+    sendMdsAnomalyWarningWA(mdsItem) {
+      if (!mdsItem) return;
+      const phone = mdsItem.noWa;
+      if (!phone) {
+        alert(`Nomor WhatsApp untuk ${mdsItem.nama} belum terdaftar di database master.`);
+        return;
+      }
+      const cleanPhone = phone.replace(/[^0-9]/g, '').replace(/^0/, '62');
+      const text =
+        `Halo rekan *${mdsItem.nama}* (${mdsItem.modul}),\n\n` +
+        `Berikut adalah catatan evaluasi kedisiplinan & rekap anomali operasional Anda selama periode ini:\n` +
+        `📊 *Total Pelanggaran/Anomali:* ${mdsItem.total} kali (Status: ${mdsItem.riskLevel})\n` +
+        `• ⏰ Terlambat Masuk (> 08:00): ${mdsItem.terlambat}x\n` +
+        `• 🔴 Absen Masuk tapi 0 Toko Dikunjungi: ${mdsItem.absenNoVisit}x\n` +
+        `• 🟡 Kunjungan Toko tanpa Absen Masuk: ${mdsItem.visitNoAbsen}x\n` +
+        `• 🏠 Lupa / Belum Tap Pulang: ${mdsItem.lupaPulang}x\n` +
+        `• 📍 Absen Tanpa GPS Valid (0,0): ${mdsItem.gpsIssue}x\n` +
+        `• ❓ Alpha (Tidak Hadir tanpa Izin/Sakit): ${mdsItem.alpha}x\n\n` +
+        `Mohon segera tingkatkan kedisiplinan dan kepatuhan SOP operasional di lapangan. Terima kasih! 🙏`;
+
+      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
+    },
+
+    /**
      * Anomaly Tab / View Controls (Centralized in Tab 5)
      */
     openAnomalyModal(subTab = null) {
@@ -4411,12 +5089,26 @@ function dashboardApp() {
       } else if (dFilter === 'YESTERDAY') {
         const yIso = f.startDate || this.getYesterdayIso();
         data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === yIso);
-      } else if ((dFilter === 'CUSTOM' || dFilter === '7_DAYS' || dFilter === 'THIS_MONTH') && f.startDate && f.endDate) {
+      } else if ((dFilter === '7_DAYS' || dFilter === 'THIS_MONTH') && f.startDate && f.endDate) {
         data = data.filter(v => {
           if (!v) return false;
           const vIso = v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
           return vIso && vIso >= f.startDate && vIso <= f.endDate;
         });
+      } else if (dFilter === 'CUSTOM') {
+        if (f.startDate && f.endDate) {
+          data = data.filter(v => {
+            if (!v) return false;
+            const vIso = v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
+            return vIso && vIso >= f.startDate && vIso <= f.endDate;
+          });
+        } else {
+          const first = data[0];
+          const latestIso = first ? (first._iso || this.normalizeIsoDate(first.dateIso || first.date || first.tanggal)) : null;
+          if (latestIso) {
+            data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === latestIso);
+          }
+        }
       }
 
       return data;
@@ -6493,13 +7185,14 @@ function dashboardApp() {
         absensiByCrew[cKey].push(a);
       });
 
-      // Map unique target stores in Master Toko
+      // Map unique target stores in Master Toko (O(1) Instant Lookup)
+      const masterStoreMap = this.crewMasterStoresMap || new Map();
       const targetStoresByCrew = {};
-      (this.masterToko || []).forEach(m => {
-        const cKey = normKey(m.namaCrew) || normKey(m.kodeCrew);
-        if (!cKey) return;
+      masterStoreMap.forEach((stores, cKey) => {
         if (!targetStoresByCrew[cKey]) targetStoresByCrew[cKey] = new Set();
-        if (m.kodeToko || m.namaToko) targetStoresByCrew[cKey].add(m.kodeToko || m.namaToko);
+        stores.forEach(m => {
+          if (m.kodeToko || m.namaToko) targetStoresByCrew[cKey].add(m.kodeToko || m.namaToko);
+        });
       });
 
       const list = [];

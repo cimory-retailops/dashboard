@@ -357,13 +357,54 @@ async function saveCustomStore(store) {
 /**
  * Mesin Pencarian Toko Multi-Keyword & Filter Cepat (High Performance)
  */
+/**
+ * Menyimpan / memperbarui data toko tanpa menghapus data yang ada (On-Demand Caching)
+ */
+async function upsertStores(stores) {
+  if (!Array.isArray(stores) || stores.length === 0) return 0;
+  const db = await initDB();
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction("stores", "readwrite");
+      const storeOS = tx.objectStore("stores");
+
+      for (let i = 0; i < stores.length; i++) {
+        const item = stores[i];
+        const searchIndex = `${item.kodeToko || ""} ${item.namaToko || ""} ${item.account || ""} ${item.kota || ""} ${item.kecamatan || ""} ${item.provinsi || ""} ${item.crew || ""}`.toLowerCase();
+        storeOS.put({
+          kodeToko: item.kodeToko || "",
+          namaToko: item.namaToko || "",
+          account: item.account || "",
+          dcName: item.dcName || "",
+          kecamatan: item.kecamatan || "",
+          kota: item.kota || "",
+          provinsi: item.provinsi || "",
+          crew: item.crew || "",
+          lat: item.lat || null,
+          lon: item.lon || null,
+          searchIndex: searchIndex
+        });
+      }
+
+      tx.oncomplete = () => resolve(stores.length);
+      tx.onerror = () => resolve(0);
+    } catch (e) {
+      resolve(0);
+    }
+  });
+}
+
+/**
+ * Mencari Toko berdasarkan kata kunci & filter akun
+ * (IndexedDB Local First + On-Demand Server Fallback)
+ */
 async function searchStores({ query = "", accountFilter = "ALL", limit = 60 }) {
   const db = await initDB();
   const cleanQuery = query.trim().toLowerCase();
   const queryTokens = cleanQuery.split(/\s+/).filter(t => t.length > 0);
   const filterAccount = accountFilter.toUpperCase();
 
-  return new Promise((resolve, reject) => {
+  const localResults = await new Promise((resolve, reject) => {
     const tx = db.transaction("stores", "readonly");
     const storeOS = tx.objectStore("stores");
     const results = [];
@@ -390,7 +431,7 @@ async function searchStores({ query = "", accountFilter = "ALL", limit = 60 }) {
         // Filter Kata Kunci Pencarian (Multi-token match)
         let matchesQuery = true;
         if (queryTokens.length > 0) {
-          const targetText = item.searchIndex;
+          const targetText = item.searchIndex || "";
           for (let i = 0; i < queryTokens.length; i++) {
             if (!targetText.includes(queryTokens[i])) {
               matchesQuery = false;
@@ -417,6 +458,31 @@ async function searchStores({ query = "", accountFilter = "ALL", limit = 60 }) {
 
     cursorRequest.onerror = (e) => reject(e.target.error);
   });
+
+  // Jika hasil pencarian lokal sedikit/kosong dan ada query, panggil Server On-Demand Search
+  if (localResults.length < 10 && cleanQuery.length >= 2 && typeof fetchStoresOnDemand === "function") {
+    try {
+      const onlineResults = await fetchStoresOnDemand(query, accountFilter, limit);
+      if (onlineResults && onlineResults.length > 0) {
+        // Simpan toko baru ke IndexedDB untuk akses instan selanjutnya
+        upsertStores(onlineResults);
+
+        const seen = new Set(localResults.map(r => `${(r.kodeToko || "").trim().toUpperCase()}_${(r.account || "").trim().toUpperCase()}`));
+        for (const item of onlineResults) {
+          const key = `${(item.kodeToko || "").trim().toUpperCase()}_${(item.account || "").trim().toUpperCase()}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            localResults.push(item);
+            if (localResults.length >= limit) break;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("On-demand search fallback error:", e);
+    }
+  }
+
+  return localResults;
 }
 
 /**

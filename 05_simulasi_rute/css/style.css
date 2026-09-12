@@ -51,7 +51,7 @@
   border: none !important;
 }
 
-.custom-home-pin, .custom-store-pin {
+.custom-home-pin, .custom-store-pin, .custom-store-marker-l, .custom-store-marker-r, .custom-home-marker-l, .custom-home-marker-r {
   background: transparent !important;
   border: none !important;
   overflow: visible !important;

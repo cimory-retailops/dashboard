@@ -38,168 +38,179 @@ function normalizeModulKey_(key) {
 }
 
 function sebarJadwal(e) {
-  Logger.log("--- Memulai Pengecekan Sebar Jadwal (Strict 13-Col AppSheet Schema) ---");
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("Master_Toko");
-  if (!sheet) {
-    Logger.log("Sheet 'Master_Toko' tidak ditemukan!");
-    return;
-  }
-
-  var lastRow = sheet.getLastRow();
-  var lastCol = sheet.getLastColumn();
-  if (lastRow < 2 || lastCol < 1) {
-    Logger.log("Sheet kosong atau hanya ada header.");
-    return;
-  }
-
-  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  var statusColIdx = -1;
-  for (var h = 0; h < headers.length; h++) {
-    var hStr = String(headers[h]).trim().toLowerCase();
-    if (hStr === "status_sebar" || hStr === "status") {
-      statusColIdx = h + 1;
-      break;
+  var lock = LockService.getScriptLock();
+  try {
+    var hasLock = lock.tryLock(30000);
+    if (!hasLock) {
+      Logger.log("Proses sebarJadwal sedang berjalan di instance lain. Menunggu giliran berikutnya...");
+      return;
     }
-  }
 
-  // Jika kolom status tidak terdeteksi spesifik, gunakan kolom terakhir yang ada (JANGAN buat kolom baru)
-  if (statusColIdx === -1) {
-    statusColIdx = lastCol;
-  }
-
-  Logger.log("Kolom status terdeteksi di Kolom ke-" + statusColIdx + ". Memeriksa " + (lastRow - 1) + " baris...");
-
-  var dataRange = sheet.getRange(2, 1, lastRow - 1, lastCol);
-  var values = dataRange.getValues();
-
-  var unspreadRowIndices = [];
-  var modulBatches = {};
-  var absenBatches = {};
-  var extBatches = {};
-
-  for (var i = 0; i < values.length; i++) {
-    var row = values[i];
-    var statusVal = String(row[statusColIdx - 1] || "").trim().toUpperCase();
-    if (statusVal === "TERSEBAR") continue;
-
-    var rawModul = String(row[0] || "").trim();
-    if (!rawModul) continue;
-
-    var kodeModul = normalizeModulKey_(rawModul);
-    
-    // Strict 13 Columns for Target AppSheet Tables:
-    // 1: ACCOUNT, 2: KODE TOKO, 3: NAMA TOKO, 4: KODE CREW, 5: NAMA CREW, 6: RUTE,
-    // 7: TIPE TOKO, 8: NAMA KEPALA TOKO, 9: ALAMAT, 10: NO TELP, 11: ATASAN, 12: CATATAN, 13: STATUS
-    var rowToAppend = [
-      (row[1] || "ALFAMART").toString().trim().toUpperCase(), // ACCOUNT
-      (row[2] || "").toString().trim().toUpperCase(),         // KODE TOKO
-      (row[3] || "").toString().trim(),                       // NAMA TOKO
-      (row[4] || "").toString().trim(),                       // KODE CREW
-      (row[5] || "").toString().trim(),                       // NAMA CREW
-      (row[6] || "1").toString().trim().replace(/[^0-9]/g, "") || "1", // RUTE
-      (row[7] || "-").toString().trim(),                      // TIPE TOKO
-      (row[8] || "-").toString().trim(),                      // NAMA KEPALA TOKO
-      (row[9] || "-").toString().trim(),                      // ALAMAT
-      (row[10] || "-").toString().trim(),                     // NO TELP
-      (row[11] || "-").toString().trim(),                     // ATASAN
-      (row[12] || "-").toString().trim(),                     // CATATAN
-      "AKTIF"                                                 // STATUS (Col 13)
-    ];
-
-    unspreadRowIndices.push(i + 2);
-
-    if (modulIDs[kodeModul]) {
-      if (!modulBatches[kodeModul]) modulBatches[kodeModul] = [];
-      modulBatches[kodeModul].push(rowToAppend);
-
-      var prefix = kodeModul.substring(0, 2);
-      if (absenIDs[prefix]) {
-        if (!absenBatches[prefix]) absenBatches[prefix] = [];
-        absenBatches[prefix].push(rowToAppend);
-      }
-
-      var extKey = prefix + "_EXT";
-      if (externalIDs[extKey]) {
-        if (!extBatches[extKey]) extBatches[extKey] = [];
-        extBatches[extKey].push(rowToAppend);
-      }
-
-    } else if (externalIDs[kodeModul]) {
-      if (!extBatches[kodeModul]) extBatches[kodeModul] = [];
-      extBatches[kodeModul].push(rowToAppend);
-    } else {
-      Logger.log("PERINGATAN: Modul '" + rawModul + "' (normalized: " + kodeModul + ") tidak cocok dengan daftar modulIDs / externalIDs!");
+    Logger.log("--- Memulai Pengecekan Sebar Jadwal (Strict 13-Col AppSheet Schema) ---");
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("Master_Toko");
+    if (!sheet) {
+      Logger.log("Sheet 'Master_Toko' tidak ditemukan!");
+      return;
     }
-  }
 
-  if (unspreadRowIndices.length === 0) {
-    Logger.log("Tidak ada jadwal baru yang perlu disebar (semua baris berstatus TERSEBAR).");
-    return;
-  }
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+    if (lastRow < 2 || lastCol < 1) {
+      Logger.log("Sheet kosong atau hanya ada header.");
+      return;
+    }
 
-  Logger.log("Ditemukan " + unspreadRowIndices.length + " baris jadwal baru. Menyebar serentak ke modul target...");
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var statusColIdx = -1;
+    for (var h = 0; h < headers.length; h++) {
+      var hStr = String(headers[h]).trim().toLowerCase();
+      if (hStr === "status_sebar" || hStr === "status") {
+        statusColIdx = h + 1;
+        break;
+      }
+    }
 
-  var masterTokoAliases = ["Master_Toko", "master_toko", "Master Toko", "Master_toko", "MasterToko", "DATA TOKO", "Data_Toko", "Sheet1"];
-  var tokoAbsenAliases = ["Toko_Absen", "toko_absen", "Toko Absen", "TokoAbsen", "Master_Toko", "master_toko", "Absensi"];
-  var masterToko2Aliases = ["Master_Toko2", "Master_Toko", "master_toko", "Master Toko 2", "Master Toko", "Sheet1"];
+    // Jika kolom status tidak terdeteksi spesifik, gunakan kolom terakhir yang ada (JANGAN buat kolom baru)
+    if (statusColIdx === -1) {
+      statusColIdx = lastCol;
+    }
 
-  for (var mKey in modulBatches) {
-    try {
-      var targetSs = SpreadsheetApp.openById(modulIDs[mKey]);
-      var targetSheet = getSheetByNames_(targetSs, masterTokoAliases);
-      if (targetSheet) {
-        var addedCount = appendDataWithoutDuplicates_(targetSheet, modulBatches[mKey], 1000);
-        Logger.log("Modul " + mKey + ": Berhasil sebar " + addedCount + " baris baru (skip " + (modulBatches[mKey].length - addedCount) + " duplikat) ke tab '" + targetSheet.getName() + "'");
+    Logger.log("Kolom status terdeteksi di Kolom ke-" + statusColIdx + ". Memeriksa " + (lastRow - 1) + " baris...");
+
+    var dataRange = sheet.getRange(2, 1, lastRow - 1, lastCol);
+    var values = dataRange.getValues();
+
+    var unspreadRowIndices = [];
+    var modulBatches = {};
+    var absenBatches = {};
+    var extBatches = {};
+
+    for (var i = 0; i < values.length; i++) {
+      var row = values[i];
+      var statusVal = String(row[statusColIdx - 1] || "").trim().toUpperCase();
+      if (statusVal === "TERSEBAR") continue;
+
+      var rawModul = String(row[0] || "").trim();
+      if (!rawModul) continue;
+
+      var kodeModul = normalizeModulKey_(rawModul);
+      
+      // Strict 13 Columns for Target AppSheet Tables:
+      // 1: ACCOUNT, 2: KODE TOKO, 3: NAMA TOKO, 4: KODE CREW, 5: NAMA CREW, 6: RUTE,
+      // 7: TIPE TOKO, 8: NAMA KEPALA TOKO, 9: ALAMAT, 10: NO TELP, 11: ATASAN, 12: CATATAN, 13: STATUS
+      var rowToAppend = [
+        (row[1] || "ALFAMART").toString().trim().toUpperCase(), // ACCOUNT
+        (row[2] || "").toString().trim().toUpperCase(),         // KODE TOKO
+        (row[3] || "").toString().trim(),                       // NAMA TOKO
+        (row[4] || "").toString().trim(),                       // KODE CREW
+        (row[5] || "").toString().trim(),                       // NAMA CREW
+        (row[6] || "1").toString().trim().replace(/[^0-9]/g, "") || "1", // RUTE
+        (row[7] || "-").toString().trim(),                      // TIPE TOKO
+        (row[8] || "-").toString().trim(),                      // NAMA KEPALA TOKO
+        (row[9] || "-").toString().trim(),                      // ALAMAT
+        (row[10] || "-").toString().trim(),                     // NO TELP
+        (row[11] || "-").toString().trim(),                     // ATASAN
+        (row[12] || "-").toString().trim(),                     // CATATAN
+        "AKTIF"                                                 // STATUS (Col 13)
+      ];
+
+      unspreadRowIndices.push(i + 2);
+
+      if (modulIDs[kodeModul]) {
+        if (!modulBatches[kodeModul]) modulBatches[kodeModul] = [];
+        modulBatches[kodeModul].push(rowToAppend);
+
+        var prefix = kodeModul.substring(0, 2);
+        if (absenIDs[prefix]) {
+          if (!absenBatches[prefix]) absenBatches[prefix] = [];
+          absenBatches[prefix].push(rowToAppend);
+        }
+
+        var extKey = prefix + "_EXT";
+        if (externalIDs[extKey]) {
+          if (!extBatches[extKey]) extBatches[extKey] = [];
+          extBatches[extKey].push(rowToAppend);
+        }
+
+      } else if (externalIDs[kodeModul]) {
+        if (!extBatches[kodeModul]) extBatches[kodeModul] = [];
+        extBatches[kodeModul].push(rowToAppend);
       } else {
-        Logger.log("ERROR " + mKey + ": Tab 'Master_Toko' tidak ditemukan di ID " + modulIDs[mKey]);
+        Logger.log("PERINGATAN: Modul '" + rawModul + "' (normalized: " + kodeModul + ") tidak cocok dengan daftar modulIDs / externalIDs!");
       }
-    } catch (err) {
-      Logger.log("Gagal sebar modul " + mKey + ": " + err.message);
     }
-  }
 
-  for (var aKey in absenBatches) {
-    try {
-      var absenSs = SpreadsheetApp.openById(absenIDs[aKey]);
-      var absenSheet = getSheetByNames_(absenSs, tokoAbsenAliases);
-      if (absenSheet) {
-        var addedCountA = appendDataWithoutDuplicates_(absenSheet, absenBatches[aKey], 1000);
-        Logger.log("Absen " + aKey + ": Berhasil sebar " + addedCountA + " baris baru (skip " + (absenBatches[aKey].length - addedCountA) + " duplikat) ke tab '" + absenSheet.getName() + "'");
-      } else {
-        Logger.log("ERROR Absen " + aKey + ": Tab 'Toko_Absen' tidak ditemukan di ID " + absenIDs[aKey]);
+    if (unspreadRowIndices.length === 0) {
+      Logger.log("Tidak ada jadwal baru yang perlu disebar (semua baris berstatus TERSEBAR).");
+      return;
+    }
+
+    Logger.log("Ditemukan " + unspreadRowIndices.length + " baris jadwal baru. Menyebar serentak ke modul target...");
+
+    var masterTokoAliases = ["Master_Toko", "master_toko", "Master Toko", "Master_toko", "MasterToko", "DATA TOKO", "Data_Toko", "Sheet1"];
+    var tokoAbsenAliases = ["Toko_Absen", "toko_absen", "Toko Absen", "TokoAbsen", "Master_Toko", "master_toko", "Absensi"];
+    var masterToko2Aliases = ["Master_Toko2", "Master_Toko", "master_toko", "Master Toko 2", "Master Toko", "Sheet1"];
+
+    for (var mKey in modulBatches) {
+      try {
+        var targetSs = SpreadsheetApp.openById(modulIDs[mKey]);
+        var targetSheet = getSheetByNames_(targetSs, masterTokoAliases);
+        if (targetSheet) {
+          var added = appendDataWithoutDuplicates_(targetSheet, modulBatches[mKey], 1000);
+          Logger.log("Modul " + mKey + ": Berhasil menambahkan " + added + " baris ke '" + targetSheet.getName() + "'.");
+        } else {
+          Logger.log("Modul " + mKey + ": GAGAL menemukan sheet data toko di Spreadsheet target!");
+        }
+      } catch (err) {
+        Logger.log("Modul " + mKey + " Error: " + err.toString());
       }
-    } catch (err) {
-      Logger.log("Gagal sebar absen " + aKey + ": " + err.message);
     }
-  }
 
-  for (var eKey in extBatches) {
-    try {
-      var extSs = SpreadsheetApp.openById(externalIDs[eKey]);
-      var extSheet = getSheetByNames_(extSs, masterToko2Aliases);
-      if (extSheet) {
-        var addedCountE = appendDataWithoutDuplicates_(extSheet, extBatches[eKey], 1000);
-        Logger.log("External " + eKey + ": Berhasil sebar " + addedCountE + " baris baru (skip " + (extBatches[eKey].length - addedCountE) + " duplikat) ke tab '" + extSheet.getName() + "'");
-      } else {
-        Logger.log("ERROR External " + eKey + ": Tab 'Master_Toko2' tidak ditemukan di ID " + externalIDs[eKey]);
+    for (var aKey in absenBatches) {
+      try {
+        var targetSs = SpreadsheetApp.openById(absenIDs[aKey]);
+        var targetSheet = getSheetByNames_(targetSs, tokoAbsenAliases);
+        if (targetSheet) {
+          var added = appendDataWithoutDuplicates_(targetSheet, absenBatches[aKey], 1000);
+          Logger.log("Absen " + aKey + ": Berhasil menambahkan " + added + " baris ke '" + targetSheet.getName() + "'.");
+        } else {
+          Logger.log("Absen " + aKey + ": GAGAL menemukan sheet Toko_Absen di Spreadsheet target!");
+        }
+      } catch (err) {
+        Logger.log("Absen " + aKey + " Error: " + err.toString());
       }
-    } catch (err) {
-      Logger.log("Gagal sebar external " + eKey + ": " + err.message);
     }
-  }
 
-  var statusUpdateRange = sheet.getRange(2, statusColIdx, lastRow - 1, 1);
-  var currentStatuses = statusUpdateRange.getValues();
-  for (var u = 0; u < unspreadRowIndices.length; u++) {
-    var rIdx = unspreadRowIndices[u] - 2;
-    if (rIdx >= 0 && rIdx < currentStatuses.length) {
-      currentStatuses[rIdx][0] = "TERSEBAR";
+    for (var eKey in extBatches) {
+      try {
+        var targetSs = SpreadsheetApp.openById(externalIDs[eKey]);
+        var targetSheet = getSheetByNames_(targetSs, masterToko2Aliases);
+        if (targetSheet) {
+          var added = appendDataWithoutDuplicates_(targetSheet, extBatches[eKey], 1000);
+          Logger.log("External " + eKey + ": Berhasil menambahkan " + added + " baris ke '" + targetSheet.getName() + "'.");
+        } else {
+          Logger.log("External " + eKey + ": GAGAL menemukan sheet Master_Toko di Spreadsheet target!");
+        }
+      } catch (err) {
+        Logger.log("External " + eKey + " Error: " + err.toString());
+      }
     }
-  }
-  statusUpdateRange.setValues(currentStatuses);
 
-  Logger.log("--- SELESAI SEBAR JADWAL: " + unspreadRowIndices.length + " baris berhasil disebar & ditandai TERSEBAR ---");
+    var statusUpdateRange = sheet.getRange(2, statusColIdx, lastRow - 1, 1);
+    var currentStatuses = statusUpdateRange.getValues();
+    for (var u = 0; u < unspreadRowIndices.length; u++) {
+      var rIdx = unspreadRowIndices[u] - 2;
+      if (rIdx >= 0 && rIdx < currentStatuses.length) {
+        currentStatuses[rIdx][0] = "TERSEBAR";
+      }
+    }
+    statusUpdateRange.setValues(currentStatuses);
+
+    Logger.log("--- SELESAI SEBAR JADWAL: " + unspreadRowIndices.length + " baris berhasil disebar & ditandai TERSEBAR ---");
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function sebarUlangSemuaJadwalBersih() {
@@ -538,7 +549,17 @@ function getActualLastRow_(sheet) {
 
 function makeRowFingerprint_(row) {
   if (!row || !Array.isArray(row)) return "";
-  return row.map(function(cell) {
+  // Kolom target: 0: ACCOUNT, 1: KODE TOKO, 2: NAMA TOKO, 3: KODE CREW, 4: NAMA CREW, 5: RUTE
+  var acc = String(row[0] || "").trim().toUpperCase();
+  var kodeToko = String(row[1] || "").trim().toUpperCase();
+  var kodeCrew = String(row[3] || "").trim().toUpperCase();
+  var rute = String(row[5] || "").trim().replace(/[^0-9]/g, "");
+
+  if (kodeCrew && rute && kodeToko) {
+    return kodeCrew + "_R" + rute + "_" + kodeToko + "_" + acc;
+  }
+
+  return row.slice(0, 6).map(function(cell) {
     if (cell instanceof Date) {
       return Utilities.formatDate(cell, "GMT+7", "yyyy-MM-dd");
     }

@@ -144,6 +144,14 @@ function initMap() {
       { enableHighAccuracy: true, timeout: 8000 }
     );
   }
+
+  // Trigger resize to fix tile rendering inside card container
+  setTimeout(() => {
+    if (map) map.invalidateSize();
+  }, 250);
+  window.addEventListener("resize", () => {
+    if (map) map.invalidateSize();
+  });
 }
 
 /**
@@ -550,13 +558,28 @@ function updateRouteDateDisplay(dateObj) {
   if (!display) return;
 
   const dayNum = dateObj.getDate();
-  display.textContent = `Rute ${dayNum}`;
+  const dateStr = dateObj.toLocaleDateString("id-ID", { day: "2-digit", month: "short" });
+  display.textContent = `Rute ${dayNum} (${dateStr})`;
 }
 
 /**
  * Profil Handlers
  */
 function loadSavedProfile() {
+  if (window.PORTAL_ACTIVE_USER) {
+    const user = window.PORTAL_ACTIVE_USER;
+    state.profile = {
+      nama: user.name || user.nama || "MDS",
+      kodeCrew: user.id || user.kodeCrew || user.username || "RO036",
+      modul: user.modul || user.module || "LP4",
+      account: user.account || "ALFAMART",
+      role: (user.role || "").toUpperCase()
+    };
+    localStorage.setItem("mds_crew_profile", JSON.stringify(state.profile));
+    renderProfileUI();
+    return;
+  }
+
   const saved = localStorage.getItem("mds_crew_profile");
   if (saved) {
     try {
@@ -570,7 +593,8 @@ function loadSavedProfile() {
       nama: "Yohandi Pratama",
       kodeCrew: "RO036",
       modul: "LP4",
-      account: "ALFAMART"
+      account: "ALFAMART",
+      role: "MDS"
     };
     localStorage.setItem("mds_crew_profile", JSON.stringify(state.profile));
     renderProfileUI();
@@ -578,7 +602,7 @@ function loadSavedProfile() {
 }
 
 function renderProfileUI() {
-  if (elements.userName) elements.userName.textContent = state.profile.nama || "Pilih Profil Crew";
+  if (elements.userName) elements.userName.textContent = state.profile.nama || "MDS";
   if (elements.userModule) elements.userModule.textContent = state.profile.modul || "LP4";
 
   if (elements.userAvatar) {
@@ -590,6 +614,31 @@ function renderProfileUI() {
       .toUpperCase();
     elements.userAvatar.textContent = initials;
   }
+
+  const userRole = (state.profile.role || (window.PORTAL_ACTIVE_USER ? window.PORTAL_ACTIVE_USER.role : "") || "").toUpperCase();
+  const isSuperAdmin = userRole === "SUPERADMIN" || userRole === "ADMIN";
+
+  const selectDropdown = document.getElementById("btnSelectMdsDropdown");
+  const editBtn = document.getElementById("btnEditMyProfile");
+  const chevron = selectDropdown?.querySelector(".profile-chevron");
+
+  if (!isSuperAdmin) {
+    // Kunci profil khusus MDS: Sesuai akun login, hilangkan opsi ganti/edit MDS lain
+    if (selectDropdown) {
+      selectDropdown.style.cursor = "default";
+      selectDropdown.title = `Profil Anda: ${state.profile.nama} (${state.profile.modul})`;
+    }
+    if (chevron) chevron.style.display = "none";
+    if (editBtn) editBtn.style.display = "none";
+  } else {
+    if (selectDropdown) {
+      selectDropdown.style.cursor = "pointer";
+      selectDropdown.title = "Pilih / Ganti MDS (Khusus Admin)";
+    }
+    if (chevron) chevron.style.display = "";
+    if (editBtn) editBtn.style.display = "";
+  }
+
   if (window.lucide) lucide.createIcons();
 }
 
@@ -598,18 +647,9 @@ function renderProfileUI() {
  */
 async function checkDatabaseStatus() {
   try {
-    const count = await getStoresCount();
-    const hasCoords = await checkIfStoresHaveCoordinates();
-
-    if (count === 0 || !hasCoords) {
-      // Data lama belum ada koordinatnya, otomatis sync ulang sekali
-      await triggerMasterSyncWithOverlay();
-    } else {
-      // Lakukan pencarian awal untuk merender marker terdekat
-      await performSearch("");
-      syncMasterCrewFromSheet();
-      hideBlockingLoader();
-    }
+    // Sinkronisasi data crew & rute aktif secara cepat
+    syncMasterCrewFromSheet();
+    hideBlockingLoader();
 
     // Muat daftar toko yang sudah diklaim di background (tanpa blocker)
     loadClaimedStores();
@@ -793,9 +833,18 @@ function bindEvents() {
 
   // Action Menu Handlers & Floating FABs
   document.getElementById("btnOpenMonitoring")?.addEventListener("click", openMonitoringModal);
-  document.getElementById("btnEditMyProfile")?.addEventListener("click", openProfileModal);
-  document.getElementById("btnSelectMdsDropdown")?.addEventListener("click", openCrewSelectModal);
-  document.getElementById("btnEditProfile")?.addEventListener("click", openProfileModal);
+  document.getElementById("btnEditMyProfile")?.addEventListener("click", () => {
+    const userRole = (state.profile.role || (window.PORTAL_ACTIVE_USER ? window.PORTAL_ACTIVE_USER.role : "") || "").toUpperCase();
+    if (userRole === "SUPERADMIN" || userRole === "ADMIN") openProfileModal();
+  });
+  document.getElementById("btnSelectMdsDropdown")?.addEventListener("click", () => {
+    const userRole = (state.profile.role || (window.PORTAL_ACTIVE_USER ? window.PORTAL_ACTIVE_USER.role : "") || "").toUpperCase();
+    if (userRole === "SUPERADMIN" || userRole === "ADMIN") openCrewSelectModal();
+  });
+  document.getElementById("btnEditProfile")?.addEventListener("click", () => {
+    const userRole = (state.profile.role || (window.PORTAL_ACTIVE_USER ? window.PORTAL_ACTIVE_USER.role : "") || "").toUpperCase();
+    if (userRole === "SUPERADMIN" || userRole === "ADMIN") openProfileModal();
+  });
   document.getElementById("btnOpenSettings")?.addEventListener("click", openSettingsModal);
   document.getElementById("btnFabSync")?.addEventListener("click", openSettingsModal);
   document.getElementById("btnOpenHistory")?.addEventListener("click", openHistoryModal);
@@ -925,12 +974,24 @@ window.switchAppView = function (viewName) {
 
   const tabInput = document.getElementById("tabBtnInput");
   const tabSched = document.getElementById("tabBtnSchedule");
+  const navTabInput = document.getElementById("navTabBtnInput");
+  const navTabSched = document.getElementById("navTabBtnSchedule");
   const cardInput = document.getElementById("floatingSearchCard");
   const cardSched = document.getElementById("floatingScheduleCard");
 
   if (viewName === "input") {
     tabInput?.classList.add("active");
     tabSched?.classList.remove("active");
+    if (navTabInput) {
+      navTabInput.style.background = "var(--primary)";
+      navTabInput.style.color = "white";
+      navTabInput.style.boxShadow = "0 2px 6px var(--primary-glow)";
+    }
+    if (navTabSched) {
+      navTabSched.style.background = "transparent";
+      navTabSched.style.color = "";
+      navTabSched.style.boxShadow = "none";
+    }
     if (cardInput) cardInput.style.display = "flex";
     if (cardSched) cardSched.style.display = "none";
     updateFloatingBar();
@@ -939,6 +1000,16 @@ window.switchAppView = function (viewName) {
   } else {
     tabInput?.classList.remove("active");
     tabSched?.classList.add("active");
+    if (navTabInput) {
+      navTabInput.style.background = "transparent";
+      navTabInput.style.color = "";
+      navTabInput.style.boxShadow = "none";
+    }
+    if (navTabSched) {
+      navTabSched.style.background = "var(--primary)";
+      navTabSched.style.color = "white";
+      navTabSched.style.boxShadow = "0 2px 6px var(--primary-glow)";
+    }
     if (cardInput) cardInput.style.display = "none";
     if (cardSched) cardSched.style.display = "flex";
     elements.floatingBar?.classList.remove("visible");
@@ -1558,12 +1629,33 @@ async function handleDirectSubmit() {
     return;
   }
 
+  const crewKey = (state.profile.kodeCrew || "CREW").trim().toUpperCase();
+  const routeSubmitKey = `mds_submitted_${crewKey}_R${state.currentRute}`;
+  const alreadySubmittedTime = localStorage.getItem(routeSubmitKey);
+  let isEditMode = false;
+
+  if (alreadySubmittedTime) {
+    const submitDate = new Date(parseInt(alreadySubmittedTime, 10));
+    const timeStr = !isNaN(submitDate.getTime()) ? submitDate.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "hari ini";
+    
+    const proceed = await showCustomConfirm({
+      title: `Perbarui Rute ${state.currentRute}?`,
+      message: `Rute ${state.currentRute} sudah pernah Anda kirimkan (${timeStr}). Jika Anda ingin mengubah jadwal, sistem akan memperbarui daftar toko rute ini.`,
+      type: "warning",
+      icon: "refresh-cw",
+      okText: "Ya, Perbarui Rute",
+      cancelText: "Batal"
+    });
+    if (!proceed) return;
+    isEditMode = true;
+  }
+
   const storesArray = Array.from(state.selectedStores.values());
 
   // Tampilkan Blocking Loader Layar Penuh
   showBlockingLoader(
-    "Mengirim Jadwal Rute...",
-    `Mendistribusikan ${storesArray.length} toko ke 3 spreadsheet tujuan (Modul ${state.profile.modul}, Data External, dan Absen)...`,
+    isEditMode ? "Memperbarui Jadwal Rute..." : "Mengirim Jadwal Rute...",
+    `Mendistribusikan ${storesArray.length} toko ke sistem sentral 1 pintu...`,
     false
   );
 
@@ -1583,11 +1675,15 @@ async function handleDirectSubmit() {
       crewCode: state.profile.kodeCrew,
       crewName: state.profile.nama,
       rute: state.currentRute,
-      stores: storesArray
+      stores: storesArray,
+      isEditMode: isEditMode
     });
 
     hideBlockingLoader();
     showToast(result.message, "success");
+
+    // Simpan timestamp pengiriman rute ini
+    localStorage.setItem(routeSubmitKey, Date.now().toString());
 
     // Kosongkan keranjang & hapus draft rute yang sudah sukses terkirim
     state.selectedStores.clear();
@@ -2513,27 +2609,25 @@ function setupTourDummyStores() {
   DUMMY_TOUR_STORES.forEach(st => {
     state.selectedStores.set(getStoreKey(st), { ...st });
   });
-  renderSelectedRouteMarkersAndPolyline(Array.from(state.selectedStores.values()));
+  if (typeof renderSelectedRouteMarkersAndPolyline === "function") {
+    renderSelectedRouteMarkersAndPolyline(Array.from(state.selectedStores.values()));
+  }
   updateFloatingBar();
+  const fb = document.getElementById("floatingBar");
+  if (fb) {
+    fb.style.display = "block";
+    fb.classList.add("visible");
+    fb.offsetHeight; // force reflow
+  }
 }
 
-// Konfigurasi Langkah-Langkah Tur Interaktif (Lengkap & Terperinci untuk MDS)
+// Konfigurasi Langkah-Langkah Tur Interaktif (Terstruktur & Ramah Mobile untuk MDS)
 const TOUR_STEPS = [
   {
-    target: "#btnSelectMdsDropdown",
-    title: "👤 1. Pilih MDS & Tombol Edit Profil",
-    desc: "• Tombol Ikon Orang (👤): Klik untuk mengedit Profil Anda (Nama, ID & Modul Wilayah Kerja).\n• Bar Nama MDS: Klik untuk mencari & memilih rekan MDS lain dari Master Crew jika ingin melihat rute mereka.",
-    tip: "Data akun Anda aman dan tidak akan tertimpa saat memilih atau mengintip jadwal rekan.",
-    action: () => {
-      closeAllModalsForTour();
-      switchAppView("input");
-    }
-  },
-  {
     target: "#routeDatePickerWrapper",
-    title: "📅 2. Kalender Tanggal Rute (1 - 31)",
-    desc: "Klik tombol kalender ini untuk memilih tanggal kunjungan kerja Anda. Sistem otomatis mengambil angka tanggalnya (Rute 1 - 31) agar sesuai dengan database Google Spreadsheet.",
-    tip: "Aplikasi otomatis memilih tanggal hari ini saat dibuka.",
+    title: "📅 1. Target Rute / Tanggal Kunjungan",
+    desc: "Target rute berada tepat di atas form pencarian. Klik 'Pilih Tanggal' untuk memilih tanggal rute (Rute 1 - 31). Profil MDS Anda otomatis terkunci sesuai akun login.",
+    tip: "Aplikasi otomatis memilih tanggal hari ini saat pertama dibuka.",
     action: () => {
       closeAllModalsForTour();
       switchAppView("input");
@@ -2541,9 +2635,9 @@ const TOUR_STEPS = [
   },
   {
     target: "#searchInput",
-    title: "🔍 3. Cari Toko di Database",
-    desc: "Ketik min. 4 huruf nama toko, kode toko, atau nama kecamatan. Daftar toko yang cocok akan otomatis muncul di bawah kotak pencarian.",
-    tip: "Gunakan tombol filter brand di bawahnya (Indomaret, Alfamart, Alfamidi, Lawson) untuk menyaring hasil pencarian.",
+    title: "🔍 2. Cari Toko On-Demand (Hemat Kuota)",
+    desc: "Ketik kode toko, nama toko, atau kecamatan. Server merespon cepat secara on-demand sehingga sangat hemat kuota dan memori HP.",
+    tip: "Gunakan filter brand (Indomaret, Alfamart, Alfamidi, Lawson) untuk mempercepat pencarian.",
     action: () => {
       closeAllModalsForTour();
       switchAppView("input");
@@ -2551,134 +2645,44 @@ const TOUR_STEPS = [
   },
   {
     target: "#floatingBar",
-    title: "➕ 4. Cara Menambah Toko ke Rute",
-    desc: "Ada 2 cara mudah:\n1. Klik tombol (+) biru/hijau di sebelah kanan nama toko pada hasil pencarian.\n2. Atau klik Pin toko di peta lalu pilih 'Masukkan ke Rute'.\nToko otomatis masuk ke keranjang rute bawah ini dan mendapat nomor urut (#1, #2, dst).",
-    tip: "Contoh simulasi: 2 toko dummy (#1 Alfamart Sudirman & #2 Indomaret Ahmad Yani) telah dimasukkan ke rute Anda.",
+    title: "➕ 3. Keranjang Rute & Nomor Urut Kunjungan",
+    desc: "Klik tombol (+) pada toko untuk memasukkan ke keranjang. Setiap toko otomatis diberi nomor urut kunjungan (#1, #2, dst).",
+    tip: "Klik 'Review' untuk memeriksa daftar toko atau menghapus toko yang salah dipilih.",
     action: () => {
       closeAllModalsForTour();
       switchAppView("input");
       setupTourDummyStores();
-      elements.floatingBar?.classList.add("visible");
-    }
-  },
-  {
-    target: "#drawerModal .modal-dialog",
-    title: "📋 5. Review & Cek Urutan Rute",
-    desc: "Klik tombol 'Review' di bar bawah untuk membuka daftar toko terpilih ini. Di sini Anda bisa memeriksa nomor urut toko, rincian lokasi, atau menyalin teks laporan WhatsApp.",
-    tip: "Tombol 'Salin WA' akan menghasilkan format rekap rute rapi siap kirim ke grup WhatsApp supervisor.",
-    action: () => {
-      setupTourDummyStores();
-      openDrawerModal();
-    }
-  },
-  {
-    target: "#drawerStoreList",
-    title: "🗑️ 6. Hapus / Batalkan Toko dari Rute",
-    desc: "Jika salah memilih toko, Anda cukup klik ikon tong sampah merah (🗑️) di review drawer ini, atau klik 'Keluarkan dari Rute' pada popup pin toko di peta.",
-    tip: "⚠️ PENTING: Ini HANYA membatalkan toko dari jadwal rute hari ini, BUKAN menghapus data toko dari master Google Sheet!",
-    action: () => {
-      setupTourDummyStores();
-      openDrawerModal();
-    }
-  },
-  {
-    target: "#customStoreModal .modal-dialog",
-    title: "✍️ 7. Tambah Toko Baru (Bisa dari Mana Saja)",
-    desc: "Jika ada toko yang belum terdaftar di database, Anda bisa menambahkannya KAPAN SAJA (dari rumah/kantor). Cukup isi Akun, Kode Toko & Nama Toko. Alamat & Titik GPS BOLEH DIKOSONGKAN (opsional) jika belum tahu!",
-    tip: "💡 Jika pas sedang berada di depan tokonya, barulah Anda bisa klik tombol 'Gunakan Lokasi GPS Saya' untuk mengambil koordinat otomatis.",
-    action: () => {
-      closeAllModalsForTour();
-      switchAppView("input");
-      openCustomStoreModal({
-        account: "INDOMARET",
-        kodeToko: "IDM999",
-        namaToko: "INDOMARET BARU DUMMY",
-        kota: "KOTA JAKARTA",
-        kecamatan: "GAMBIR",
-        lat: "",
-        lon: ""
-      });
-    }
-  },
-  {
-    target: "#customStoreModal .modal-dialog",
-    title: "✏️ 8. Tombol Edit (Pensil) pada Toko",
-    desc: "Pada setiap toko hasil pencarian dan popup peta ada tombol pensil (✏️ Edit). Klik tombol pensil ini kapan saja jika Anda ingin memperbaiki titik koordinat peta yang melenceng atau mengubah nama toko.",
-    tip: "Setelah disimpan, posisi pin toko di peta Anda akan langsung berpindah ke titik yang benar.",
-    action: () => {
-      closeAllModalsForTour();
-      switchAppView("input");
-      openCustomStoreModal({
-        account: "ALFAMART",
-        kodeToko: "1V01",
-        namaToko: "ALFAMART SUDIRMAN",
-        kota: "JAKARTA PUSAT",
-        kecamatan: "TANAH ABANG",
-        lat: -6.2088,
-        lon: 106.8200
-      });
     }
   },
   {
     target: "#btnSubmitRoute",
-    title: "🚀 9. Kirim Jadwal ke 3 Google Spreadsheet",
-    desc: "Setelah rute selesai disusun, klik tombol 'Kirim' di bar bawah. Sistem otomatis mendistribusikan data ke 3 Google Sheet: Spreadsheet Modul Anda, Data External, dan Sheet Absen.",
-    tip: "Data selama simulasi tutorial ini 100% dummy dan tidak akan dikirim ke server.",
+    title: "🚀 4. Kirim Rute 1 Pintu (Anti-Dobel)",
+    desc: "Setelah rute selesai disusun, klik 'Kirim Rute'. Sistem otomatis mengirimkan ke database sentral 1 pintu dengan proteksi anti-dobel.",
+    tip: "Data selama simulasi tutorial ini 100% dummy dan aman.",
     action: () => {
       closeAllModalsForTour();
       switchAppView("input");
       setupTourDummyStores();
-      elements.floatingBar?.classList.add("visible");
     }
   },
   {
     target: "#tabBtnSchedule",
-    title: "👁️ 10. Beralih ke Mode 'Jadwal Saya'",
-    desc: "Klik tombol bulat mata (👁️) di kanan bawah untuk melihat jadwal rute yang sudah tersimpan di Google Sheet. Toko yang terkirim akan ditandai pin bernomor dan garis rute di peta.",
-    tip: "Klik tombol (+) di atasnya kapan saja untuk kembali ke mode input / pencarian toko.",
+    title: "👁️ 5. Mode 'Jadwal Saya' & Salin Format WA",
+    desc: "Beralih ke tab 'Jadwal Saya' untuk melihat rute yang sudah terdaftar dan klik 'Salin WA' untuk membagikan rekap ke grup WhatsApp.",
+    tip: "Klik tab 'Input Rute' kapan saja untuk kembali mencari toko baru.",
     action: () => {
       closeAllModalsForTour();
       switchAppView("schedule");
     }
   },
   {
-    target: "#btnRefreshSchedule",
-    title: "🔄 11. Tombol 'Refresh Jadwal' Rute",
-    desc: "Tombol putar kecil (🔄) di kartu jadwal ini untuk menyegarkan / menarik ulang jadwal rute hari ini dari Google Sheet.\n\n💡 Kapan dipakai? Jika Anda baru saja input dari HP rekan, atau ingin melihat jadwal rute yang baru diupdate tanpa harus keluar-masuk web.",
-    tip: "Tombol ini HANYA menyegarkan jadwal rute hari ini (proses sangat kilat dalam 1 detik).",
+    target: "#btnToggleMenuFab",
+    title: "🧭 6. Navigasi Modul Portal Cimory",
+    desc: "Gunakan menu ini untuk berpindah ke Dashboard Monitoring, Galeri Pajangan, Simulasi Rute, atau Pengaturan Aplikasi.",
+    tip: "Anda siap menjalankan tugas lapangan!",
     action: () => {
       closeAllModalsForTour();
-      switchAppView("schedule");
-    }
-  },
-  {
-    target: "#btnForceSync",
-    title: "📦 12. Tombol 'Sync Master Toko'",
-    desc: "Ada di menu 'Pengaturan & Sync'. Tombol ini untuk mengunduh ulang seluruh database master toko terbaru dari Google Sheet pusat ke memori HP Anda.\n\n💡 Kapan dipakai? HANYA jika ada puluhan toko baru yang baru ditambahkan di master pusat dan belum muncul saat dicari di HP Anda.",
-    tip: "Cukup dijalankan sesekali saat ada update master toko besar dari koordinator.",
-    action: () => {
-      closeAllModalsForTour();
-      openSettingsModal();
-    }
-  },
-  {
-    target: "#btnHardRefreshMobile",
-    title: "⚡ 13. Bersihkan Cache & Hard Refresh HP",
-    desc: "Gunakan tombol petir (⚡) ini jika web di HP Anda terasa lambat/hang, tombol tidak merespon, atau tampilan web belum terupdate setelah perbaikan sistem.\n\n💡 Cara Kerja: Menghapus cache file lama di browser HP dan memuat ulang file aplikasi paling segar dari server secara otomatis.",
-    tip: "Solusi kilat nomor 1 jika web di HP Anda mengalami kendala tampilan atau lag!",
-    action: () => {
-      closeAllModalsForTour();
-      openSettingsModal();
-    }
-  },
-  {
-    target: "#btnSettingsInstallPwa",
-    title: "📲 14. Install Aplikasi ke HP (PWA)",
-    desc: "Aplikasi ini adalah PWA (Progressive Web App) yang bisa di-install langsung ke layar utama HP Android Anda!\n\n• Caranya: Klik tombol 'Install Aplikasi ke HP' ini atau buka titik-3 Chrome dan pilih 'Tambahkan ke Layar Utama'.\n• Keuntungan: Muncul di homescreen dengan ikon keren, berjalan fullscreen tanpa URL bar, dan jauh lebih hemat kuota!",
-    tip: "Setelah di-install, cukup klik ikon 'Web Absen' di menu HP untuk langsung bekerja!",
-    action: () => {
-      closeAllModalsForTour();
-      openSettingsModal();
+      switchAppView("input");
     }
   }
 ];
@@ -2696,6 +2700,7 @@ function startInteractiveTour() {
 
 function endInteractiveTour() {
   closeAllModalsForTour();
+  clearTourHighlight();
   if (elements.tourOverlay) elements.tourOverlay.style.display = "none";
   localStorage.setItem("mds_tour_completed", "true");
   state.isTourMode = false;
@@ -2726,28 +2731,36 @@ function prevTourStep() {
   }
 }
 
+let currentHighlightedEl = null;
+
+function clearTourHighlight() {
+  if (currentHighlightedEl) {
+    currentHighlightedEl.classList.remove("tour-highlight-active");
+    currentHighlightedEl = null;
+  }
+}
+
 function renderTourStep(index) {
   const step = TOUR_STEPS[index];
   if (!step) return;
 
-  // Jalankan aksi simulasi per langkah (buka modal, pasang toko dummy, dsb)
+  // 1. Jalankan aksi simulasi per langkah
   if (typeof step.action === "function") {
     step.action();
   }
 
-  const spotlight = elements.tourSpotlight;
+  // 2. Bersihkan sorotan sebelumnya
+  clearTourHighlight();
+
   const tooltip = elements.tourTooltip;
 
-  // Step Badge
+  // 3. Update konten teks & tombol
   if (elements.tourStepBadge) {
     elements.tourStepBadge.textContent = `Langkah ${index + 1} / ${TOUR_STEPS.length}`;
   }
-
-  // Content
   if (elements.tourTitle) elements.tourTitle.textContent = step.title;
   if (elements.tourDesc) elements.tourDesc.textContent = step.desc;
 
-  // Tip
   if (step.tip && elements.tourTipBox && elements.tourTipText) {
     elements.tourTipText.textContent = step.tip;
     elements.tourTipBox.style.display = "flex";
@@ -2755,7 +2768,6 @@ function renderTourStep(index) {
     elements.tourTipBox.style.display = "none";
   }
 
-  // Buttons
   if (elements.tourBtnPrev) {
     elements.tourBtnPrev.style.display = index === 0 ? "none" : "inline-flex";
   }
@@ -2767,48 +2779,40 @@ function renderTourStep(index) {
 
   if (window.lucide) lucide.createIcons();
 
-  // Position Spotlight & Tooltip with requestAnimationFrame for rendered DOM
-  requestAnimationFrame(() => {
-    const targetEl = document.querySelector(step.target);
-    if (targetEl && spotlight && tooltip) {
-      const rect = targetEl.getBoundingClientRect();
-      const pad = 6;
+  // 4. Sorot elemen target baru dan tempatkan tooltip card secara akurat
+  const targetEl = document.querySelector(step.target);
+  if (targetEl && tooltip) {
+    targetEl.classList.add("tour-highlight-active");
+    currentHighlightedEl = targetEl;
 
-      // Spotlight rect
-      spotlight.style.top = `${Math.max(0, rect.top - pad)}px`;
-      spotlight.style.left = `${Math.max(0, rect.left - pad)}px`;
-      spotlight.style.width = `${rect.width + (pad * 2)}px`;
-      spotlight.style.height = `${rect.height + (pad * 2)}px`;
+    targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
 
-      // Tooltip position calculation (anti-overflow & anti-clipping)
-      const windowWidth = window.innerWidth;
-      const windowHeight = window.innerHeight;
-      const tooltipHeight = tooltip.offsetHeight || 260;
-      const tooltipWidth = Math.min(320, windowWidth - 32);
+    const rect = targetEl.getBoundingClientRect();
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+    const tooltipHeight = tooltip.offsetHeight || 220;
+    const tooltipWidth = Math.min(330, windowWidth - 24);
 
-      let tooltipLeft = Math.max(16, Math.min(rect.left + (rect.width / 2) - (tooltipWidth / 2), windowWidth - tooltipWidth - 16));
-      let tooltipTop;
+    let tooltipLeft = Math.max(12, Math.min(rect.left + (rect.width / 2) - (tooltipWidth / 2), windowWidth - tooltipWidth - 12));
+    let tooltipTop;
 
-      const spaceBelow = windowHeight - (rect.bottom + pad);
-      const spaceAbove = rect.top - pad;
+    const spaceBelow = windowHeight - rect.bottom;
+    const spaceAbove = rect.top;
 
-      if (spaceBelow >= tooltipHeight + 16) {
-        tooltipTop = rect.bottom + pad + 10;
-      } else if (spaceAbove >= tooltipHeight + 16) {
-        tooltipTop = rect.top - pad - tooltipHeight - 10;
-      } else {
-        tooltipTop = Math.max(12, (windowHeight - tooltipHeight) / 2);
-      }
-
-      // Pastikan tidak pernah kepotong di bagian atas ataupun bawah layar
-      tooltipTop = Math.max(12, Math.min(tooltipTop, windowHeight - tooltipHeight - 12));
-
-      tooltip.style.top = `${tooltipTop}px`;
-      tooltip.style.left = `${tooltipLeft}px`;
-
-      targetEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    if (spaceBelow >= tooltipHeight + 16) {
+      tooltipTop = rect.bottom + 12;
+    } else if (spaceAbove >= tooltipHeight + 16) {
+      tooltipTop = rect.top - tooltipHeight - 12;
+    } else {
+      tooltipTop = Math.max(12, (windowHeight - tooltipHeight) / 2);
     }
-  });
+
+    tooltipTop = Math.max(12, Math.min(tooltipTop, windowHeight - tooltipHeight - 12));
+
+    tooltip.style.top = `${tooltipTop}px`;
+    tooltip.style.left = `${tooltipLeft}px`;
+    tooltip.style.width = `${tooltipWidth}px`;
+  }
 }
 
 /* ===================================================
@@ -3207,20 +3211,7 @@ function initPwaInstall() {
 
   // 3. Deteksi apakah sudah terinstall sebagai Standalone PWA atau masih di browser biasa
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  
-  if (!isStandalone) {
-    // Jika masih di browser biasa, tampilkan modal ajakan pasang aplikasi ke homescreen
-    const dismissedSession = sessionStorage.getItem("mds_pwa_gate_dismissed");
-    if (!dismissedSession) {
-      setTimeout(() => {
-        const gateModal = document.getElementById("pwaInstallGateModal");
-        if (gateModal && !state.isTourMode) {
-          gateModal.classList.add("active");
-          if (window.lucide) lucide.createIcons();
-        }
-      }, 1500);
-    }
-  }
+  // Auto-popup PWA dinonaktifkan: user bebas install atau pakai via browser biasa.
 
   // 4. Handler Tombol Install
   const handleInstallClick = async () => {
@@ -3259,5 +3250,76 @@ function initPwaInstall() {
     deferredPwaPrompt = null;
   });
 }
+
+/**
+ * Switcher Mode Tampilan: Input Rute vs Jadwal Saya
+ */
+window.switchAppView = function(view) {
+  state.currentView = view;
+  const searchCard = document.getElementById("floatingSearchCard");
+  const scheduleCard = document.getElementById("floatingScheduleCard");
+  const floatingBar = document.getElementById("floatingBar");
+  
+  const navTabInput = document.getElementById("navTabBtnInput");
+  const navTabSchedule = document.getElementById("navTabBtnSchedule");
+  const tabInput = document.getElementById("tabBtnInput");
+  const tabSchedule = document.getElementById("tabBtnSchedule");
+
+  if (view === "input") {
+    if (searchCard) searchCard.style.display = "block";
+    if (scheduleCard) scheduleCard.style.display = "none";
+    if (floatingBar && state.selectedStores.size > 0) floatingBar.style.display = "block";
+
+    [navTabInput, tabInput].forEach(btn => {
+      if (btn) {
+        btn.style.background = "var(--primary)";
+        btn.style.color = "#ffffff";
+        btn.style.boxShadow = "0 2px 8px var(--primary-glow)";
+        btn.classList.remove("text-slate-600", "dark:text-slate-300");
+      }
+    });
+    [navTabSchedule, tabSchedule].forEach(btn => {
+      if (btn) {
+        btn.style.background = "transparent";
+        btn.style.color = "";
+        btn.style.boxShadow = "none";
+        btn.classList.add("text-slate-600", "dark:text-slate-300");
+      }
+    });
+
+    if (typeof renderSelectedRouteMarkersAndPolyline === "function") {
+      renderSelectedRouteMarkersAndPolyline(Array.from(state.selectedStores.values()));
+    }
+  } else {
+    if (searchCard) searchCard.style.display = "none";
+    if (scheduleCard) scheduleCard.style.display = "block";
+    if (floatingBar) floatingBar.style.display = "none";
+
+    [navTabSchedule, tabSchedule].forEach(btn => {
+      if (btn) {
+        btn.style.background = "var(--primary)";
+        btn.style.color = "#ffffff";
+        btn.style.boxShadow = "0 2px 8px var(--primary-glow)";
+        btn.classList.remove("text-slate-600", "dark:text-slate-300");
+      }
+    });
+    [navTabInput, tabInput].forEach(btn => {
+      if (btn) {
+        btn.style.background = "transparent";
+        btn.style.color = "";
+        btn.style.boxShadow = "none";
+        btn.classList.add("text-slate-600", "dark:text-slate-300");
+      }
+    });
+
+    if (typeof loadScheduledStores === "function") {
+      loadScheduledStores();
+    }
+  }
+
+  setTimeout(() => {
+    if (map) map.invalidateSize();
+  }, 100);
+};
 
 

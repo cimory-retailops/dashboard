@@ -78,6 +78,40 @@ document.addEventListener('alpine:init', () => {
     map: null,
     mapMarkersLayer: null,
     mapRoutesLayer: null,
+
+    // =========================================================================
+    // DUAL-PANE MANUAL ROUTE EDITOR (MT MANAGER STYLE) & DRAFT PERSISTENCE
+    // =========================================================================
+    simulasiMode: 'AUTO', // 'AUTO' | 'MANUAL'
+    manualAssignments: [],
+    manualLeftMdsId: '',
+    manualLeftDay: 1, // 1..25 or 'ALL'
+    manualLeftSearch: '',
+    manualLeftSelectedStoreCodes: [],
+    manualLeftDropdownOpen: false,
+    manualLeftMdsSearch: '',
+
+    manualRightMdsId: '',
+    manualRightDay: 1, // 1..25 or 'ALL'
+    manualRightSearch: '',
+    manualRightSelectedStoreCodes: [],
+    manualRightDropdownOpen: false,
+    manualRightMdsSearch: '',
+
+    manualMap: null,
+    manualMapMarkersLayer: null,
+    manualMapRoutesLayer: null,
+    isManualDraftLoading: false,
+    manualLeftCollapsed: false,
+    manualRightCollapsed: false,
+    manualDualPanelCollapsed: false,
+    manualHistory: [], // Undo snapshot history stack
+
+    // Store Identity Editing Modal & Modifications Log
+    storeEditsMap: {}, // storeCode -> { ...storeData, isEdited: true, editTimestamp }
+    showEditStoreModal: false,
+    editingStore: { original: null, form: { storeCode: '', storeName: '', account: '', region: '', kabKota: '', lat: 0, lng: 0, address: '' } },
+
     // Live Cloud Sync (IndexedDB & Google Sheets)
     isSyncing: false,
     syncStatusMessage: '',
@@ -111,11 +145,16 @@ document.addEventListener('alpine:init', () => {
         // 2. Run Initial Simulation for Pulau Jawa
         this.runSimulation();
 
-        // 3. Setup Leaflet Map on next tick
-        this.$nextTick(() => {
-          this.initMap();
-          if (window.lucide) lucide.createIcons();
-        });
+        // 3. Restore last active mode or fallback to AUTO
+        const savedMode = localStorage.getItem('route_sim_active_mode') || 'AUTO';
+        if (savedMode === 'MANUAL') {
+          this.setSimulasiMode('MANUAL');
+        } else {
+          this.$nextTick(() => {
+            this.initMap();
+            if (window.lucide) lucide.createIcons();
+          });
+        }
 
       } catch (err) {
         console.error('[App] Init Error:', err);
@@ -1031,15 +1070,21 @@ document.addEventListener('alpine:init', () => {
     },
 
     /**
-     * Export Full Simulation to Multi-Sheet Excel (.xlsx) with Explicit Perdin & Evaluation Columns
+     * Export Full Simulation / Manual Editor Route to Multi-Sheet Excel (.xlsx)
      */
     exportSimulationExcel() {
-      if (!this.simulationResult) return;
+      const isManual = this.simulasiMode === 'MANUAL';
+      const assignments = isManual ? (this.manualAssignments || []) : (this.simulationResult?.assignments || []);
+      
+      if (!assignments || assignments.length === 0) {
+        this.showToast('⚠️ Belum ada data rute untuk diekspor ke Excel.');
+        return;
+      }
 
       const wb = XLSX.utils.book_new();
 
       // --- Sheet 1: Master Summary & Manpower Allocation ---
-      const summaryRows = this.simulationResult.assignments.map((m, idx) => ({
+      const summaryRows = assignments.map((m, idx) => ({
         'No': idx + 1,
         'Kode Personil': m.id,
         'Nama MDS': m.nama,
@@ -1051,11 +1096,11 @@ document.addEventListener('alpine:init', () => {
         'Region': m.region,
         'MDS Existing Terdekat': m.isVirtual ? (m.nearestActiveMdsName || '-') : '-',
         'Jarak Sentra ke MDS Terdekat (KM)': m.isVirtual ? (m.nearestActiveMdsDistanceKm || '-') : '-',
-        'Total Toko Dialokasikan': m.assignedStores.length,
+        'Total Toko Dialokasikan': (m.assignedStores || []).length,
         'Hari Toko Non Perdin': m.nonPerdinDays || m.localDays || 0,
         'Hari Toko Perdin': m.perdinDays || 0,
         'Hari Kunjungan DC': m.dcDays || 4,
-        'Total Beban Kunjungan/Bulan': m.assignedStores.length + (m.dcDays || 4),
+        'Total Beban Kunjungan/Bulan': (m.assignedStores || []).length + (m.dcDays || 4),
         'Estimasi Anggaran Perdin/Bulan (Rp)': (m.estPerdinBudget || 0),
         'Rata-rata Jarak dari Acuan (KM)': m.avgDistanceKm,
         'Jarak Terjauh dari Acuan (KM)': m.maxDistanceKm,
@@ -1067,14 +1112,15 @@ document.addEventListener('alpine:init', () => {
 
       // --- Sheet 2: Matriks Jadwal 25 Hari Kerja (Detail Per Stop & Evaluasi Rute) ---
       const scheduleRows = [];
-      this.simulationResult.assignments.forEach(m => {
+      assignments.forEach(m => {
         (m.dailySchedule || []).forEach(day => {
           (day.stores || []).forEach((st, sIdx) => {
             const isPerdin = Boolean(st.isPerdin);
-            const isDcStop = Boolean(st.isDc || st.type === 'DC' || st.tipeKunjungan === 'KUNJUNGAN DC');
+            const isDcStop = Boolean(st.isDc || st.type === 'DC' || st.tipeKunjungan === 'KUNJUNGAN DC' || day.type === 'DC');
             const isVirtual = Boolean(m.isVirtual || st.isVirtual || st.isVirtualCover);
 
             scheduleRows.push({
+              'Mode Data': isManual ? 'REVISI MANUAL' : 'SIMULASI OTOMATIS',
               'Kode MDS': m.id,
               'Nama MDS': m.nama,
               'Status MDS': isVirtual ? 'USULAN REKRUT (VACANT)' : 'AKTIF (EXISTING)',
@@ -1092,7 +1138,7 @@ document.addEventListener('alpine:init', () => {
               'Wilayah / Kab-Kota': st.kabKota || m.kota,
               'Kecamatan Toko': st.kecamatan || '-',
               'Jarak ke Titik Acuan (KM)': st.distanceFromHomeKm,
-              'Estimasi Tempuh ke Acuan (Menit)': st.travelTimeMins,
+              'Estimasi Tempuh ke Acuan (Menit)': st.travelTimeMins || st.estTravelMins,
               'MDS Existing Terdekat': isVirtual ? (st.nearestActiveMdsName || m.nearestActiveMdsName || '-') : '-',
               'Jarak Asli ke MDS Terdekat (KM)': isVirtual ? (st.distToNearestActiveMdsKm ?? (m.nearestActiveMdsDistanceKm || '-')) : '-',
               'Alasan Usulan Penambahan / Justifikasi': isVirtual ? (st.vacantReason || m.vacantReason || 'Klaster terisolir') : 'Tercover Personil Aktif',
@@ -1117,9 +1163,11 @@ document.addEventListener('alpine:init', () => {
       XLSX.utils.book_append_sheet(wb, wsFinancial, 'Kebijakan_Biaya_Perdin');
 
       // Generate & Download File
-      const scopeSlug = this.selectedScope === 'JAWA' ? 'Pulau_Jawa_Tanpa_Rekrutmen' : (this.selectedScope === 'LUAR_PULAU' ? 'Luar_Pulau' : 'Nasional');
-      const filename = `Cimory_Simulasi_Rute_MDS_${scopeSlug}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const scopeSlug = this.selectedScope === 'JAWA' ? 'Pulau_Jawa' : (this.selectedScope === 'LUAR_PULAU' ? 'Luar_Pulau' : 'Nasional');
+      const modeSlug = isManual ? 'Editor_Manual' : 'Simulasi_Otomatis';
+      const filename = `Cimory_Rute_MDS_${modeSlug}_${scopeSlug}_${new Date().toISOString().slice(0, 10)}.xlsx`;
       XLSX.writeFile(wb, filename);
+      this.showToast(`📊 Berhasil mengunduh Excel Rute (${isManual ? 'Hasil Edit Manual' : 'Simulasi Otomatis'}).`);
     },
 
     /**
@@ -1351,6 +1399,1040 @@ document.addEventListener('alpine:init', () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    },
+
+    // =========================================================================
+    // DUAL-PANE MANUAL ROUTE EDITOR (MT MANAGER STYLE) METHODS & GETTERS
+    // =========================================================================
+
+    get manualLeftMds() {
+      return (this.manualAssignments || []).find(m => m.id === this.manualLeftMdsId) || null;
+    },
+
+    get manualRightMds() {
+      return (this.manualAssignments || []).find(m => m.id === this.manualRightMdsId) || null;
+    },
+
+    get manualLeftDayObj() {
+      if (!this.manualLeftMds || this.manualLeftDay === 'ALL') return null;
+      return (this.manualLeftMds.dailySchedule || []).find(d => d.dayNumber === parseInt(this.manualLeftDay, 10)) || null;
+    },
+
+    get manualRightDayObj() {
+      if (!this.manualRightMds || this.manualRightDay === 'ALL') return null;
+      return (this.manualRightMds.dailySchedule || []).find(d => d.dayNumber === parseInt(this.manualRightDay, 10)) || null;
+    },
+
+    get manualLeftStores() {
+      if (!this.manualLeftMds) return [];
+      let list = [];
+      if (this.manualLeftDay === 'ALL') {
+        (this.manualLeftMds.dailySchedule || []).forEach(d => {
+          (d?.stores || []).forEach(s => {
+            if (s) list.push({ ...s, dayNumber: d.dayNumber, dayType: d.type });
+          });
+        });
+      } else {
+        const day = this.manualLeftDayObj;
+        (day?.stores || []).forEach(s => {
+          if (s) list.push({ ...s, dayNumber: day.dayNumber, dayType: day.type });
+        });
+      }
+      if (this.manualLeftSearch) {
+        const q = (this.manualLeftSearch || '').toLowerCase().trim();
+        list = list.filter(s => s && ((s.storeName || '').toLowerCase().includes(q) || (s.storeCode || '').toLowerCase().includes(q) || (s.account || '').toLowerCase().includes(q)));
+      }
+      return list.filter(Boolean);
+    },
+
+    get manualRightStores() {
+      if (!this.manualRightMds) return [];
+      let list = [];
+      if (this.manualRightDay === 'ALL') {
+        (this.manualRightMds.dailySchedule || []).forEach(d => {
+          (d?.stores || []).forEach(s => {
+            if (s) list.push({ ...s, dayNumber: d.dayNumber, dayType: d.type });
+          });
+        });
+      } else {
+        const day = this.manualRightDayObj;
+        (day?.stores || []).forEach(s => {
+          if (s) list.push({ ...s, dayNumber: day.dayNumber, dayType: day.type });
+        });
+      }
+      if (this.manualRightSearch) {
+        const q = (this.manualRightSearch || '').toLowerCase().trim();
+        list = list.filter(s => s && ((s.storeName || '').toLowerCase().includes(q) || (s.storeCode || '').toLowerCase().includes(q) || (s.account || '').toLowerCase().includes(q)));
+      }
+      return list.filter(Boolean);
+    },
+
+    get manualLeftStats() {
+      const stores = this.manualLeftStores;
+      const count = stores.length;
+      if (count === 0) return { count: 0, totalKm: 0, avgDistKm: 0, estTimeMins: 0 };
+      const totalKm = stores.reduce((sum, s) => sum + (s.distanceFromHomeKm || 0), 0);
+      const avgDistKm = Math.round((totalKm / count) * 10) / 10;
+      const estTimeMins = RouteEngine.getEstimatedTravelTimeMins(avgDistKm);
+      return { count, totalKm: Math.round(totalKm * 10) / 10, avgDistKm, estTimeMins };
+    },
+
+    get manualRightStats() {
+      const stores = this.manualRightStores;
+      const count = stores.length;
+      if (count === 0) return { count: 0, totalKm: 0, avgDistKm: 0, estTimeMins: 0 };
+      const totalKm = stores.reduce((sum, s) => sum + (s.distanceFromHomeKm || 0), 0);
+      const avgDistKm = Math.round((totalKm / count) * 10) / 10;
+      const estTimeMins = RouteEngine.getEstimatedTravelTimeMins(avgDistKm);
+      return { count, totalKm: Math.round(totalKm * 10) / 10, avgDistKm, estTimeMins };
+    },
+
+    get filteredManualLeftMdsList() {
+      const q = (this.manualLeftMdsSearch || '').toLowerCase().trim();
+      const list = this.manualAssignments || [];
+      if (!q) return list;
+      return list.filter(m => 
+        (m.nama || '').toLowerCase().includes(q) || 
+        (m.kota || '').toLowerCase().includes(q) || 
+        (m.modul || '').toLowerCase().includes(q) ||
+        (m.id || '').toLowerCase().includes(q)
+      );
+    },
+
+    get filteredManualRightMdsList() {
+      const q = (this.manualRightMdsSearch || '').toLowerCase().trim();
+      const list = this.manualAssignments || [];
+      if (!q) return list;
+      return list.filter(m => 
+        (m.nama || '').toLowerCase().includes(q) || 
+        (m.kota || '').toLowerCase().includes(q) || 
+        (m.modul || '').toLowerCase().includes(q) ||
+        (m.id || '').toLowerCase().includes(q)
+      );
+    },
+
+    selectManualMds(side, mdsId) {
+      if (side === 'LEFT') {
+        this.manualLeftMdsId = mdsId;
+        this.manualLeftDropdownOpen = false;
+        this.manualLeftSelectedStoreCodes = [];
+      } else {
+        this.manualRightMdsId = mdsId;
+        this.manualRightDropdownOpen = false;
+        this.manualRightSelectedStoreCodes = [];
+      }
+      this.renderManualMap();
+    },
+
+    setSimulasiMode(mode) {
+      if (this.simulasiMode === mode) return;
+
+      // 1. Tampilkan overlay preloader langsung saat klik
+      this.isLoading = true;
+      this.loadingMessage = mode === 'MANUAL' 
+        ? 'Menyiapkan Editor Rute & memuat workspace...' 
+        : 'Menyiapkan Simulasi Otomatis...';
+      
+      // 2. Ganti state mode & simpan ke localStorage
+      this.simulasiMode = mode;
+      localStorage.setItem('route_sim_active_mode', mode);
+
+      // 3. Eksekusi load data & inisialisasi peta secara asynchronous agar UI transisi mulus
+      setTimeout(() => {
+        try {
+          if (mode === 'MANUAL') {
+            if (!this.manualAssignments || this.manualAssignments.length === 0) {
+              this.loadManualFromAuto(false);
+            }
+            if (!this.manualLeftMdsId && this.manualAssignments.length > 0) {
+              this.manualLeftMdsId = this.manualAssignments[0].id;
+            }
+            if (!this.manualRightMdsId && this.manualAssignments.length > 0) {
+              this.manualRightMdsId = this.manualAssignments.length > 1 ? this.manualAssignments[1].id : this.manualAssignments[0].id;
+            }
+            this.initManualMap();
+            this.renderManualMap();
+          } else {
+            if (this.map) this.map.invalidateSize();
+          }
+        } catch (err) {
+          console.error("Error switching mode:", err);
+        } finally {
+          this.$nextTick(() => {
+            if (window.lucide) lucide.createIcons();
+            this.isLoading = false;
+          });
+        }
+      }, 120);
+    },
+
+    loadManualFromAuto(confirmPrompt = true) {
+      if (confirmPrompt && this.manualAssignments.length > 0) {
+        if (!confirm('Tindakan ini akan menduplikasi hasil simulasi otomatis ke workspace manual. Lanjutkan?')) {
+          return;
+        }
+      }
+      if (!this.simulationResult || !this.simulationResult.assignments) {
+        this.runSimulation();
+      }
+      const raw = JSON.parse(JSON.stringify(this.simulationResult.assignments || []));
+      
+      // Apply any persistent store edits
+      raw.forEach(mds => {
+        (mds.dailySchedule || []).forEach(day => {
+          (day.stores || []).forEach(st => {
+            if (this.storeEditsMap && this.storeEditsMap[st.storeCode]) {
+              Object.assign(st, this.storeEditsMap[st.storeCode]);
+            }
+          });
+        });
+        this.recalculateMdsStats(mds);
+      });
+
+      this.manualAssignments = raw;
+      this.manualLeftSelectedStoreCodes = [];
+      this.manualRightSelectedStoreCodes = [];
+      if (this.manualAssignments.length > 0) {
+        if (!this.manualLeftMdsId) this.manualLeftMdsId = this.manualAssignments[0].id;
+        if (!this.manualRightMdsId) this.manualRightMdsId = this.manualAssignments.length > 1 ? this.manualAssignments[1].id : this.manualAssignments[0].id;
+      }
+      this.saveManualDraftToDb();
+      this.renderManualMap();
+      this.showToast('✅ Berhasil memuat baseline data dari simulasi otomatis ke editor manual.');
+    },
+
+    initManualMap() {
+      const mapEl = document.getElementById('manual-dual-map');
+      if (!mapEl) return;
+      if (this.manualMap) {
+        this.manualMap.invalidateSize();
+        return;
+      }
+      this.manualMap = L.map('manual-dual-map', {
+        center: [-7.25, 110.0],
+        zoom: 8,
+        zoomControl: true,
+        scrollWheelZoom: true
+      });
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
+      }).addTo(this.manualMap);
+
+      this.manualMapMarkersLayer = L.layerGroup().addTo(this.manualMap);
+      this.manualMapRoutesLayer = L.layerGroup().addTo(this.manualMap);
+    },
+
+    recalculateMdsStats(mds) {
+      if (!mds) return;
+      let allStores = [];
+      let totalPerdin = 0;
+      let totalKm = 0;
+
+      const homeLat = mds.homeLat ? parseFloat(mds.homeLat) : null;
+      const homeLng = mds.homeLng ? parseFloat(mds.homeLng) : null;
+
+      (mds.dailySchedule || []).forEach(day => {
+        (day.stores || []).forEach(st => {
+          allStores.push(st);
+          const stLat = parseFloat(st.lat);
+          const stLng = parseFloat(st.lng);
+          if (homeLat !== null && homeLng !== null && isFinite(stLat) && isFinite(stLng)) {
+            st.distanceFromHomeKm = RouteEngine.getDistanceKm(homeLat, homeLng, stLat, stLng);
+            st.estTravelMins = RouteEngine.getEstimatedTravelTimeMins(st.distanceFromHomeKm);
+            st.isPerdin = st.distanceFromHomeKm > 35;
+          }
+          totalKm += (st.distanceFromHomeKm || 0);
+          if (st.isPerdin) totalPerdin++;
+        });
+      });
+
+      mds.assignedStores = allStores;
+      mds.totalStores = allStores.length;
+      mds.totalPerdin = totalPerdin;
+      mds.totalDistanceKm = Math.round(totalKm * 10) / 10;
+      mds.avgDistanceKm = allStores.length > 0 ? Math.round((totalKm / allStores.length) * 10) / 10 : 0;
+    },
+
+    pushManualHistory(actionName = 'Edit Rute') {
+      if (!this.manualAssignments || this.manualAssignments.length === 0) return;
+      if (!this.manualHistory) this.manualHistory = [];
+      if (this.manualHistory.length >= 25) {
+        this.manualHistory.shift();
+      }
+      this.manualHistory.push({
+        actionName,
+        timestamp: Date.now(),
+        snapshot: JSON.parse(JSON.stringify(this.manualAssignments))
+      });
+    },
+
+    undoManualAction() {
+      if (!this.manualHistory || this.manualHistory.length === 0) {
+        this.showToast('ℹ️ Tidak ada riwayat aksi untuk dibatalkan (Undo).');
+        return;
+      }
+      const lastHistory = this.manualHistory.pop();
+      if (!lastHistory || !lastHistory.snapshot) return;
+
+      this.isLoading = true;
+      this.loadingMessage = `Membatalkan aksi: ${lastHistory.actionName}...`;
+
+      setTimeout(() => {
+        try {
+          this.manualAssignments = lastHistory.snapshot;
+          this.manualLeftSelectedStoreCodes = [];
+          this.manualRightSelectedStoreCodes = [];
+          
+          (this.manualAssignments || []).forEach(m => this.recalculateMdsStats(m));
+          this.saveManualDraftToDb();
+          this.renderManualMap();
+          this.showToast(`↩️ Undo berhasil: ${lastHistory.actionName}`);
+        } catch (err) {
+          console.error("Undo error:", err);
+        } finally {
+          this.isLoading = false;
+          this.$nextTick(() => {
+            if (window.lucide) lucide.createIcons();
+          });
+        }
+      }, 100);
+    },
+
+    renderManualMap() {
+      if (!this.manualMap) {
+        this.initManualMap();
+        if (!this.manualMap) return;
+      }
+      this.manualMap.invalidateSize();
+
+      if (this.manualMapMarkersLayer) this.manualMapMarkersLayer.clearLayers();
+      if (this.manualMapRoutesLayer) this.manualMapRoutesLayer.clearLayers();
+
+      const allBounds = [];
+
+      // Render Left Panel Stores (Indigo / Royal Blue: #4f46e5)
+      if (this.manualLeftMds) {
+        const leftColor = '#4f46e5';
+        const leftStores = this.manualLeftStores;
+        const leftHomeLat = this.manualLeftMds.homeLat ? parseFloat(this.manualLeftMds.homeLat) : null;
+        const leftHomeLng = this.manualLeftMds.homeLng ? parseFloat(this.manualLeftMds.homeLng) : null;
+
+        // Home Base Marker
+        if (leftHomeLat !== null && leftHomeLng !== null && isFinite(leftHomeLat) && isFinite(leftHomeLng)) {
+          const homeIcon = L.divIcon({
+            className: 'custom-home-marker-l',
+            html: `
+              <div style="background-color: ${leftColor}; width: 28px; height: 28px; border-radius: 8px; border: 2.5px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; font-size: 13px;">
+                🏠
+              </div>
+            `,
+            iconSize: [28, 28],
+            iconAnchor: [14, 14]
+          });
+          const homeMarker = L.marker([leftHomeLat, leftHomeLng], { icon: homeIcon })
+            .bindPopup(`
+              <div style="font-family: sans-serif; font-size: 11px;">
+                <div style="font-weight: 800; color: ${leftColor}; font-size: 12px;">🏠 Basecamp MDS A (Kiri)</div>
+                <div><b>${this.manualLeftMds.nama}</b> (${this.manualLeftMds.modul})</div>
+                <div style="color: #64748b; font-size: 10px;">${this.manualLeftMds.kota}</div>
+              </div>
+            `);
+          this.manualMapMarkersLayer.addLayer(homeMarker);
+          allBounds.push([leftHomeLat, leftHomeLng]);
+        }
+
+        // Stores
+        const leftPath = [];
+        if (leftHomeLat !== null && leftHomeLng !== null && isFinite(leftHomeLat) && isFinite(leftHomeLng)) {
+          leftPath.push([leftHomeLat, leftHomeLng]);
+        }
+
+        leftStores.forEach((st, idx) => {
+          const lat = parseFloat(st.lat);
+          const lng = parseFloat(st.lng);
+          if (!isFinite(lat) || !isFinite(lng)) return;
+
+          const isChecked = (this.manualLeftSelectedStoreCodes || []).includes(st.storeCode);
+          const isEdited = !!(this.storeEditsMap && this.storeEditsMap[st.storeCode]);
+
+          const storeIcon = L.divIcon({
+            className: 'custom-store-marker-l',
+            html: `
+              <div style="background-color: ${isChecked ? '#10b981' : leftColor}; width: ${isChecked ? '26px' : '22px'}; height: ${isChecked ? '26px' : '22px'}; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 10px;">
+                ${idx + 1}
+              </div>
+            `,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          });
+
+          const popupContent = `
+            <div style="font-family: sans-serif; font-size: 11px; min-width: 180px;">
+              <div style="font-weight: bold; color: ${leftColor}; margin-bottom: 2px;">
+                [Panel Kiri - H${st.dayNumber || this.manualLeftDay}] #${idx + 1} ${isEdited ? '✏️' : ''}
+              </div>
+              <div style="font-weight: 800; font-size: 12px;">${st.storeName}</div>
+              <div style="color: #64748b; font-size: 10px;">Kode: <b>${st.storeCode}</b> • ${st.account}</div>
+              <div style="color: #64748b; font-size: 10px;">Jarak Basecamp: <b>${st.distanceFromHomeKm || 0} km</b></div>
+              <div style="margin-top: 6px; display: flex; gap: 4px;">
+                <button onclick="window._routeSimApp.openEditStoreModalByCode('${st.storeCode}')" style="background: #6366f1; color: white; border: none; border-radius: 6px; padding: 3px 8px; font-size: 10px; font-weight: bold; cursor: pointer;">
+                  ✏️ Edit Toko
+                </button>
+                <button onclick="window._routeSimApp.quickTransferStore('${st.storeCode}', 'LEFT_TO_RIGHT')" style="background: #0ea5e9; color: white; border: none; border-radius: 6px; padding: 3px 8px; font-size: 10px; font-weight: bold; cursor: pointer;">
+                  Pindah ke Kanan &rarr;
+                </button>
+              </div>
+            </div>
+          `;
+
+          const marker = L.marker([lat, lng], { icon: storeIcon }).bindPopup(popupContent);
+          this.manualMapMarkersLayer.addLayer(marker);
+          leftPath.push([lat, lng]);
+          allBounds.push([lat, lng]);
+        });
+
+        // Draw Polyline for Left
+        if (leftPath.length > 1) {
+          const polyline = L.polyline(leftPath, {
+            color: leftColor,
+            weight: 3,
+            opacity: 0.75,
+            dashArray: '6, 6'
+          });
+          this.manualMapRoutesLayer.addLayer(polyline);
+        }
+      }
+
+      // Render Right Panel Stores (Amber / Orange: #d97706)
+      if (this.manualRightMds && this.manualRightMds.id !== this.manualLeftMdsId) {
+        const rightColor = '#d97706';
+        const rightStores = this.manualRightStores;
+        const rightHomeLat = this.manualRightMds.homeLat ? parseFloat(this.manualRightMds.homeLat) : null;
+        const rightHomeLng = this.manualRightMds.homeLng ? parseFloat(this.manualRightMds.homeLng) : null;
+
+        // Home Base Marker
+        if (rightHomeLat !== null && rightHomeLng !== null && isFinite(rightHomeLat) && isFinite(rightHomeLng)) {
+          const homeIcon = L.divIcon({
+            className: 'custom-home-marker-r',
+            html: `
+              <div style="background-color: ${rightColor}; width: 28px; height: 28px; border-radius: 8px; border: 2.5px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; font-size: 13px;">
+                🏠
+              </div>
+            `,
+            iconSize: [28, 28],
+            iconAnchor: [14, 14]
+          });
+          const homeMarker = L.marker([rightHomeLat, rightHomeLng], { icon: homeIcon })
+            .bindPopup(`
+              <div style="font-family: sans-serif; font-size: 11px;">
+                <div style="font-weight: 800; color: ${rightColor}; font-size: 12px;">🏠 Basecamp MDS B (Kanan)</div>
+                <div><b>${this.manualRightMds.nama}</b> (${this.manualRightMds.modul})</div>
+                <div style="color: #64748b; font-size: 10px;">${this.manualRightMds.kota}</div>
+              </div>
+            `);
+          this.manualMapMarkersLayer.addLayer(homeMarker);
+          allBounds.push([rightHomeLat, rightHomeLng]);
+        }
+
+        // Stores
+        const rightPath = [];
+        if (rightHomeLat !== null && rightHomeLng !== null && isFinite(rightHomeLat) && isFinite(rightHomeLng)) {
+          rightPath.push([rightHomeLat, rightHomeLng]);
+        }
+
+        rightStores.forEach((st, idx) => {
+          const lat = parseFloat(st.lat);
+          const lng = parseFloat(st.lng);
+          if (!isFinite(lat) || !isFinite(lng)) return;
+
+          const isChecked = (this.manualRightSelectedStoreCodes || []).includes(st.storeCode);
+          const isEdited = !!(this.storeEditsMap && this.storeEditsMap[st.storeCode]);
+
+          const storeIcon = L.divIcon({
+            className: 'custom-store-marker-r',
+            html: `
+              <div style="background-color: ${isChecked ? '#10b981' : rightColor}; width: ${isChecked ? '26px' : '22px'}; height: ${isChecked ? '26px' : '22px'}; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 10px;">
+                ${idx + 1}
+              </div>
+            `,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          });
+
+          const popupContent = `
+            <div style="font-family: sans-serif; font-size: 11px; min-width: 180px;">
+              <div style="font-weight: bold; color: ${rightColor}; margin-bottom: 2px;">
+                [Panel Kanan - H${st.dayNumber || this.manualRightDay}] #${idx + 1} ${isEdited ? '✏️' : ''}
+              </div>
+              <div style="font-weight: 800; font-size: 12px;">${st.storeName}</div>
+              <div style="color: #64748b; font-size: 10px;">Kode: <b>${st.storeCode}</b> • ${st.account}</div>
+              <div style="color: #64748b; font-size: 10px;">Jarak Basecamp: <b>${st.distanceFromHomeKm || 0} km</b></div>
+              <div style="margin-top: 6px; display: flex; gap: 4px;">
+                <button onclick="window._routeSimApp.openEditStoreModalByCode('${st.storeCode}')" style="background: #6366f1; color: white; border: none; border-radius: 6px; padding: 3px 8px; font-size: 10px; font-weight: bold; cursor: pointer;">
+                  ✏️ Edit Toko
+                </button>
+                <button onclick="window._routeSimApp.quickTransferStore('${st.storeCode}', 'RIGHT_TO_LEFT')" style="background: #0ea5e9; color: white; border: none; border-radius: 6px; padding: 3px 8px; font-size: 10px; font-weight: bold; cursor: pointer;">
+                  &larr; Pindah ke Kiri
+                </button>
+              </div>
+            </div>
+          `;
+
+          const marker = L.marker([lat, lng], { icon: storeIcon }).bindPopup(popupContent);
+          this.manualMapMarkersLayer.addLayer(marker);
+          rightPath.push([lat, lng]);
+          allBounds.push([lat, lng]);
+        });
+
+        // Draw Polyline for Right
+        if (rightPath.length > 1) {
+          const polyline = L.polyline(rightPath, {
+            color: rightColor,
+            weight: 3,
+            opacity: 0.75,
+            dashArray: '6, 6'
+          });
+          this.manualMapRoutesLayer.addLayer(polyline);
+        }
+      }
+
+      // Auto Fit Bounds (Offset ke kanan agar tidak tertutup dock berdampingan di kiri)
+      if (allBounds.length > 0 && this.manualMap) {
+        const leftPadding = !this.manualDualPanelCollapsed ? (window.innerWidth < 1024 ? 340 : 660) : 40;
+        this.manualMap.fitBounds(allBounds, {
+          paddingTopLeft: [leftPadding, 70],
+          paddingBottomRight: [40, 40],
+          maxZoom: 14
+        });
+      }
+
+      window._routeSimApp = this;
+    },
+
+    toggleManualDualPanel() {
+      this.manualDualPanelCollapsed = !this.manualDualPanelCollapsed;
+      this.$nextTick(() => {
+        if (this.manualMap) {
+          this.manualMap.invalidateSize();
+          this.renderManualMap();
+        }
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+
+    toggleManualSelectAll(side) {
+      if (side === 'LEFT') {
+        const allCodes = this.manualLeftStores.map(s => s.storeCode);
+        if (this.manualLeftSelectedStoreCodes.length === allCodes.length) {
+          this.manualLeftSelectedStoreCodes = [];
+        } else {
+          this.manualLeftSelectedStoreCodes = [...allCodes];
+        }
+      } else {
+        const allCodes = this.manualRightStores.map(s => s.storeCode);
+        if (this.manualRightSelectedStoreCodes.length === allCodes.length) {
+          this.manualRightSelectedStoreCodes = [];
+        } else {
+          this.manualRightSelectedStoreCodes = [...allCodes];
+        }
+      }
+    },
+
+    transferStores(direction) {
+      if (!this.manualLeftMds || !this.manualRightMds) {
+        this.showToast('⚠️ Pilih personil MDS pada kedua panel terlebih dahulu.');
+        return;
+      }
+
+      const isLtoR = direction === 'LEFT_TO_RIGHT';
+      const selectedCodes = isLtoR ? [...this.manualLeftSelectedStoreCodes] : [...this.manualRightSelectedStoreCodes];
+
+      if (selectedCodes.length === 0) {
+        this.showToast(`⚠️ Centang toko di panel ${isLtoR ? 'Kiri' : 'Kanan'} yang ingin dipindahkan.`);
+        return;
+      }
+
+      const sourceMds = isLtoR ? this.manualLeftMds : this.manualRightMds;
+      const targetMds = isLtoR ? this.manualRightMds : this.manualLeftMds;
+      const targetDayNum = isLtoR ? (this.manualRightDay === 'ALL' ? 1 : parseInt(this.manualRightDay, 10)) : (this.manualLeftDay === 'ALL' ? 1 : parseInt(this.manualLeftDay, 10));
+
+      const targetDay = (targetMds.dailySchedule || []).find(d => d.dayNumber === targetDayNum);
+      if (!targetDay) {
+        this.showToast('⚠️ Target hari tidak ditemukan.');
+        return;
+      }
+      if (!targetDay.stores) targetDay.stores = [];
+
+      // Record Undo state snapshot before mutation
+      this.pushManualHistory(isLtoR ? `Pindah ${selectedCodes.length} Toko ke Kanan` : `Pindah ${selectedCodes.length} Toko ke Kiri`);
+
+      // 1. Tampilkan overlay preloader langsung saat aksi dimulai
+      this.isLoading = true;
+      this.loadingMessage = `Memindahkan ${selectedCodes.length} toko ke ${targetMds.nama} (H-${targetDayNum})...`;
+
+      // 2. Eksekusi perpindahan data secara asynchronous
+      setTimeout(() => {
+        try {
+          const movedStores = [];
+
+          // Extract from source
+          (sourceMds.dailySchedule || []).forEach(day => {
+            if (!day.stores) return;
+            const remaining = [];
+            day.stores.forEach(st => {
+              if (selectedCodes.includes(st.storeCode)) {
+                // Recalculate distance to new target MDS home
+                if (targetMds.homeLat && targetMds.homeLng) {
+                  st.distanceFromHomeKm = RouteEngine.getDistanceKm(parseFloat(targetMds.homeLat), parseFloat(targetMds.homeLng), parseFloat(st.lat), parseFloat(st.lng));
+                  st.estTravelMins = RouteEngine.getEstimatedTravelTimeMins(st.distanceFromHomeKm);
+                  st.isPerdin = st.distanceFromHomeKm > 35;
+                }
+                st.dayNumber = targetDayNum;
+                movedStores.push(st);
+              } else {
+                remaining.push(st);
+              }
+            });
+            day.stores = remaining;
+          });
+
+          // Append to target
+          targetDay.stores.push(...movedStores);
+
+          // Recalculate stats for both
+          this.recalculateMdsStats(sourceMds);
+          this.recalculateMdsStats(targetMds);
+
+          // Clear selection on both sides to refresh badge & checkbox states cleanly
+          this.manualLeftSelectedStoreCodes = [];
+          this.manualRightSelectedStoreCodes = [];
+
+          this.saveManualDraftToDb();
+          this.renderManualMap();
+          this.showToast(`✅ Berhasil memindahkan ${movedStores.length} toko ke ${targetMds.nama} (H-${targetDayNum}).`);
+        } catch (err) {
+          console.error("Error during store transfer:", err);
+          this.showToast('❌ Terjadi kesalahan saat memindahkan toko.');
+        } finally {
+          this.isLoading = false;
+          this.$nextTick(() => {
+            if (window.lucide) lucide.createIcons();
+          });
+        }
+      }, 80);
+    },
+
+    quickTransferStore(storeCode, direction) {
+      if (direction === 'LEFT_TO_RIGHT') {
+        this.manualLeftSelectedStoreCodes = [storeCode];
+        this.transferStores('LEFT_TO_RIGHT');
+      } else {
+        this.manualRightSelectedStoreCodes = [storeCode];
+        this.transferStores('RIGHT_TO_LEFT');
+      }
+    },
+
+    swapFullDayRoutes() {
+      if (!this.manualLeftMds || !this.manualRightMds) {
+        this.showToast('⚠️ Pilih personil MDS pada kedua panel terlebih dahulu.');
+        return;
+      }
+      if (this.manualLeftDay === 'ALL' || this.manualRightDay === 'ALL') {
+        this.showToast('⚠️ Pilih nomor hari spesifik (R1 s/d R25) di kedua panel untuk melakukan tukar rute 1 hari full.');
+        return;
+      }
+
+      const leftDayNum = parseInt(this.manualLeftDay, 10);
+      const rightDayNum = parseInt(this.manualRightDay, 10);
+
+      const leftDay = (this.manualLeftMds.dailySchedule || []).find(d => d.dayNumber === leftDayNum);
+      const rightDay = (this.manualRightMds.dailySchedule || []).find(d => d.dayNumber === rightDayNum);
+
+      if (!leftDay || !rightDay) {
+        this.showToast('⚠️ Data rute hari tidak ditemukan.');
+        return;
+      }
+
+      // Record Undo snapshot
+      this.pushManualHistory(`Tukar Rute H-${leftDayNum} & H-${rightDayNum}`);
+
+      this.isLoading = true;
+      this.loadingMessage = `Menukar seluruh rute H-${leftDayNum} (${this.manualLeftMds.nama}) & H-${rightDayNum} (${this.manualRightMds.nama})...`;
+
+      setTimeout(() => {
+        try {
+          const tempLeftStores = leftDay.stores || [];
+          const tempRightStores = rightDay.stores || [];
+
+          // Update distance to new homes
+          tempRightStores.forEach(st => {
+            if (this.manualLeftMds.homeLat && this.manualLeftMds.homeLng) {
+              st.distanceFromHomeKm = RouteEngine.getDistanceKm(parseFloat(this.manualLeftMds.homeLat), parseFloat(this.manualLeftMds.homeLng), parseFloat(st.lat), parseFloat(st.lng));
+              st.estTravelMins = RouteEngine.getEstimatedTravelTimeMins(st.distanceFromHomeKm);
+              st.isPerdin = st.distanceFromHomeKm > 35;
+            }
+            st.dayNumber = leftDayNum;
+          });
+
+          tempLeftStores.forEach(st => {
+            if (this.manualRightMds.homeLat && this.manualRightMds.homeLng) {
+              st.distanceFromHomeKm = RouteEngine.getDistanceKm(parseFloat(this.manualRightMds.homeLat), parseFloat(this.manualRightMds.homeLng), parseFloat(st.lat), parseFloat(st.lng));
+              st.estTravelMins = RouteEngine.getEstimatedTravelTimeMins(st.distanceFromHomeKm);
+              st.isPerdin = st.distanceFromHomeKm > 35;
+            }
+            st.dayNumber = rightDayNum;
+          });
+
+          leftDay.stores = tempRightStores;
+          rightDay.stores = tempLeftStores;
+
+          this.recalculateMdsStats(this.manualLeftMds);
+          this.recalculateMdsStats(this.manualRightMds);
+
+          this.manualLeftSelectedStoreCodes = [];
+          this.manualRightSelectedStoreCodes = [];
+
+          this.saveManualDraftToDb();
+          this.renderManualMap();
+          this.showToast(`⇄ Berhasil menukar seluruh rute H-${leftDayNum} (${this.manualLeftMds.nama}) & H-${rightDayNum} (${this.manualRightMds.nama}).`);
+        } catch (err) {
+          console.error("Error swapping routes:", err);
+          this.showToast('❌ Gagal menukar rute.');
+        } finally {
+          this.isLoading = false;
+          this.$nextTick(() => {
+            if (window.lucide) lucide.createIcons();
+          });
+        }
+      }, 80);
+    },
+
+    toggleManualDcDay(side) {
+      const isLeft = side === 'LEFT';
+      const mds = isLeft ? this.manualLeftMds : this.manualRightMds;
+      const dayNum = isLeft ? this.manualLeftDay : this.manualRightDay;
+
+      if (!mds || dayNum === 'ALL') {
+        this.showToast('⚠️ Pilih hari kerja spesifik untuk mengatur status DC.');
+        return;
+      }
+
+      const day = (mds.dailySchedule || []).find(d => d.dayNumber === parseInt(dayNum, 10));
+      if (!day) return;
+
+      this.pushManualHistory(`Ubah Status DC H-${dayNum} (${mds.nama})`);
+
+      this.isLoading = true;
+      this.loadingMessage = `Mengubah tipe jadwal H-${dayNum}...`;
+
+      setTimeout(() => {
+        try {
+          day.type = day.type === 'DC' ? 'STORE' : 'DC';
+          this.recalculateMdsStats(mds);
+          this.saveManualDraftToDb();
+          this.renderManualMap();
+          this.showToast(`🏭 Status Hari H-${dayNum} (${mds.nama}) diubah menjadi: ${day.type === 'DC' ? 'Hari Kunjungan DC' : 'Hari Toko Reguler'}`);
+        } finally {
+          this.isLoading = false;
+          this.$nextTick(() => {
+            if (window.lucide) lucide.createIcons();
+          });
+        }
+      }, 60);
+    },
+
+    reorderManualDayTsp(side) {
+      const isLeft = side === 'LEFT';
+      const mds = isLeft ? this.manualLeftMds : this.manualRightMds;
+      const dayNum = isLeft ? this.manualLeftDay : this.manualRightDay;
+
+      if (!mds || dayNum === 'ALL') {
+        this.showToast('⚠️ Pilih hari kerja spesifik untuk merapikan urutan rute.');
+        return;
+      }
+
+      const day = (mds.dailySchedule || []).find(d => d.dayNumber === parseInt(dayNum, 10));
+      if (!day || !day.stores || day.stores.length <= 1) {
+        this.showToast('ℹ️ Minimal 2 toko untuk mengoptimalkan urutan jalan.');
+        return;
+      }
+
+      this.pushManualHistory(`Optimasi TSP H-${dayNum} (${mds.nama})`);
+
+      this.isLoading = true;
+      this.loadingMessage = `Merapikan urutan rute H-${dayNum} (TSP)...`;
+
+      setTimeout(() => {
+        try {
+          // Simple Nearest Neighbor TSP Reordering
+          const unvisited = [...day.stores];
+          const ordered = [];
+          let curLat = mds.homeLat ? parseFloat(mds.homeLat) : (unvisited[0] ? parseFloat(unvisited[0].lat) : 0);
+          let curLng = mds.homeLng ? parseFloat(mds.homeLng) : (unvisited[0] ? parseFloat(unvisited[0].lng) : 0);
+
+          while (unvisited.length > 0) {
+            let nearestIdx = 0;
+            let minDist = 999999;
+            for (let i = 0; i < unvisited.length; i++) {
+              const d = RouteEngine.getDistanceKm(curLat, curLng, parseFloat(unvisited[i].lat), parseFloat(unvisited[i].lng));
+              if (d < minDist) {
+                minDist = d;
+                nearestIdx = i;
+              }
+            }
+            const nextStore = unvisited.splice(nearestIdx, 1)[0];
+            ordered.push(nextStore);
+            curLat = parseFloat(nextStore.lat);
+            curLng = parseFloat(nextStore.lng);
+          }
+
+          day.stores = ordered;
+          this.recalculateMdsStats(mds);
+          this.saveManualDraftToDb();
+          this.renderManualMap();
+          this.showToast(`⚡ Urutan rute H-${dayNum} (${mds.nama}) berhasil dioptimalkan (TSP Nearest-Neighbor).`);
+        } finally {
+          this.isLoading = false;
+          this.$nextTick(() => {
+            if (window.lucide) lucide.createIcons();
+          });
+        }
+      }, 80);
+    },
+
+    // =========================================================================
+    // DRAFT PERSISTENCE & LOCAL JSON IMPORT / EXPORT
+    // =========================================================================
+
+    exportManualDraftJson() {
+      if (!this.manualAssignments || this.manualAssignments.length === 0) {
+        this.showToast('⚠️ Belum ada data simulasi manual untuk diekspor.');
+        return;
+      }
+
+      const draftPayload = {
+        app: 'Cimory_RouteSim_Draft',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        selectedScope: this.selectedScope,
+        params: this.params,
+        manualAssignments: this.manualAssignments,
+        storeEditsMap: this.storeEditsMap || {}
+      };
+
+      const jsonStr = JSON.stringify(draftPayload, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Cimory_Simulasi_Manual_Draft_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      this.showToast('💾 File Draft Progres (.json) berhasil di-download.');
+    },
+
+    importManualDraftJson(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (!data || !data.manualAssignments) {
+            alert('Format file JSON tidak valid atau bukan file draft simulasi rute Cimory.');
+            return;
+          }
+
+          this.manualAssignments = data.manualAssignments || [];
+          this.storeEditsMap = data.storeEditsMap || {};
+          if (data.params) this.params = Object.assign(this.params, data.params);
+          if (data.selectedScope) this.selectedScope = data.selectedScope;
+
+          if (this.manualAssignments.length > 0) {
+            this.manualLeftMdsId = this.manualAssignments[0].id;
+            this.manualRightMdsId = this.manualAssignments.length > 1 ? this.manualAssignments[1].id : this.manualAssignments[0].id;
+          }
+
+          this.saveManualDraftToDb();
+          this.renderManualMap();
+          this.showToast(`📂 Berhasil memuat draft: ${this.manualAssignments.length} MDS & ${Object.keys(this.storeEditsMap).length} revisi toko.`);
+        } catch (err) {
+          console.error("Import draft error:", err);
+          alert('Gagal membaca file JSON draft: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    },
+
+    async saveManualDraftToDb() {
+      if (typeof SimulasiDB !== 'undefined' && this.manualAssignments && this.manualAssignments.length > 0) {
+        try {
+          // Deep clean clone to plain objects to avoid IDB DataCloneError with Alpine Proxy objects
+          const cleanAssignments = JSON.parse(JSON.stringify(this.manualAssignments));
+          const cleanEdits = JSON.parse(JSON.stringify(this.storeEditsMap || {}));
+          await SimulasiDB.set('manual_route_draft', {
+            manualAssignments: cleanAssignments,
+            storeEditsMap: cleanEdits
+          }, { updatedAt: new Date().toISOString() });
+        } catch (e) {
+          console.warn("Auto-save manual draft error:", e);
+        }
+      }
+    },
+
+    // =========================================================================
+    // STORE IDENTITY EDITING & MODIFICATION LOG EXPORTER
+    // =========================================================================
+
+    openEditStoreModalByCode(storeCode) {
+      let found = null;
+      // Search in manualAssignments
+      for (const mds of (this.manualAssignments || [])) {
+        for (const day of (mds.dailySchedule || [])) {
+          const s = (day.stores || []).find(st => st.storeCode === storeCode);
+          if (s) { found = s; break; }
+        }
+        if (found) break;
+      }
+      if (!found) {
+        // Fallback to rawStores
+        found = (this.rawStores || []).find(st => st.storeCode === storeCode);
+      }
+      if (found) {
+        this.openEditStoreModal(found);
+      } else {
+        this.showToast(`⚠️ Toko dengan kode ${storeCode} tidak ditemukan.`);
+      }
+    },
+
+    openEditStoreModal(store) {
+      if (!store) return;
+      this.editingStore = {
+        original: { ...store },
+        form: {
+          storeCode: store.storeCode || '',
+          storeName: store.storeName || '',
+          account: store.account || 'INDOMARET',
+          region: store.region || 'DK',
+          lat: store.lat !== undefined ? store.lat : 0,
+          lng: store.lng !== undefined ? store.lng : 0,
+          address: store.address || ''
+        }
+      };
+      this.showEditStoreModal = true;
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+
+    saveStoreEdits() {
+      if (!this.editingStore || !this.editingStore.form) return;
+      const f = this.editingStore.form;
+      const code = f.storeCode.trim();
+
+      if (!code) {
+        alert('Kode toko tidak boleh kosong.');
+        return;
+      }
+
+      const parsedLat = parseFloat(f.lat);
+      const parsedLng = parseFloat(f.lng);
+
+      if (isNaN(parsedLat) || isNaN(parsedLng)) {
+        alert('Latitude dan Longitude harus berupa angka yang valid.');
+        return;
+      }
+
+      const editRecord = {
+        storeCode: code,
+        storeName: f.storeName.trim(),
+        account: f.account,
+        region: f.region,
+        lat: parsedLat,
+        lng: parsedLng,
+        address: f.address.trim(),
+        isEdited: true,
+        originalStoreName: this.editingStore.original.storeName,
+        originalLat: this.editingStore.original.lat,
+        originalLng: this.editingStore.original.lng,
+        editTimestamp: new Date().toISOString()
+      };
+
+      if (!this.storeEditsMap) this.storeEditsMap = {};
+      this.storeEditsMap[code] = editRecord;
+
+      // Update in manualAssignments
+      (this.manualAssignments || []).forEach(mds => {
+        (mds.dailySchedule || []).forEach(day => {
+          (day.stores || []).forEach(st => {
+            if (st.storeCode === code) {
+              Object.assign(st, editRecord);
+              if (mds.homeLat && mds.homeLng) {
+                st.distanceFromHomeKm = RouteEngine.getDistanceKm(mds.homeLat, mds.homeLng, st.lat, st.lng);
+                st.estTravelMins = RouteEngine.getEstimatedTravelTimeMins(st.distanceFromHomeKm);
+                st.isPerdin = st.distanceFromHomeKm > 35;
+              }
+            }
+          });
+        });
+        this.recalculateMdsStats(mds);
+      });
+
+      // Update in rawStores
+      const rawMatch = (this.rawStores || []).find(st => st.storeCode === code);
+      if (rawMatch) {
+        Object.assign(rawMatch, editRecord);
+      }
+
+      this.showEditStoreModal = false;
+      this.saveManualDraftToDb();
+      this.renderManualMap();
+      this.showToast(`✏️ Data toko ${editRecord.storeName} (${code}) berhasil diperbarui.`);
+    },
+
+    exportStoreEditsExcel() {
+      const editKeys = Object.keys(this.storeEditsMap || {});
+      if (editKeys.length === 0) {
+        this.showToast('ℹ️ Belum ada data toko yang diedit manual.');
+        return;
+      }
+
+      if (typeof XLSX === 'undefined') {
+        alert('Library XLSX belum siap.');
+        return;
+      }
+
+      const rows = editKeys.map((code, idx) => {
+        const item = this.storeEditsMap[code];
+        return {
+          'No': idx + 1,
+          'Kode Toko': item.storeCode,
+          'Nama Toko (Baru/Revisi)': item.storeName,
+          'Nama Toko (Asli)': item.originalStoreName || '-',
+          'Account': item.account,
+          'Region': item.region,
+          'Latitude (Baru)': item.lat,
+          'Longitude (Baru)': item.lng,
+          'Latitude (Asli)': item.originalLat !== undefined ? item.originalLat : '-',
+          'Longitude (Asli)': item.originalLng !== undefined ? item.originalLng : '-',
+          'Alamat': item.address || '-',
+          'Waktu Revisi': item.editTimestamp || '-'
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Log Revisi Toko');
+
+      const filename = `Cimory_Log_Revisi_Master_Toko_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, filename);
+      this.showToast(`📤 Berhasil mengunduh rekap log revisi (${editKeys.length} toko).`);
     }
   }));
 });

@@ -16,8 +16,8 @@
       try {
         const raw = localStorage.getItem('cimory_portal_active_session');
         if (!raw) {
-          alert('⛔ Akses Ditolak: Anda belum login ke Cimory MDS Portal.\nSilakan masuk melalui portal utama terlebih dahulu.');
-          window.location.replace('../index.html');
+          const currentUrl = window.location.pathname + window.location.search + window.location.hash;
+          window.location.replace('../index.html?redirect=' + encodeURIComponent(currentUrl));
           return;
         }
         const user = JSON.parse(raw);
@@ -27,8 +27,7 @@
 
         if (!isSuperAdmin) {
           if (user.status !== 'APPROVED') {
-            alert('⏳ Akses Ditolak: Akun Anda masih Menunggu Persetujuan (Pending) dari Atasan.');
-            window.location.replace('../index.html');
+            window.location.replace('../index.html?auth=pending');
             return;
           }
         }
@@ -39,6 +38,21 @@
           const r = (u.role || '').toUpperCase();
           if (u.isSuperAdmin || r === 'SUPERADMIN' || r === 'MANAGER' || r === 'SPV') return true;
           if (u.permissions && u.permissions[key]) return true;
+          try {
+            const rawM = localStorage.getItem('cimory_rbac_matrix');
+            if (rawM && u.email) {
+              const m = JSON.parse(rawM);
+              const entry = m[u.email.toLowerCase()];
+              if (entry && entry.permissions) {
+                const p = entry.permissions;
+                if (key === 'absen') return true;
+                if (key === 'dashboard') return !!(p.dashboard || p.jadwal || p.tokonasional || p.laporan || p.evaluasi);
+                if (key === 'galeri') return !!(p.galeri || p.laporan);
+                if (key === 'simulasi') return !!(p.simulasi || p.jadwal);
+              }
+            }
+          } catch(e) {}
+          if (key === 'absen') return true;
           return false;
         };
       } catch (err) {

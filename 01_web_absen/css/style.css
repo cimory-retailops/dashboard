@@ -1,14 +1,14 @@
 /* ===================================================
-   MDS ROUTE & ABSEN MASTER - GIS MAP & DESIGN SYSTEM
+   CIMORY RETAIL OPS - DESIGN SYSTEM & GIS MAP ENGINE
    =================================================== */
 
 :root {
   --primary: #4f46e5;
   --primary-hover: #4338ca;
   --primary-light: #eef2ff;
-  --primary-glow: rgba(79, 70, 229, 0.25);
+  --primary-glow: rgba(99, 102, 241, 0.25);
   
-  --secondary: #06b6d4;
+  --secondary: #0ea5e9;
   --success: #10b981;
   --success-light: #ecfdf5;
   --warning: #f59e0b;
@@ -17,25 +17,25 @@
   --danger-light: #fef2f2;
   
   --bg-main: #f8fafc;
-  --bg-card: rgba(255, 255, 255, 0.94);
-  --bg-glass: rgba(255, 255, 255, 0.88);
+  --bg-card: rgba(255, 255, 255, 0.90);
+  --bg-glass: rgba(255, 255, 255, 0.85);
   
   --text-main: #0f172a;
   --text-muted: #64748b;
   --text-light: #94a3b8;
   
-  --border: #e2e8f0;
-  --border-focus: #818cf8;
+  --border: rgba(226, 232, 240, 0.9);
+  --border-focus: #6366f1;
   
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.14);
-  --shadow-glow: 0 0 20px rgba(79, 70, 229, 0.25);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 16px -2px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 32px -4px rgba(15, 23, 42, 0.12);
+  --shadow-glow: 0 0 24px rgba(99, 102, 241, 0.25);
   
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-xl: 20px;
   --radius-full: 9999px;
 
   --trans-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
@@ -48,19 +48,19 @@
   --primary-light: rgba(99, 102, 241, 0.15);
   --primary-glow: rgba(99, 102, 241, 0.35);
   
-  --bg-main: #0b0f19;
-  --bg-card: rgba(17, 24, 39, 0.94);
-  --bg-glass: rgba(17, 24, 39, 0.88);
+  --bg-main: #0f172a;
+  --bg-card: rgba(30, 41, 59, 0.88);
+  --bg-glass: rgba(15, 23, 42, 0.88);
   
-  --text-main: #f3f4f6;
-  --text-muted: #9ca3af;
-  --text-light: #6b7280;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-light: #64748b;
   
-  --border: #1f2937;
-  --border-focus: #6366f1;
+  --border: rgba(51, 65, 85, 0.7);
+  --border-focus: #818cf8;
   
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --shadow-md: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 36px -4px rgba(0, 0, 0, 0.7);
 }
 
 /* RESET & BASE */
@@ -72,23 +72,30 @@
 }
 
 body {
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background-color: var(--bg-main);
   color: var(--text-main);
-  height: 100vh;
-  width: 100vw;
-  overflow: hidden;
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
   position: relative;
 }
 
+h1, h2, h3, h4, .brand-font {
+  font-family: 'Outfit', sans-serif;
+  letter-spacing: -0.01em;
+}
+
 /* ===================================================
-   FULL SCREEN MAP
+   GIS INTERACTIVE MAP CONTAINER
    =================================================== */
 #map {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
+  min-height: 480px;
   z-index: 1;
   background: #e5e7eb;
 }
@@ -1057,20 +1064,32 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   width: 100%;
-  max-width: 460px;
-  max-height: 85vh;
+  max-width: 480px;
+  max-height: 90vh;
+  max-height: 90dvh;
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+}
+
+.modal-dialog form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  width: 100%;
 }
 
 .modal-header {
-  padding: 14px 18px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .modal-title {
@@ -1083,21 +1102,29 @@ body {
 }
 
 .modal-body {
-  padding: 16px 18px;
+  padding: 14px 16px;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-footer {
-  padding: 12px 18px;
+  padding: 10px 16px;
   border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  background: var(--bg-main);
+  background: var(--bg-card);
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
 }
 
 .form-group {
@@ -1238,47 +1265,46 @@ body {
 .tour-overlay {
   position: fixed;
   inset: 0;
-  z-index: 99999;
+  z-index: 99990;
   pointer-events: auto;
 }
 
-.tour-spotlight {
-  position: absolute;
-  border-radius: var(--radius-md);
-  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.78), 0 0 0 3px var(--primary), 0 0 20px rgba(99, 102, 241, 0.6);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  pointer-events: none;
-  z-index: 100000;
+.tour-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 99991;
+}
+
+/* Elevasi Elemen Target di atas Backdrop Gelap (Zero Glitch) */
+.tour-highlight-active {
+  position: relative !important;
+  z-index: 99995 !important;
+  box-shadow: 0 0 0 3px var(--primary), 0 0 24px rgba(99, 102, 241, 0.6) !important;
+  border-radius: var(--radius-lg) !important;
+  transition: box-shadow 0.2s ease !important;
+  pointer-events: auto !important;
 }
 
 .tour-tooltip {
   position: fixed;
   background: var(--bg-card);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-xl);
   padding: 14px 16px;
-  width: 320px;
-  max-width: calc(100vw - 32px);
+  width: 330px;
+  max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
   overflow-y: auto;
   box-sizing: border-box;
-  z-index: 100001;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  animation: tourFadeIn 0.3s ease;
-}
-
-@keyframes tourFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  z-index: 100000;
+  transition: top 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), left 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease;
+  will-change: top, left;
 }
 
 .tour-tooltip-header {
@@ -1515,40 +1541,38 @@ body {
 }
 
 /* ===================================================
-   MOBILE RESPONSIVE TWEAKS (ERGO & MODERN)
+   MOBILE RESPONSIVE & LOW-DPI TOUCH TARGET OPTIMIZATION
    =================================================== */
+button, input, select, textarea, .filter-pill, .btn-circle-fab, .route-selector-pill, .profile-pill {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media screen and (max-width: 768px) {
+  input[type="text"],
+  input[type="date"],
+  input[type="number"],
+  select,
+  textarea {
+    font-size: 16px !important; /* Mencegah auto-zoom browser HP */
+  }
+}
+
 @media (max-width: 480px) {
   .overlay-container {
-    padding: 10px 8px;
-  }
-  
-  .top-floating-bar {
-    padding: 4px 6px;
-    gap: 4px;
-  }
-  
-  .brand-badge {
-    width: 24px;
-    height: 24px;
-    font-size: 10px;
-    border-radius: var(--radius-sm);
+    padding: 8px 8px;
+    top: 68px !important;
   }
   
   .profile-pill {
-    height: 32px;
-    padding: 2px 6px 2px 4px;
-    gap: 5px;
-  }
-  
-  .profile-avatar-mini {
-    width: 22px;
-    height: 22px;
-    font-size: 10px;
+    height: 34px;
+    padding: 2px 8px 2px 4px;
+    gap: 4px;
   }
   
   .profile-name-text {
     font-size: 11px;
-    max-width: 80px;
+    max-width: 75px;
   }
   
   .profile-mod-tag {
@@ -1556,18 +1580,8 @@ body {
     padding: 1px 4px;
   }
   
-  .btn-menu-fab {
-    width: 32px;
-    height: 32px;
-  }
-  
-  .menu-fab-dropdown {
-    width: 215px;
-    right: 0;
-  }
-  
   .route-selector-pill {
-    height: 32px;
+    height: 34px;
     padding: 0 8px;
     gap: 4px;
   }
@@ -1575,16 +1589,41 @@ body {
   .route-date-display {
     font-size: 11px;
   }
-  
+
+  .floating-search-card {
+    padding: 6px 8px;
+    gap: 4px;
+    border-radius: var(--radius-lg);
+  }
+
+  .search-input {
+    height: 38px;
+    font-size: 13px;
+  }
+
+  .filter-pill {
+    padding: 5px 9px;
+    font-size: 10.5px;
+    min-height: 30px;
+  }
+
   .floating-fab-controls {
-    right: 12px;
-    bottom: 76px;
-    gap: 8px;
+    right: 10px;
+    bottom: 74px;
+    gap: 7px;
   }
 
   .btn-circle-fab {
-    width: 38px;
-    height: 38px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .modal-dialog {
+    max-width: 95vw !important;
+    max-height: 90vh !important;
+    margin: 12px auto;
   }
 }
 

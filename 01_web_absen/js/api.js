@@ -229,7 +229,7 @@ async function syncMasterCrewFromSheet() {
 /**
  * Mengirim Penginputan Rute ke Google Apps Script (GAS) Backend
  */
-async function submitRouteAttendance({ module, crewCode, crewName, rute, stores }) {
+async function submitRouteAttendance({ module, crewCode, crewName, rute, stores, isEditMode = false }) {
   const gasUrl = API_CONFIG.getGasUrl();
 
   const payload = {
@@ -237,7 +237,8 @@ async function submitRouteAttendance({ module, crewCode, crewName, rute, stores 
     crewCode: crewCode,
     crewName: crewName,
     rute: rute,
-    stores: stores
+    stores: stores,
+    isEditMode: isEditMode
   };
 
   // Jika URL GAS sudah dipasang
@@ -485,6 +486,31 @@ async function fetchMdsMonitoringStatus(rute) {
   } catch (err) {
     console.error("Gagal mengambil status monitoring MDS:", err);
     throw err;
+  }
+}
+
+/**
+ * On-Demand Store Search API (~370 Bytes vs 7 MB CSV)
+ * Mencari toko langsung ke server secara efisien tanpa download 49k toko
+ */
+async function fetchStoresOnDemand(query, accountFilter = "ALL", limit = 50) {
+  const gasUrl = API_CONFIG.getGasUrl();
+  if (!gasUrl || !query || query.trim().length < 2) return [];
+
+  const queryUrl = `${gasUrl}?action=search_stores&q=${encodeURIComponent(query.trim())}&account=${encodeURIComponent(accountFilter)}&limit=${limit}`;
+
+  try {
+    const response = await fetch(queryUrl);
+    if (!response.ok) return [];
+
+    const result = await response.json();
+    if (result.status === "success" && Array.isArray(result.data)) {
+      return result.data;
+    }
+    return [];
+  } catch (err) {
+    console.warn("On-demand store search fallback:", err.message);
+    return [];
   }
 }
 

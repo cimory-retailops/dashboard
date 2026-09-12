@@ -147,41 +147,42 @@
   x-init="init()" x-cloak>
 
   <!-- HEADER -->
-  <header class="max-w-6xl mx-auto w-full flex items-center justify-between py-3 border-b border-slate-800/80">
-    <div class="flex items-center space-x-3.5">
+  <!-- HEADER -->
+  <header class="max-w-6xl mx-auto w-full flex items-center justify-between gap-2 py-3 border-b border-slate-800/80">
+    <div class="flex items-center space-x-2.5 sm:space-x-3.5 min-w-0">
       <div
-        class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-sky-400 flex items-center justify-center shadow-lg shadow-indigo-500/25 ring-1 ring-white/20">
-        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        class="w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-sky-400 flex items-center justify-center shadow-lg shadow-indigo-500/25 ring-1 ring-white/20 flex-shrink-0">
+        <svg class="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
       </div>
-      <div>
-        <div class="flex items-center space-x-2">
-          <h1 class="text-xl font-display font-extrabold text-white tracking-wide">CIMORY MDS PORTAL</h1>
+      <div class="min-w-0">
+        <div class="flex items-center space-x-1.5 sm:space-x-2">
+          <h1 class="text-sm sm:text-lg font-display font-extrabold text-white tracking-wide truncate">Cimory Portal</h1>
           <span
-            class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+            class="px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex-shrink-0">
             Auth Gate
           </span>
         </div>
-        <p class="text-xs text-slate-400">Retail Operations Gateway & Manpower Central</p>
+        <p class="text-[11px] text-slate-400 truncate hidden sm:block">Retail Operations Gateway & Manpower Central</p>
       </div>
     </div>
 
     <!-- Right Header Actions (Profile / Logout / Super Admin Approval Trigger) -->
-    <div class="flex items-center space-x-3">
+    <div class="flex items-center space-x-1.5 sm:space-x-2.5 flex-shrink-0">
       <!-- Super Admin Panel Trigger (Only if Super Admin) -->
       <template x-if="currentUser && isSuperAdmin">
         <button @click="openApprovalModal = true"
-          class="relative flex items-center space-x-2 px-3.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold transition-all hover:scale-105 active:scale-95 shadow-lg shadow-amber-500/10">
-          <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          class="relative flex items-center space-x-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold transition-all hover:scale-105 active:scale-95 shadow-lg shadow-amber-500/10 flex-shrink-0">
+          <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
           <span class="hidden sm:inline">Kelola Approval & Hak Akses</span>
-          <span class="sm:hidden">Approval</span>
+          <span class="sm:hidden text-[11px]">Approval</span>
           <template x-if="pendingCount > 0">
             <span
-              class="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-black text-amber-950 bg-amber-400 rounded-full animate-pulse"
+              class="inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-black text-amber-950 bg-amber-400 rounded-full animate-pulse"
               x-text="pendingCount"></span>
           </template>
         </button>
@@ -189,7 +190,7 @@
 
       <!-- User Pill (When Logged In) -->
       <template x-if="currentUser">
-        <div class="flex items-center space-x-2.5 pl-2 border-l border-slate-800">
+        <div class="flex items-center space-x-1.5 sm:space-x-2.5 sm:pl-2 sm:border-l sm:border-slate-800 flex-shrink-0">
           <div class="text-right hidden sm:block">
             <div class="text-xs font-bold text-white flex items-center justify-end space-x-1">
               <span x-text="currentUser?.name || ''"></span>
@@ -201,20 +202,20 @@
               x-text="currentUser ? (currentUser.role + ' • ' + (currentUser.moduleOrArea || 'Nasional')) : ''"></div>
           </div>
 
-          <!-- Ganti Password Button -->
+          <!-- Ganti Password Button (Desktop only in header, available in user card on mobile) -->
           <button @click="openChangePassword()"
-            class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-indigo-500/20 text-slate-300 hover:text-indigo-300 border border-slate-700/60 hover:border-indigo-500/30 text-xs font-semibold transition-all cursor-pointer"
+            class="hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-indigo-500/20 text-slate-300 hover:text-indigo-300 border border-slate-700/60 hover:border-indigo-500/30 text-xs font-semibold transition-all cursor-pointer"
             title="Ubah kata sandi akun Anda">
             <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
             </svg>
-            <span class="hidden md:inline">Ganti Password</span>
+            <span>Ganti Password</span>
           </button>
 
           <button @click="logout()"
-            class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 border border-slate-700/60 hover:border-rose-500/30 text-xs font-semibold transition-all cursor-pointer"
+            class="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 border border-slate-700/60 hover:border-rose-500/30 text-xs font-semibold transition-all cursor-pointer flex-shrink-0"
             title="Keluar dari akun">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
@@ -226,7 +227,7 @@
       <!-- Status indicator when guest -->
       <template x-if="!currentUser">
         <div
-          class="flex items-center space-x-2 text-xs font-medium text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-xl border border-slate-700/50">
+          class="flex items-center space-x-1.5 text-xs font-medium text-slate-400 bg-slate-800/60 px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-700/50 flex-shrink-0">
           <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
           <span>Login Required</span>
         </div>
@@ -691,7 +692,7 @@
         </div>
 
         <!-- Quick Dashboard Launch Banner -->
-        <div class="p-4 rounded-2xl bg-gradient-to-r from-indigo-900/60 via-sky-900/60 to-slate-900/80 border border-sky-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg shadow-sky-950/40">
+        <div x-show="hasPermission('dashboard')" class="p-4 rounded-2xl bg-gradient-to-r from-indigo-900/60 via-sky-900/60 to-slate-900/80 border border-sky-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg shadow-sky-950/40">
           <div class="flex items-center space-x-3">
             <div class="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center font-black flex-shrink-0">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -722,6 +723,7 @@
             <!-- CARD 1: WEB ABSEN & JADWAL                     -->
             <!-- ============================================== -->
             <div
+              x-show="hasPermission('absen')"
               :class="hasPermission('absen') ? 'border-slate-700/70 hover:border-indigo-500/60 glass-card-hover' : 'border-slate-800 opacity-60 grayscale-[40%] cursor-not-allowed'"
               class="group relative rounded-2xl bg-slate-800/80 border p-5 flex flex-col justify-between transition-all duration-300">
               <!-- Lock Icon when restricted -->
@@ -778,6 +780,7 @@
             <!-- CARD 2: DASHBOARD MONITORING                   -->
             <!-- ============================================== -->
             <div
+              x-show="hasPermission('dashboard')"
               :class="hasPermission('dashboard') ? 'border-slate-700/70 hover:border-sky-500/60 glass-card-hover' : 'border-slate-800 opacity-60 grayscale-[40%] cursor-not-allowed'"
               class="group relative rounded-2xl bg-slate-800/80 border p-5 flex flex-col justify-between transition-all duration-300">
               <template x-if="!hasPermission('dashboard')">
@@ -833,6 +836,7 @@
             <!-- CARD 3: GALERI PAJANGAN                        -->
             <!-- ============================================== -->
             <div
+              x-show="hasPermission('galeri')"
               :class="hasPermission('galeri') ? 'border-slate-700/70 hover:border-amber-500/60 glass-card-hover' : 'border-slate-800 opacity-60 grayscale-[40%] cursor-not-allowed'"
               class="group relative rounded-2xl bg-slate-800/80 border p-5 flex flex-col justify-between transition-all duration-300">
               <template x-if="!hasPermission('galeri')">
@@ -888,6 +892,7 @@
             <!-- CARD 4: SIMULASI RUTE MDS                      -->
             <!-- ============================================== -->
             <div
+              x-show="hasPermission('simulasi')"
               :class="hasPermission('simulasi') ? 'border-slate-700/70 hover:border-emerald-500/60 glass-card-hover' : 'border-slate-800 opacity-60 grayscale-[40%] cursor-not-allowed'"
               class="group relative rounded-2xl bg-slate-800/80 border p-5 flex flex-col justify-between transition-all duration-300">
               <template x-if="!hasPermission('simulasi')">
@@ -1376,6 +1381,25 @@
         async init() {
           this.loadUsersFromStorage();
           this.checkActiveSession();
+
+          // Deteksi parameter URL redirect dari sub-modul
+          const urlParams = new URLSearchParams(window.location.search);
+          const redirectTarget = urlParams.get('redirect');
+          const authParam = urlParams.get('auth');
+
+          if (!this.currentUser) {
+            this.authMode = 'login';
+            if (authParam === 'pending') {
+              this.authMode = 'pending';
+            }
+          } else if (this.currentUser.status === 'APPROVED' && redirectTarget) {
+            // Sudah login & approved, langsung teruskan ke target URL
+            window.location.replace(decodeURIComponent(redirectTarget));
+            return;
+          } else if (this.currentUser.status === 'PENDING' || authParam === 'pending') {
+            this.authMode = 'pending';
+          }
+
           await this.syncWithFirestore();
           this.checkActiveSession();
           if (this.currentUser && this.currentUser.status === 'APPROVED' && this.authMode === 'pending') {
@@ -1557,12 +1581,37 @@
           return list;
         },
 
-        // Akses Portal: Semua user APPROVED otomatis bisa membuka modul
+        // Akses Portal: Sesuai Matriks RBAC & Role Pengguna
         hasAccess(moduleKey) {
           if (!this.currentUser) return false;
-          if (this.isSuperAdmin) return true;
-          // Selama status APPROVED, izinkan membuka aplikasi. Kontrol tab diatur di RBAC Dashboard
-          return this.currentUser.status === 'APPROVED';
+          if (this.currentUser.status !== 'APPROVED' && !this.isSuperAdmin) return false;
+          const u = this.currentUser;
+          const r = (u.role || '').toUpperCase();
+          if (u.isSuperAdmin || r === 'SUPERADMIN' || r === 'MANAGER' || r === 'SPV') return true;
+
+          let p = u.permissions || {};
+          try {
+            const rawM = localStorage.getItem('cimory_rbac_matrix');
+            if (rawM && u.email) {
+              const m = JSON.parse(rawM);
+              const entry = m[u.email.toLowerCase()];
+              if (entry && entry.permissions) {
+                p = { ...p, ...entry.permissions };
+              }
+            }
+          } catch (e) {}
+
+          if (moduleKey === 'absen') return true;
+          if (moduleKey === 'dashboard') {
+            return !!(p.dashboard || p.jadwal || p.tokonasional || p.laporan || p.evaluasi);
+          }
+          if (moduleKey === 'galeri') {
+            return !!(p.galeri || p.laporan);
+          }
+          if (moduleKey === 'simulasi') {
+            return !!(p.simulasi || p.jadwal);
+          }
+          return !!p[moduleKey];
         },
 
         hasPermission(moduleKey) {
@@ -1660,14 +1709,14 @@
                     moduleOrArea: 'ALL',
                     status: 'APPROVED',
                     isSuperAdmin: false,
-                    permissions: { absen: true, dashboard: true, galeri: true, simulasi: true }
+                    permissions: { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false }
                   };
                   this.currentUser = user;
                   localStorage.setItem('cimory_portal_active_session', JSON.stringify(user));
-                  this.authSuccess = 'Login berhasil! Mengarahkan ke Dashboard...';
+                  this.authSuccess = 'Login berhasil! Mengarahkan ke Web Absen...';
                   this.authMode = 'none';
                   setTimeout(() => {
-                    window.location.href = './02_dashboard_monitoring/index.html';
+                    window.location.href = './01_web_absen/index.html';
                   }, 400);
                   return;
                 }
@@ -1711,22 +1760,32 @@
             return;
           }
 
-          // Approved / Active
-          user.permissions = {
-            absen: true,
-            dashboard: true,
-            galeri: true,
-            simulasi: true
+          // Inisialisasi default permissions jika belum diset
+          const role = (user.role || 'MDS').toUpperCase();
+          const rolePresets = {
+            SUPERADMIN: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true },
+            MANAGER:    { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true },
+            SPV:        { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true },
+            MDS:        { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false }
           };
+          if (!user.permissions || Object.keys(user.permissions).length === 0) {
+            user.permissions = rolePresets[role] || rolePresets.MDS;
+          }
 
           this.currentUser = user;
           localStorage.setItem('cimory_portal_active_session', JSON.stringify(user));
-          this.authSuccess = 'Login berhasil! Mengarahkan ke Dashboard...';
+          this.authSuccess = 'Login berhasil! Mengarahkan ke tujuan...';
           this.authMode = 'none';
 
-          // Auto-redirect ke Dashboard Monitoring
+          // Auto-redirect ke target URL yang dituju atau default ke Dashboard/Web Absen sesuai hak akses
+          const urlParams = new URLSearchParams(window.location.search);
+          const redirectTarget = urlParams.get('redirect');
+          const destination = redirectTarget 
+            ? decodeURIComponent(redirectTarget) 
+            : (this.hasPermission('dashboard') ? './02_dashboard_monitoring/index.html' : './01_web_absen/index.html');
+
           setTimeout(() => {
-            window.location.href = './02_dashboard_monitoring/index.html';
+            window.location.href = destination;
           }, 400);
         },
 

@@ -303,6 +303,199 @@ const ChartService = {
     } catch (err) {
       console.warn('SPV Chart Render Warning:', err);
     }
+  },
+
+  anomalyTrendChartInstance: null,
+  anomalyCategoryChartInstance: null,
+
+  /**
+   * 5. Render Anomaly Trend Chart (Line chart with configurable category filter)
+   */
+  renderAnomalyTrendChart(canvasEl, trendData, selectedCategory = 'ALL', isDark = false) {
+    if (!canvasEl || !trendData || !trendData.dates || trendData.dates.length === 0) return;
+    if (this.anomalyTrendChartInstance) {
+      this.anomalyTrendChartInstance.destroy();
+    }
+
+    const ctx = canvasEl.getContext('2d');
+    const dates = trendData.dates || [];
+    const formattedLabels = dates.map(d => {
+      const parts = String(d).split('-');
+      return parts.length === 3 ? `${parts[2]}/${parts[1]}` : d;
+    });
+
+    const categoryConfig = {
+      ALL: { label: 'Total Seluruh Anomali', color: '#f43f5e' },
+      terlambat: { label: '⏰ Terlambat (> 08:00)', color: '#6366f1' },
+      absenNoVisit: { label: '🔴 Absen tapi 0 Kunjungan', color: '#ef4444' },
+      visitNoAbsen: { label: '🟡 Kunjungan Tanpa Absen', color: '#f59e0b' },
+      lupaPulang: { label: '🏠 Belum Tap Pulang', color: '#a855f7' },
+      gpsIssue: { label: '📍 GPS Issue (0,0)', color: '#06b6d4' },
+      alpha: { label: '❓ Alpha (Tanpa Keterangan)', color: '#64748b' }
+    };
+
+    let datasets = [];
+
+    if (selectedCategory === 'ALL') {
+      const gradient = ctx.createLinearGradient(0, 0, 0, 260);
+      gradient.addColorStop(0, isDark ? 'rgba(244, 63, 94, 0.35)' : 'rgba(244, 63, 94, 0.25)');
+      gradient.addColorStop(1, 'rgba(244, 63, 94, 0.0)');
+
+      datasets.push({
+        label: 'Total Seluruh Anomali',
+        data: trendData.categories.total || [],
+        borderColor: '#f43f5e',
+        backgroundColor: gradient,
+        borderWidth: 2.5,
+        fill: true,
+        tension: 0.3,
+        pointBackgroundColor: '#e11d48',
+        pointRadius: 3.5,
+        pointHoverRadius: 6
+      });
+    } else {
+      const cfg = categoryConfig[selectedCategory] || categoryConfig.ALL;
+      const gradient = ctx.createLinearGradient(0, 0, 0, 260);
+      gradient.addColorStop(0, isDark ? `${cfg.color}55` : `${cfg.color}35`);
+      gradient.addColorStop(1, `${cfg.color}00`);
+
+      datasets.push({
+        label: cfg.label,
+        data: trendData.categories[selectedCategory] || [],
+        borderColor: cfg.color,
+        backgroundColor: gradient,
+        borderWidth: 2.5,
+        fill: true,
+        tension: 0.3,
+        pointBackgroundColor: cfg.color,
+        pointRadius: 3.5,
+        pointHoverRadius: 6
+      });
+    }
+
+    this.anomalyTrendChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: formattedLabels,
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            labels: {
+              color: isDark ? '#cbd5e1' : '#334155',
+              font: { size: 11, weight: 'bold' },
+              boxWidth: 12,
+              usePointStyle: true
+            }
+          },
+          tooltip: {
+            backgroundColor: isDark ? '#1e293b' : '#ffffff',
+            titleColor: isDark ? '#f1f5f9' : '#0f172a',
+            bodyColor: isDark ? '#cbd5e1' : '#334155',
+            borderColor: isDark ? '#334155' : '#e2e8f0',
+            borderWidth: 1,
+            padding: 10,
+            cornerRadius: 8,
+            callbacks: {
+              label: function(context) {
+                return ' ' + context.dataset.label + ': ' + context.raw + ' Kasus';
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: isDark ? '#94a3b8' : '#64748b', font: { size: 10 } }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: isDark ? 'rgba(51, 65, 85, 0.4)' : 'rgba(226, 232, 240, 0.8)' },
+            ticks: { color: isDark ? '#94a3b8' : '#64748b', precision: 0, font: { size: 10 } }
+          }
+        }
+      }
+    });
+  },
+
+  /**
+   * 6. Render Anomaly Category Breakdown (Doughnut Chart)
+   */
+  renderAnomalyCategoryChart(canvasEl, catTotals, isDark = false) {
+    if (!canvasEl || !catTotals) return;
+    if (this.anomalyCategoryChartInstance) {
+      this.anomalyCategoryChartInstance.destroy();
+    }
+
+    const labels = [
+      '⏰ Terlambat',
+      '🔴 Absen 0 Visit',
+      '🟡 Visit Belum Absen',
+      '🏠 Belum Tap Pulang',
+      '📍 GPS Issue',
+      '❓ Alpha'
+    ];
+    const data = [
+      catTotals.terlambat || 0,
+      catTotals.absenNoVisit || 0,
+      catTotals.visitNoAbsen || 0,
+      catTotals.lupaPulang || 0,
+      catTotals.gpsIssue || 0,
+      catTotals.alpha || 0
+    ];
+    const colors = ['#6366f1', '#ef4444', '#f59e0b', '#a855f7', '#06b6d4', '#64748b'];
+
+    const ctx = canvasEl.getContext('2d');
+    this.anomalyCategoryChartInstance = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: data,
+          backgroundColor: colors,
+          borderWidth: isDark ? 2 : 1,
+          borderColor: isDark ? '#0f172a' : '#ffffff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: {
+              color: isDark ? '#cbd5e1' : '#334155',
+              font: { size: 10.5, weight: 'bold' },
+              boxWidth: 10,
+              padding: 10
+            }
+          },
+          tooltip: {
+            backgroundColor: isDark ? '#1e293b' : '#ffffff',
+            titleColor: isDark ? '#f1f5f9' : '#0f172a',
+            bodyColor: isDark ? '#cbd5e1' : '#334155',
+            borderColor: isDark ? '#334155' : '#e2e8f0',
+            borderWidth: 1,
+            padding: 10,
+            cornerRadius: 8,
+            callbacks: {
+              label: function(context) {
+                const val = context.raw || 0;
+                const total = data.reduce((a, b) => a + b, 0);
+                const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+                return ` ${context.label}: ${val} (${pct}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
   }
 };
 
