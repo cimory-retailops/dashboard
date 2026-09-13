@@ -1789,6 +1789,19 @@
           }, 400);
         },
 
+        hasPermission(key) {
+          if (!this.currentUser) return false;
+          const role = (this.currentUser.role || '').toUpperCase();
+          if (this.currentUser.isSuperAdmin || role === 'SUPERADMIN' || role === 'MANAGER') return true;
+          if (role === 'SPV') return true;
+          if (role === 'MDS') {
+            if (key === 'absen') return true;
+            if (key === 'dashboard') return false; // MDS diarahkan ke Web Absen
+          }
+          if (this.currentUser.permissions && this.currentUser.permissions[key]) return true;
+          return false;
+        },
+
         async handleRegister() {
           this.authError = '';
           this.authSuccess = '';
