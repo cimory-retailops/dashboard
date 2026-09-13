@@ -107,12 +107,23 @@ const MapService = {
     const cleanQ = (searchQuery || '').trim().toUpperCase();
     const isSearchActive = cleanQ.length > 0;
 
-    // Filter data yang memiliki koordinat valid (dengan fallback ke master toko jika koordinat visit kosong)
+    // Build O(1) index for master toko coordinates (Instant lookup, 0ms lag)
+    const tokoCoordMap = new Map();
+    if (window.app && Array.isArray(window.app.masterToko)) {
+      const mt = window.app.masterToko;
+      for (let i = 0; i < mt.length; i++) {
+        const t = mt[i];
+        if (t && t.kodeToko && t.koordinat && !tokoCoordMap.has(t.kodeToko)) {
+          tokoCoordMap.set(t.kodeToko, t.koordinat);
+        }
+      }
+    }
+
+    // Filter data yang memiliki koordinat valid (dengan O(1) fallback ke master toko)
     const validVisits = visits.map(v => {
       let rawCoord = v.koordinat || v.coords || v.latLng;
-      if (!rawCoord && v.kodeToko && window.app && Array.isArray(window.app.masterToko)) {
-        const st = window.app.masterToko.find(t => t && t.kodeToko === v.kodeToko && t.koordinat);
-        if (st) rawCoord = st.koordinat;
+      if (!rawCoord && v.kodeToko) {
+        rawCoord = tokoCoordMap.get(v.kodeToko);
       }
       const coords = this.parseCoordinates(rawCoord);
       return coords ? { ...v, _latLng: coords } : null;

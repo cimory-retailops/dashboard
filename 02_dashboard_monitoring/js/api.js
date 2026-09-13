@@ -146,6 +146,7 @@ const ApiService = {
     }
 
     const results = await this.runInBatches(targetModules, async ({ modKey, sheetId }) => {
+      const t0 = performance.now();
       try {
         const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Kunjungan`;
         let text = await this.fetchCsvDirect(url, 4500);
@@ -153,8 +154,13 @@ const ApiService = {
           const fallbackUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
           text = await this.fetchCsvDirect(fallbackUrl, 4500);
         }
-        if (!text) return [];
-        return this.parseVisitsRows(text, modKey);
+        if (!text) {
+          console.warn(`⚠️ [Kunjungan ${modKey}] Gagal unduh CSV (Timeout/Kosong) [${((performance.now() - t0)/1000).toFixed(2)}s]`);
+          return [];
+        }
+        const parsed = this.parseVisitsRows(text, modKey);
+        console.log(`📥 [Kunjungan ${modKey}] ${parsed.length} baris diunduh dalam ${((performance.now() - t0)/1000).toFixed(2)}s`);
+        return parsed;
       } catch (err) {
         console.warn(`Direct fetch failed for ${modKey}:`, err);
         return [];

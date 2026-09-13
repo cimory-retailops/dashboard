@@ -22,6 +22,11 @@ function dashboardApp() {
     syncTimer: null, // Heartbeat timer for tab-active polling
     isSyncLocked: false, // Mutex lock to prevent race conditions
     wakeLockSentinel: null, // Screen Wake Lock to prevent phone screen sleep during download
+    // Floating Pill Toast Notification State
+    hasNewDataAvailable: false,
+    newUpdateCount: 0,
+    newUpdateMessage: 'Ada pembaruan data lapangan terbaru',
+    lastBgCheckTime: 0,
     // Firebase & RBAC Authentication State
     currentUser: null, // { uid, email, displayName, role, isSuperAdmin }
     isLoginModalOpen: false,
@@ -341,6 +346,7 @@ function dashboardApp() {
       try {
         if (!window.DashboardDB) return false;
 
+        console.time('⚡ [Cache-First] Baca Data Lokal IndexedDB');
         const [state, cachedVisits, cachedAbsensi, cachedMaster, cachedUsers, cachedArchives] = await Promise.all([
           DashboardDB.get('app_state', true),
           DashboardDB.get('visits_data', true),
@@ -349,6 +355,7 @@ function dashboardApp() {
           DashboardDB.get('master_user', true),
           DashboardDB.get('archive_list', true)
         ]);
+        console.timeEnd('⚡ [Cache-First] Baca Data Lokal IndexedDB');
 
         if (state) {
           this.selectedModul = state.selectedModul || 'ALL';
@@ -370,12 +377,13 @@ function dashboardApp() {
           this.updateCrewModulMap();
           this.indexDataStore();
           this.updateActiveDateLabel(this.visits);
-          console.log(`%c[IndexedDB Restored]%c Berhasil memulihkan ${this.visits.length} data kunjungan dari storage lokal tanpa download!`, 'background:#4338ca;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#818cf8;');
+          this.lastSyncTime = (state && state.timestamp) ? state.timestamp : Date.now();
+          console.log(`%c⚡ [0ms Instant Boot]%c Berhasil memuat ${this.visits.length} data kunjungan dari IndexedDB tanpa request jaringan!`, 'background:#059669;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#34d399;font-weight:bold;');
           return true;
         }
         return false;
       } catch (e) {
-        console.warn('Gagal membaca cache IndexedDB:', e);
+        console.warn('[IndexedDB] Gagal membaca cache lokal:', e);
         return false;
       }
     },
@@ -386,48 +394,71 @@ function dashboardApp() {
         preloader.classList.add('opacity-0', 'pointer-events-none');
         setTimeout(() => {
           if (preloader.parentNode) preloader.parentNode.removeChild(preloader);
-        }, 250);
+        }, 300);
       }
     },
 
     /**
-     * Initialize Application
+     * Initialize Application (Strict Cache-First Architecture)
      */
     async initApp() {
+      const bootStart = performance.now();
+      console.group('%c🚀 [DASHBOARD BOOT START]%c Memulai inisialisasi dashboard...', 'background:#2563eb;color:white;font-weight:bold;padding:2px 8px;border-radius:4px;', 'color:#60a5fa;');
+      
       this.initTheme();
       this.setDefaultDates();
-      this.dismissPreloader();
-      this.isLoading = false; // Zero blocking modal
 
       // Inisialisasi Firebase Auth & RBAC Permissions Matrix
       try { await this.initRbac(); } catch(e) {}
 
-      // Check if session can be restored instantly from cache (< 1ms)
+      // Tampilkan status pemulihan memori lokal yang jelas
+      this.isLoading = true;
+      this.loadingStage = 3;
+      this.loadingMessage = '⚡ Membaca data lokal dari memori perangkat...';
+      this.dismissPreloader(); // Transisi dari splash screen statis ke dynamic loading overlay
+
+      // 1. Coba pulihkan sesi secara instan dari IndexedDB lokal (< 20ms)
+      console.time('⏱️ [1/3] Waktu Baca IndexedDB');
       const restored = await this.restoreSessionState();
+      console.timeEnd('⏱️ [1/3] Waktu Baca IndexedDB');
 
       if (restored && this.visits && this.visits.length > 0) {
         this.currentPage = 1;
-        this.lastSyncTime = Date.now();
+        this.loadingMessage = `⚡ Menyiapkan tampilan & grafik (${this.visits.length} Kunjungan)...`;
+        console.log(`%c[Cache Status]%c ✅ CACHE HIT (${this.visits.length} Kunjungan, ${this.absensi?.length || 0} Absen)`, 'background:#059669;color:white;font-weight:bold;padding:1px 6px;border-radius:3px;', 'color:#34d399;');
 
-        requestAnimationFrame(() => {
+        // Render visual grafik & peta, lalu buka overlay saat UI 100% siap
+        console.time('⏱️ [2/3] Waktu Rendering DOM, Chart & Map');
+        this.$nextTick(() => {
           this.refreshCharts();
           if (window.lucide) lucide.createIcons();
           if (this.activeTab === 'kunjungan' && document.getElementById('visits-map')) {
             MapService.initMap('visits-map', this.theme === 'dark');
             MapService.renderVisitsOnMap(this.filteredVisits);
           }
+          console.timeEnd('⏱️ [2/3] Waktu Rendering DOM, Chart & Map');
+
+          const bootTotal = (performance.now() - bootStart).toFixed(2);
+          console.log(`%c✨ [TOTAL BOOT TIME]%c ${bootTotal} ms (Mode: INSTANT CACHE HIT - 0 Request Network)`, 'background:#059669;color:white;font-weight:bold;padding:2px 8px;border-radius:4px;', 'color:#34d399;font-weight:bold;');
+          console.groupEnd();
+
+          // Matikan loading overlay secara mulus saat seluruh tabel, chart, dan peta 100% terpasang
+          setTimeout(() => {
+            this.isLoading = false;
+          }, 100);
         });
 
         this.loadArchiveMonths();
       } else {
-        // Cold Fetch non-blocking in background without locking screen
-        this.refreshAllData(false);
+        // Cold start pertama kali (hanya jika cache lokal benar-benar kosong)
+        console.log('%c[Cache Status]%c ⚠️ COLD START (Cache Kosong / First Boot) -> Mengunduh 15 Sheets...', 'background:#d97706;color:white;font-weight:bold;padding:1px 6px;border-radius:3px;', 'color:#fbbf24;');
+        console.groupEnd();
+        this.refreshAllData(true, false);
         this.loadArchiveMonths();
       }
 
       // Inisialisasi onResume & Lifecycle Event Listeners
       this.initLifecycleListeners();
-      this.dismissPreloader();
 
       // Setup Lucide icons & Watch activeTab for Lazy Loading heavy modules
       this.$nextTick(() => {
@@ -456,7 +487,7 @@ function dashboardApp() {
         });
       }
 
-      // Auto-save session state when user switches apps (e.g. to WhatsApp)
+      // Auto-save session state saat user minimize / switch aplikasi
       window.addEventListener('pagehide', () => this.saveSessionState());
       window.addEventListener('beforeunload', () => this.saveSessionState());
 
@@ -485,43 +516,135 @@ function dashboardApp() {
      * Web onResume & Smart Lifecycle Listeners
      */
     initLifecycleListeners() {
-      // 1. Tab Visibility Change: Re-acquire Wake Lock if download still in progress
+      // 1. Tab Visibility Change (Saat balik dari aplikasi lain / WhatsApp)
       document.addEventListener('visibilitychange', async () => {
         if (document.visibilityState === 'visible') {
           if (this.isLoading && !this.wakeLockSentinel) {
             await this.requestWakeLock();
           }
-          const elapsed = Date.now() - (this.lastSyncTime || 0);
-          if (elapsed > 5 * 60 * 1000 && this.selectedPeriod === 'LIVE') {
-            this.syncRealtimeDataOnly();
+          const elapsed = Date.now() - (this.lastBgCheckTime || 0);
+          if (elapsed > 10 * 60 * 1000 && this.selectedPeriod === 'LIVE') {
+            this.checkBackgroundUpdates();
           }
         } else if (document.visibilityState === 'hidden') {
           this.saveSessionState();
         }
       });
 
-      // 2. Window Focus (Alt-Tab atau klik balik ke browser)
+      // 2. Window Focus (Alt-Tab / klik browser)
       window.addEventListener('focus', () => {
-        const elapsed = Date.now() - (this.lastSyncTime || 0);
-        if (elapsed > 3 * 60 * 1000 && this.selectedPeriod === 'LIVE') {
-          this.syncRealtimeDataOnly();
+        const elapsed = Date.now() - (this.lastBgCheckTime || 0);
+        if (elapsed > 10 * 60 * 1000 && this.selectedPeriod === 'LIVE') {
+          this.checkBackgroundUpdates();
         }
       });
 
       // 3. Online Reconnect
       window.addEventListener('online', () => {
         if (this.selectedPeriod === 'LIVE') {
-          this.syncRealtimeDataOnly();
+          this.checkBackgroundUpdates();
         }
       });
 
-      // 4. Smart Heartbeat Polling: Tiap 3.5 menit HANYA jika tab sedang aktif dilihat
+      // 4. Smart Background Check: Tiap 10 menit secara hening (hanya saat jam operasional 07:00 - 20:00)
       if (this.syncTimer) clearInterval(this.syncTimer);
       this.syncTimer = setInterval(() => {
-        if (document.visibilityState === 'visible' && this.selectedPeriod === 'LIVE' && !this.isLoading) {
-          this.syncRealtimeDataOnly();
+        if (document.visibilityState === 'visible' && this.selectedPeriod === 'LIVE' && !this.isLoading && !this.isSilentSyncing) {
+          this.checkBackgroundUpdates();
         }
-      }, 3.5 * 60 * 1000);
+      }, 10 * 60 * 1000);
+    },
+
+    /**
+     * Smart Background Update Check & Silent Sync
+     */
+    async checkBackgroundUpdates() {
+      if (this.isSilentSyncing || this.isSyncLocked || this.selectedPeriod !== 'LIVE') return;
+
+      // Smart Hour Window: Di luar jam kerja toko (21:00 - 06:30), jangan auto-sync di background
+      const currentHour = new Date().getHours();
+      if (currentHour >= 21 || currentHour < 7) {
+        console.log('%c🌙 [Night Mode]%c Di luar jam operasional toko (07:00-21:00). Melewati background sync.', 'color:#94a3b8;', 'color:#64748b;');
+        return;
+      }
+
+      this.lastBgCheckTime = Date.now();
+
+      // Silent download di background tanpa modal loader
+      try {
+        this.isSilentSyncing = true;
+        const targetModul = this.getEffectiveFetchModul();
+
+        const [visitsData, absensiData] = await Promise.all([
+          ApiService.getVisits({ modul: targetModul, forceRefresh: true }),
+          ApiService.getAbsensi({ modul: targetModul, forceRefresh: true })
+        ]);
+
+        const currentVisitsCount = this.visits ? this.visits.length : 0;
+        const newVisitsCount = visitsData ? visitsData.length : 0;
+
+        if (newVisitsCount > currentVisitsCount) {
+          const diff = newVisitsCount - currentVisitsCount;
+          this.pendingVisitsData = visitsData;
+          this.pendingAbsensiData = absensiData;
+          this.newUpdateCount = diff;
+          this.newUpdateMessage = `Ada ${diff} data kunjungan baru dari lapangan`;
+          this.hasNewDataAvailable = true;
+          console.log(`%c🔔 [Update Sinyal]%c Ditemukan ${diff} data baru dari lapangan. Notifikasi ditampilkan.`, 'background:#f59e0b;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#fbbf24;');
+        } else {
+          // Data sama persis, simpan background update ke IndexedDB tanpa ganggu user
+          if (window.DashboardDB && visitsData && visitsData.length > 0) {
+            await DashboardDB.set('visits_data', visitsData);
+            if (absensiData && absensiData.length > 0) await DashboardDB.set('absensi_data', absensiData);
+          }
+        }
+      } catch (e) {
+        console.warn('Silent background sync check skipped:', e);
+      } finally {
+        this.isSilentSyncing = false;
+      }
+    },
+
+    /**
+     * Terapkan Data Baru Saat User Klik "Update Tampilan" di Floating Pill
+     */
+    applyNewDataUpdate() {
+      if (this.pendingVisitsData && this.pendingVisitsData.length > 0) {
+        this.visits = this.pendingVisitsData;
+        if (this.pendingAbsensiData) this.absensi = this.pendingAbsensiData;
+        this.pendingVisitsData = null;
+        this.pendingAbsensiData = null;
+
+        this.updateCrewModulMap();
+        this.indexDataStore();
+        this.updateActiveDateLabel(this.visits);
+        this.lastSyncTime = Date.now();
+        this.saveSessionState();
+
+        requestAnimationFrame(() => {
+          this.refreshCharts();
+          if (window.lucide) lucide.createIcons();
+          if (document.getElementById('visits-map')) {
+            MapService.renderVisitsOnMap(this.filteredVisits);
+          }
+        });
+      } else {
+        this.refreshAllData(true, true);
+      }
+
+      this.hasNewDataAvailable = false;
+    },
+
+    /**
+     * Tutup Floating Pill ("Nanti Saja") - Data tersimpan di background
+     */
+    dismissNewDataNotification() {
+      this.hasNewDataAvailable = false;
+      // Diam-diam simpan ke IndexedDB agar saat refresh berikutnya sudah otomatis terpakai
+      if (this.pendingVisitsData && window.DashboardDB) {
+        DashboardDB.set('visits_data', this.pendingVisitsData);
+        if (this.pendingAbsensiData) DashboardDB.set('absensi_data', this.pendingAbsensiData);
+      }
     },
 
     /**
@@ -853,6 +976,9 @@ function dashboardApp() {
       this.isSyncLocked = true;
       await this.requestWakeLock();
 
+      const syncStartTime = performance.now();
+      console.group('%c🔄 [DASHBOARD SYNC START]%c Memulai sinkronisasi data dashboard...', 'background:#4338ca;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', 'color:#818cf8;');
+
       if (showLoader) {
         this.isLoading = true;
         this.loadingStage = 1;
@@ -861,6 +987,14 @@ function dashboardApp() {
 
       try {
         const targetModul = this.getEffectiveFetchModul();
+        console.log(`%c[Target Modul]%c Mode: ${this.selectedPeriod} | Modul: ${targetModul} | ForceNetwork: ${forceNetwork}`, 'color:#a5b4fc;font-weight:bold;', 'color:#cbd5e1;');
+
+        // ⚡ Cache First: Jika data sudah ada dan masih segar (< 15 menit), jangan unduh ulang 15 cabang
+        if (!forceNetwork && this.visits && this.visits.length > 0 && (Date.now() - (this.lastSyncTime || 0) < 15 * 60 * 1000)) {
+          console.log('%c⚡ [0ms Cache Hit]%c Data lokal masih segar (< 15 menit). Melewati unduhan 15 cabang.', 'background:#0284c7;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#38bdf8;');
+          console.groupEnd();
+          return;
+        }
 
         if (this.selectedPeriod === 'LIVE') {
           if (showLoader) {
@@ -873,6 +1007,9 @@ function dashboardApp() {
             ApiService.memoryCache.clear();
           }
 
+          console.time('⏱️ Waktu Download Data (Visits, Absen, Toko, User)');
+          console.log('%c[1/4] Mengirim request paralel ke Google Sheets / Cloud API...', 'color:#38bdf8;');
+
           // Fetch Live Data (reads from IndexedDB in <10ms if not forceNetwork)
           const masterTokoPromise = ApiService.getMasterToko({ modul: targetModul, forceRefresh: forceNetwork });
           const masterUserPromise = ApiService.getMasterUser({ modul: targetModul, forceRefresh: forceNetwork });
@@ -883,6 +1020,8 @@ function dashboardApp() {
             masterTokoPromise,
             masterUserPromise
           ]);
+
+          console.timeEnd('⏱️ Waktu Download Data (Visits, Absen, Toko, User)');
 
           this.visits = visitsData || [];
           this.absensi = absensiData || [];
@@ -896,7 +1035,13 @@ function dashboardApp() {
           this.lastSyncTime = Date.now();
           await this.saveSessionState();
 
-          console.log(`%c[Data Sync Selesai]%c Visits: ${this.visits.length} baris | Absensi: ${this.absensi.length} baris | Master Toko: ${this.masterToko.length} toko | Master User: ${this.masterUser.length} personil`, 'background:#4338ca;color:white;padding:3px 8px;border-radius:4px;font-weight:bold;', 'color:#818cf8;');
+          console.log('%c[2/4] Data Berhasil Diunduh & Disimpan ke Cache:', 'color:#34d399;font-weight:bold;');
+          console.table({
+            'Data Kunjungan (Visits)': { 'Jumlah Baris': this.visits.length, 'Status': 'OK' },
+            'Data Absensi': { 'Jumlah Baris': this.absensi.length, 'Status': 'OK' },
+            'Master Toko': { 'Jumlah Baris': this.masterToko.length, 'Status': 'OK' },
+            'Master User': { 'Jumlah Baris': this.masterUser.length, 'Status': 'OK' }
+          });
 
         } else {
           // Fetch Archive Snapshot File
@@ -904,7 +1049,9 @@ function dashboardApp() {
             this.loadingStage = 2;
             this.loadingMessage = 'Membuka snapshot arsip Google Drive...';
           }
+          console.time('⏱️ Waktu Unduh Snapshot Arsip');
           const archiveVisits = await ApiService.getArchiveVisits(this.selectedPeriod, { modul: 'ALL' });
+          console.timeEnd('⏱️ Waktu Unduh Snapshot Arsip');
           this.visits = archiveVisits || [];
           await this.saveSessionState();
         }
@@ -914,11 +1061,18 @@ function dashboardApp() {
           this.loadingMessage = 'Mengolah metrik kepatuhan & memetakan koordinat...';
         }
 
+        console.time('⏱️ Waktu Pengolahan Metrik & Indexing');
+        console.log('%c[3/4] Menghitung metrik kepatuhan, leaderboard & anomaly trend...', 'color:#fbbf24;');
+
         // Render Analytics & Map
         this.updateCrewModulMap();
         this.indexDataStore();
         this.currentPage = 1;
         this.updateActiveDateLabel(this.visits);
+        console.timeEnd('⏱️ Waktu Pengolahan Metrik & Indexing');
+
+        console.time('⏱️ Waktu Rendering UI, Charts & Peta');
+        console.log('%c[4/4] Memperbarui grafik Chart.js & koordinat Leaflet map...', 'color:#f472b6;');
         this.$nextTick(() => {
           this.refreshCharts();
           if (window.lucide) lucide.createIcons();
@@ -926,10 +1080,15 @@ function dashboardApp() {
             MapService.initMap('visits-map', this.theme === 'dark');
             MapService.renderVisitsOnMap(this.filteredVisits);
           }
+          console.timeEnd('⏱️ Waktu Rendering UI, Charts & Peta');
+          const totalDuration = ((performance.now() - syncStartTime) / 1000).toFixed(2);
+          console.log(`%c✨ [SYNC SELESAI]%c Total waktu proses: ${totalDuration} detik.`, 'background:#059669;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', 'color:#34d399;font-weight:bold;');
+          console.groupEnd();
         });
 
       } catch (error) {
-        console.error('Error refresh data:', error);
+        console.error('❌ Error refresh data:', error);
+        console.groupEnd();
       } finally {
         this.isSyncLocked = false;
         await this.releaseWakeLock();
@@ -940,7 +1099,6 @@ function dashboardApp() {
         } else {
           this.isLoading = false;
         }
-        this.dismissPreloader();
       }
     },
 

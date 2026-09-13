@@ -815,7 +815,42 @@
   <!-- ============================================================================== -->
   <!-- 3. MAIN DASHBOARD CONTENT (TABS CONTAINER) -->
   <!-- ============================================================================== -->
-  <main class="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pt-[68px] sm:pt-20 pb-8 space-y-6 overflow-x-hidden min-w-0">
+  <main class="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 pt-[68px] sm:pt-20 pb-8 space-y-6 overflow-x-hidden min-w-0 relative">
+
+    <!-- FLOATING PILL NOTIFICATION: NEW DATA FROM FIELD (NON-INTRUSIVE GMAIL/TWITTER STYLE) -->
+    <div x-show="hasNewDataAvailable" x-cloak
+      x-transition:enter="transition ease-out duration-300 transform"
+      x-transition:enter-start="-translate-y-8 opacity-0 scale-95"
+      x-transition:enter-end="translate-y-0 opacity-100 scale-100"
+      x-transition:leave="transition ease-in duration-200 transform"
+      x-transition:leave-start="translate-y-0 opacity-100 scale-100"
+      x-transition:leave-end="-translate-y-8 opacity-0 scale-95"
+      class="fixed top-16 sm:top-20 left-1/2 -translate-x-1/2 z-50 w-[94%] sm:w-auto max-w-md pointer-events-auto">
+      <div class="glass-card shadow-2xl border border-amber-500/30 bg-slate-900/95 text-white px-3.5 py-2 rounded-2xl flex items-center justify-between space-x-3 backdrop-blur-xl ring-1 ring-amber-400/20">
+        <div class="flex items-center space-x-2.5 min-w-0">
+          <span class="relative flex h-2.5 w-2.5 flex-shrink-0">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+          </span>
+          <div class="text-xs font-semibold truncate">
+            <span class="text-amber-300 font-bold" x-text="`${newUpdateCount} Data Baru`"></span>
+            <span class="text-slate-300 text-[11px] hidden sm:inline"> masuk dari lapangan</span>
+          </div>
+        </div>
+        <div class="flex items-center space-x-1.5 flex-shrink-0">
+          <button @click="applyNewDataUpdate()" 
+            class="px-2.5 py-1 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-[11px] font-bold shadow-sm transition-all cursor-pointer flex items-center space-x-1 active:scale-95">
+            <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+            <span>Update Tampilan</span>
+          </button>
+          <button @click="dismissNewDataNotification()" 
+            class="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            title="Nanti Saja (Data tetap disimpan di background)">
+            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- ============================================================================== -->
     <!-- 4. TAB 1: KUNJUNGAN LAPANGAN & KPI OVERVIEW -->
@@ -6881,14 +6916,14 @@
   <script src="../05_simulasi_rute/js/geo_data.js"></script>
 
   <!-- Modular Scripts with Cache-Buster -->
-  <script src="./js/config.js?v=20260913_101"></script>
-  <script src="./js/db.js?v=20260913_101"></script>
-  <script src="./js/api.js?v=20260913_101"></script>
-  <script src="./js/charts.js?v=20260913_101"></script>
-  <script src="./js/map.js?v=20260913_101"></script>
-  <script src="./js/app.js?v=20260913_101"></script>
+  <script src="./js/config.js?v=20260914_209"></script>
+  <script src="./js/db.js?v=20260914_209"></script>
+  <script src="./js/api.js?v=20260914_209"></script>
+  <script src="./js/charts.js?v=20260914_209"></script>
+  <script src="./js/map.js?v=20260914_209"></script>
+  <script src="./js/app.js?v=20260914_209"></script>
 
-  <!-- Failsafe preloader auto-dismiss -->
+  <!-- Failsafe preloader auto-dismiss (only as emergency fallback) -->
   <script>
     setTimeout(function() {
       var p = document.getElementById('initial-preloader');
@@ -6896,7 +6931,7 @@
         p.classList.add('opacity-0', 'pointer-events-none');
         setTimeout(function() { if (p.parentNode) p.parentNode.removeChild(p); }, 300);
       }
-    }, 1200);
+    }, 4000);
   </script>
 
 </body>

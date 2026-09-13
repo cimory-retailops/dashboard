@@ -8,16 +8,16 @@
 
 const DashboardDB = (function () {
   const DB_NAME = 'Cimory_Dashboard_DB';
-  const DB_VERSION = 3;
+  const DB_VERSION = 4;
   const STORE_CACHE = 'dashboard_cache';
   const memoryCache = new Map();
 
-  let dbPromise = null;
+  let dbInstance = null;
 
   function openDB() {
-    if (dbPromise) return dbPromise;
+    if (dbInstance) return Promise.resolve(dbInstance);
 
-    dbPromise = new Promise((resolve) => {
+    return new Promise((resolve) => {
       if (!window.indexedDB) {
         console.warn('[DashboardDB] IndexedDB tidak didukung browser ini. Menggunakan memory + localStorage.');
         resolve(null);
@@ -35,7 +35,12 @@ const DashboardDB = (function () {
         };
 
         request.onsuccess = (event) => {
-          resolve(event.target.result);
+          dbInstance = event.target.result;
+          dbInstance.onversionchange = () => {
+            dbInstance.close();
+            dbInstance = null;
+          };
+          resolve(dbInstance);
         };
 
         request.onerror = (event) => {
@@ -44,7 +49,7 @@ const DashboardDB = (function () {
         };
 
         request.onblocked = () => {
-          console.warn('[DashboardDB] IndexedDB blocked, fallback aktif.');
+          console.warn('[DashboardDB] IndexedDB blocked.');
           resolve(null);
         };
       } catch (err) {
@@ -52,24 +57,45 @@ const DashboardDB = (function () {
         resolve(null);
       }
     });
-
-    return dbPromise;
   }
 
   return {
     /**
+     * Helper to safely unwrap Alpine.js Proxy and ensure Structured Clone compatibility
+     */
+    cleanForStorage(data) {
+      if (data === null || data === undefined) return data;
+      try {
+        // Recursively clean plain JSON data
+        return JSON.parse(JSON.stringify(data, (key, value) => {
+          if (value && typeof value === 'object') {
+            if (window.Alpine && typeof window.Alpine.raw === 'function') {
+              try { value = window.Alpine.raw(value); } catch(e) {}
+            }
+          }
+          return value;
+        }));
+      } catch (e) {
+        if (Array.isArray(data)) {
+          return data.map(row => {
+            const copy = {};
+            if (row && typeof row === 'object') {
+              for (const k of Object.keys(row)) {
+                copy[k] = row[k];
+              }
+            }
+            return copy;
+          });
+        }
+        return { ...data };
+      }
+    },
+
+    /**
      * Save arbitrary data object into Multi-Layer Storage
      */
     async set(key, value, ttlMs = 24 * 60 * 60 * 1000) {
-      // 1. Memory Cache (< 0.1ms)
-      let cleanValue = value;
-      try {
-        if (value !== undefined && value !== null) {
-          cleanValue = JSON.parse(JSON.stringify(value));
-        }
-      } catch (err) {
-        cleanValue = value;
-      }
+      const cleanValue = this.cleanForStorage(value);
       memoryCache.set(key, { value: cleanValue, expireAt: Date.now() + ttlMs });
 
       // 2. LocalStorage backup for small/medium payloads
@@ -94,11 +120,18 @@ const DashboardDB = (function () {
             expireAt: Date.now() + ttlMs
           };
           store.put(record);
-          tx.oncomplete = () => resolve(true);
-          tx.onerror = () => resolve(true);
+          tx.oncomplete = () => {
+            console.log(`%c[DashboardDB.set] ✅ Key '${key}' tersimpan (${Array.isArray(cleanValue) ? cleanValue.length + ' baris' : 'objek'})`, 'color:#34d399;');
+            resolve(true);
+          };
+          tx.onerror = (err) => {
+            console.error(`[DashboardDB.set Error] Gagal simpan '${key}':`, tx.error || err);
+            resolve(false);
+          };
         });
       } catch (e) {
-        return true;
+        console.error(`[DashboardDB.set Exception] Key '${key}':`, e);
+        return false;
       }
     },
 
@@ -106,35 +139,18 @@ const DashboardDB = (function () {
      * Save multiple key-value pairs atomically in ONE transaction (< 15ms)
      */
     async setMany(entries = {}, ttlMs = 24 * 60 * 60 * 1000) {
-      // 1. Immediate Memory Layer (< 0.5ms)
+      // 1. Immediate Memory Layer & Clean Storage Unwrap
       const cleanEntries = {};
       for (const [key, rawVal] of Object.entries(entries)) {
         if (rawVal === undefined) continue;
-        let cleanVal = rawVal;
-        try {
-          if (rawVal !== null) cleanVal = JSON.parse(JSON.stringify(rawVal));
-        } catch (err) {
-          cleanVal = rawVal;
-        }
+        const cleanVal = this.cleanForStorage(rawVal);
         cleanEntries[key] = cleanVal;
         memoryCache.set(key, { value: cleanVal, expireAt: Date.now() + ttlMs });
 
-        // Backup essential state to localStorage
+        // Backup essential lightweight state to localStorage
         try {
           if (key === 'app_state' || key === 'master_user' || key === 'archive_list') {
             localStorage.setItem('idb_bak_' + key, JSON.stringify(cleanVal));
-          } else if (key === 'visits_data' && Array.isArray(cleanVal)) {
-            // Simpan ringkasan kunjungan di localStorage agar refresh < 1ms
-            const compact = cleanVal.slice(0, 3000).map(v => ({
-              idVisit: v.idVisit, koordinat: v.koordinat, time: v.time, date: v.date,
-              hariKe: v.hariKe, hari: v.hari, week: v.week, kodeCrew: v.kodeCrew,
-              namaCrew: v.namaCrew, jabatan: v.jabatan, account: v.account,
-              kodeToko: v.kodeToko, namaToko: v.namaToko, tipeToko: v.tipeToko,
-              modul: v.modul, prefix: v.prefix, fotoSelfie: v.fotoSelfie
-            }));
-            localStorage.setItem('idb_bak_visits_data', JSON.stringify(compact));
-          } else if (key === 'absensi_data' && Array.isArray(cleanVal)) {
-            localStorage.setItem('idb_bak_absensi_data', JSON.stringify(cleanVal.slice(0, 2000)));
           }
         } catch (e) {}
       }
@@ -142,7 +158,10 @@ const DashboardDB = (function () {
       // 2. IndexedDB Transaction
       try {
         const db = await openDB();
-        if (!db) return true;
+        if (!db) {
+          console.warn('[DashboardDB.setMany] Database instance null');
+          return false;
+        }
 
         return new Promise((resolve) => {
           const tx = db.transaction(STORE_CACHE, 'readwrite');
@@ -157,11 +176,18 @@ const DashboardDB = (function () {
             });
           }
 
-          tx.oncomplete = () => resolve(true);
-          tx.onerror = () => resolve(true);
+          tx.oncomplete = () => {
+            console.log(`%c[DashboardDB.setMany] ✅ BERHASIL MENYIMPAN ${Object.keys(cleanEntries).join(', ')} KE INDEXEDDB`, 'background:#059669;color:white;font-weight:bold;padding:2px 8px;border-radius:4px;');
+            resolve(true);
+          };
+          tx.onerror = (event) => {
+            console.error('[DashboardDB.setMany Error]:', tx.error || event);
+            resolve(false);
+          };
         });
       } catch (e) {
-        return true;
+        console.error('[DashboardDB.setMany Exception]:', e);
+        return false;
       }
     },
 
@@ -203,7 +229,9 @@ const DashboardDB = (function () {
             return idbVal;
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn(`[DashboardDB.get Exception] '${key}':`, e);
+      }
 
       // 3. Check LocalStorage Fallback (< 1ms)
       try {
@@ -266,3 +294,6 @@ const DashboardDB = (function () {
     }
   };
 })();
+
+// Explicit global export for cross-module reliability
+window.DashboardDB = DashboardDB;
