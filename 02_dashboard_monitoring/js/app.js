@@ -3815,12 +3815,16 @@ function dashboardApp() {
         totalBelumAbsenMasuk: totalBelumAbsenMasuk,
         totalAlpha: alphaList.length,
         absenNoVisit: absenNoVisit,
+        absenNoVisitList: absenNoVisit,
         visitNoAbsen: visitNoAbsen,
+        visitNoAbsenList: visitNoAbsen,
         terlambatList: terlambatList,
         lupaPulangList: lupaPulangList,
+        noOutList: lupaPulangList,
         izinList: izinList,
         sakitList: sakitList,
         cutiList: cutiList,
+        izinSakitList: [...cutiList, ...sakitList, ...izinList],
         visitDcList: visitDcList,
         gpsIssueList: gpsIssueList,
         alphaList: alphaList,
@@ -3839,12 +3843,16 @@ function dashboardApp() {
           totalBelumAbsenMasuk: 0,
           totalAlpha: 0,
           absenNoVisit: [],
+          absenNoVisitList: [],
           visitNoAbsen: [],
+          visitNoAbsenList: [],
           terlambatList: [],
           lupaPulangList: [],
+          noOutList: [],
           izinList: [],
           sakitList: [],
           cutiList: [],
+          izinSakitList: [],
           visitDcList: [],
           gpsIssueList: [],
           alphaList: [],
@@ -4263,10 +4271,14 @@ function dashboardApp() {
     },
 
     get totalAnomalyLeaderboardPages() {
-      const total = this.filteredAnomalyLeaderboard.length;
+      const total = (this.filteredAnomalyLeaderboard || []).length;
       const size = this.anomalyLeaderboardPageSize || 10;
       if (size === 'ALL') return 1;
       return Math.max(1, Math.ceil(total / parseInt(size, 10)));
+    },
+
+    get anomalyLeaderboardTotalPages() {
+      return this.totalAnomalyLeaderboardPages;
     },
 
     setAnomalyViewMode(mode) {
