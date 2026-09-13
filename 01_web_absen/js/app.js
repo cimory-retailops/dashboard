@@ -580,10 +580,22 @@ function updateRouteDateDisplay(dateObj) {
 function loadSavedProfile() {
   if (window.PORTAL_ACTIVE_USER) {
     const user = window.PORTAL_ACTIVE_USER;
+    let resolvedModul = user.modul || user.module;
+    if (!resolvedModul || resolvedModul === "ALL") {
+      try {
+        const rawM = localStorage.getItem('cimory_rbac_matrix');
+        if (rawM && user.email) {
+          const m = JSON.parse(rawM);
+          const entry = m[user.email.toLowerCase()];
+          if (entry && entry.modul) resolvedModul = entry.modul;
+        }
+      } catch (e) {}
+    }
+
     state.profile = {
       nama: user.name || user.nama || "MDS",
-      kodeCrew: user.id || user.kodeCrew || user.username || "RO036",
-      modul: user.modul || user.module || "LP4",
+      kodeCrew: user.id || user.kodeCrew || user.username || "RO010",
+      modul: resolvedModul || "LK2",
       account: user.account || "ALFAMART",
       role: (user.role || "").toUpperCase()
     };
@@ -602,9 +614,9 @@ function loadSavedProfile() {
     }
   } else {
     state.profile = {
-      nama: "Yohandi Pratama",
-      kodeCrew: "RO036",
-      modul: "LP4",
+      nama: "FUAD MUSTANGIN",
+      kodeCrew: "RO010",
+      modul: "LK2",
       account: "ALFAMART",
       role: "MDS"
     };
@@ -615,7 +627,7 @@ function loadSavedProfile() {
 
 function renderProfileUI() {
   if (elements.userName) elements.userName.textContent = state.profile.nama || "MDS";
-  if (elements.userModule) elements.userModule.textContent = state.profile.modul || "LP4";
+  if (elements.userModule) elements.userModule.textContent = state.profile.modul || "LK2";
 
   if (elements.userAvatar) {
     const initials = (state.profile.nama || "MDS")
@@ -660,7 +672,23 @@ function renderProfileUI() {
 async function checkDatabaseStatus() {
   try {
     // Sinkronisasi data crew & rute aktif secara cepat
-    syncMasterCrewFromSheet();
+    const freshCrews = await syncMasterCrewFromSheet();
+    if (freshCrews && freshCrews.length > 0 && state.profile && state.profile.nama) {
+      const myCrew = freshCrews.find(c => 
+        (c.id && state.profile.kodeCrew && c.id.toUpperCase() === state.profile.kodeCrew.toUpperCase()) ||
+        (c.nama && state.profile.nama && c.nama.toUpperCase().trim() === state.profile.nama.toUpperCase().trim())
+      );
+      if (myCrew && myCrew.modul && myCrew.modul !== state.profile.modul) {
+        state.profile.modul = myCrew.modul;
+        if (myCrew.id) state.profile.kodeCrew = myCrew.id;
+        if (myCrew.account) state.profile.account = myCrew.account;
+        localStorage.setItem("mds_crew_profile", JSON.stringify(state.profile));
+        renderProfileUI();
+        if (state.currentView === "schedule") {
+          loadScheduledStores();
+        }
+      }
+    }
     hideBlockingLoader();
 
     // Muat daftar toko yang sudah diklaim di background (tanpa blocker)
