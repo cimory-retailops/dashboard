@@ -14,7 +14,7 @@ function dashboardApp() {
     showCategoryMenu: false, // Flyout Mega Menu (Alfagift style)
     activeMegaCategory: 'operasional', // 'operasional' | 'evaluasi' | 'master' | 'laporan' | 'modul'
     categoryMenuTimer: null,
-    isLoading: true,
+    isLoading: false,
     loadingMessage: 'Menghubungkan ke Database Central...',
     loadingStage: 1, // 1: Connecting, 2: Fetching, 3: Processing
 
@@ -552,9 +552,6 @@ function dashboardApp() {
     },
 
     clearSearch() {
-      this.isLoading = true;
-      this.loadingMessage = 'Mereset Pencarian & Filter...';
-      this.loadingStage = 3;
       if (this.currentUser && this.currentUser.role === 'MDS') {
         const myCrew = this.getCurrentMdsCrewName();
         this.selectedCrew = myCrew || '';
@@ -562,23 +559,16 @@ function dashboardApp() {
         this.selectedCrew = '';
       }
       this.searchInputText = '';
+      this.searchQuery = '';
+      this.currentPage = 1;
 
-      setTimeout(() => {
-        this.searchQuery = '';
-        this.currentPage = 1;
-
-        requestAnimationFrame(() => {
-          if (window.lucide) lucide.createIcons();
-          if (typeof MapService !== 'undefined' && MapService.renderVisitsOnMap) {
-            MapService.renderVisitsOnMap(this.filteredVisits, '');
-          }
-          if (this.initCharts) this.initCharts();
-
-          setTimeout(() => {
-            this.isLoading = false;
-          }, 200);
-        });
-      }, 30);
+      requestAnimationFrame(() => {
+        if (window.lucide) lucide.createIcons();
+        if (typeof MapService !== 'undefined' && MapService.renderVisitsOnMap) {
+          MapService.renderVisitsOnMap(this.filteredVisits, '');
+        }
+        if (this.initCharts) this.initCharts();
+      });
     },
 
     flyToVisit(visit) {
@@ -716,9 +706,28 @@ function dashboardApp() {
     },
 
     /**
+     * Handle Modul Filter Change (Instant 0ms in-memory filter, Zero Download)
+     */
+    onModulChange() {
+      this.currentPage = 1;
+      this.saveSessionState();
+
+      requestAnimationFrame(() => {
+        if (window.lucide) lucide.createIcons();
+        if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
+          MapService.renderVisitsOnMap(this.filteredVisits);
+        }
+        if (this.initCharts) this.initCharts();
+        if (this.activeTab === 'evaluasi') {
+          this.refreshSpvCharts();
+        }
+      });
+    },
+
+    /**
      * Master Data Refresh Function
      */
-    async refreshAllData(showLoader = true) {
+    async refreshAllData(showLoader = true, forceNetwork = false) {
       if (showLoader) {
         this.isLoading = true;
         this.loadingStage = 1;
@@ -732,17 +741,18 @@ function dashboardApp() {
             this.loadingMessage = 'Mengunduh data Kunjungan, Absensi & Master Rute...';
           }
 
-          // Clear in-memory API cache on explicit refresh
-          ApiService.memoryCache.clear();
+          // Clear in-memory API cache on explicit network refresh
+          if (forceNetwork) {
+            ApiService.memoryCache.clear();
+          }
 
-          // Always fetch fresh Master Toko & Master User from live spreadsheets
-          const masterTokoPromise = ApiService.getMasterToko({ modul: 'ALL' });
-          const masterUserPromise = ApiService.getMasterUser({ modul: 'ALL' });
+          // Fetch Live Data (reads from IndexedDB in <10ms if not forceNetwork)
+          const masterTokoPromise = ApiService.getMasterToko({ modul: 'ALL', forceRefresh: forceNetwork });
+          const masterUserPromise = ApiService.getMasterUser({ modul: 'ALL', forceRefresh: forceNetwork });
 
-          // Fetch Live Data in parallel (< 1.5s) across all 15 branch sheets + 3 absensi sheets
           const [visitsData, absensiData, masterTokoData, masterUserData] = await Promise.all([
-            ApiService.getVisits({ modul: 'ALL' }),
-            ApiService.getAbsensi({ modul: 'ALL' }),
+            ApiService.getVisits({ modul: 'ALL', forceRefresh: forceNetwork }),
+            ApiService.getAbsensi({ modul: 'ALL', forceRefresh: forceNetwork }),
             masterTokoPromise,
             masterUserPromise
           ]);
@@ -823,65 +833,46 @@ function dashboardApp() {
       }
 
       this.isCustomDateOpen = false;
-      // 1. Render overlay loading immediately to DOM before heavy operations
-      this.isLoading = true;
-      this.loadingStage = 3;
-      const periodNames = {
-        'LATEST_DAY': 'Hari Terakhir Aktif',
-        'YESTERDAY': 'Kemarin / H-1',
-        'TODAY': 'Hari Ini Saja',
-        '7_DAYS': '7 Hari Terakhir',
-        'THIS_MONTH': 'Bulan Ini'
-      };
-      this.loadingMessage = `Menyaring Data: ${periodNames[val] || val}...`;
 
-      // 2. Defer computation slightly (40ms) so browser paint cycle renders overlay first
-      setTimeout(() => {
-        let sDate = '';
-        let eDate = '';
+      let sDate = '';
+      let eDate = '';
 
-        if (val === 'TODAY') {
-          sDate = `${yyyy}-${mm}-${dd}`;
-          eDate = `${yyyy}-${mm}-${dd}`;
-        } else if (val === 'YESTERDAY') {
-          const yDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-          const y_yyyy = yDate.getFullYear();
-          const y_mm = String(yDate.getMonth() + 1).padStart(2, '0');
-          const y_dd = String(yDate.getDate()).padStart(2, '0');
-          sDate = `${y_yyyy}-${y_mm}-${y_dd}`;
-          eDate = `${y_yyyy}-${y_mm}-${y_dd}`;
-        } else if (val === '7_DAYS') {
-          const past7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          sDate = past7.toISOString().split('T')[0];
-          eDate = `${yyyy}-${mm}-${dd}`;
-        } else if (val === 'THIS_MONTH') {
-          sDate = `${yyyy}-${mm}-01`;
-          eDate = `${yyyy}-${mm}-${dd}`;
+      if (val === 'TODAY') {
+        sDate = `${yyyy}-${mm}-${dd}`;
+        eDate = `${yyyy}-${mm}-${dd}`;
+      } else if (val === 'YESTERDAY') {
+        const yDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const y_yyyy = yDate.getFullYear();
+        const y_mm = String(yDate.getMonth() + 1).padStart(2, '0');
+        const y_dd = String(yDate.getDate()).padStart(2, '0');
+        sDate = `${y_yyyy}-${y_mm}-${y_dd}`;
+        eDate = `${y_yyyy}-${y_mm}-${y_dd}`;
+      } else if (val === '7_DAYS') {
+        const past7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        sDate = past7.toISOString().split('T')[0];
+        eDate = `${yyyy}-${mm}-${dd}`;
+      } else if (val === 'THIS_MONTH') {
+        sDate = `${yyyy}-${mm}-01`;
+        eDate = `${yyyy}-${mm}-${dd}`;
+      }
+
+      this.startDate = sDate;
+      this.endDate = eDate;
+      this.dateFilter = val;
+      this.currentPage = 1;
+      this.updateActiveDateLabel(this.visits);
+      this.saveSessionState();
+
+      requestAnimationFrame(() => {
+        this.refreshCharts();
+        if (window.lucide) lucide.createIcons();
+        if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
+          MapService.renderVisitsOnMap(this.filteredVisits);
         }
-
-        // Batch update state in one single reactive tick
-        this.startDate = sDate;
-        this.endDate = eDate;
-        this.dateFilter = val;
-        this.currentPage = 1;
-        this.updateActiveDateLabel(this.visits);
-        this.saveSessionState();
-
-        requestAnimationFrame(() => {
-          this.refreshCharts();
-          if (window.lucide) lucide.createIcons();
-          if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
-            MapService.renderVisitsOnMap(this.filteredVisits);
-          }
-          if (this.activeTab === 'evaluasi') {
-            this.refreshSpvCharts();
-          }
-
-          setTimeout(() => {
-            this.isLoading = false;
-          }, 200);
-        });
-      }, 40);
+        if (this.activeTab === 'evaluasi') {
+          this.refreshSpvCharts();
+        }
+      });
     },
 
     getDateFilterLabel(val) {
@@ -902,29 +893,19 @@ function dashboardApp() {
     },
 
     /**
-     * Handle Account Filter Change (Smooth & Non-Blocking)
+     * Handle Account Filter Change (Instant & Non-Blocking)
      */
     onAccountChange() {
-      this.isLoading = true;
-      this.loadingMessage = `Memfilter Account: ${this.selectedAccount === 'ALL' ? 'Semua Account' : this.selectedAccount}...`;
-      this.loadingStage = 3;
+      this.currentPage = 1;
+      this.saveSessionState();
 
-      setTimeout(() => {
-        this.currentPage = 1;
-        this.saveSessionState();
-
-        requestAnimationFrame(() => {
-          if (window.lucide) lucide.createIcons();
-          if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
-            MapService.renderVisitsOnMap(this.filteredVisits);
-          }
-          if (this.initCharts) this.initCharts();
-
-          setTimeout(() => {
-            this.isLoading = false;
-          }, 200);
-        });
-      }, 30);
+      requestAnimationFrame(() => {
+        if (window.lucide) lucide.createIcons();
+        if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
+          MapService.renderVisitsOnMap(this.filteredVisits);
+        }
+        if (this.initCharts) this.initCharts();
+      });
     },
 
     /**
@@ -942,34 +923,24 @@ function dashboardApp() {
         this.customEndInput = this.customStartInput;
       }
 
-      // Show overlay loading immediately to prevent user clicking around during processing
-      this.isLoading = true;
-      this.loadingStage = 3;
-      this.loadingMessage = `Menyaring & mengolah data rentang ${this.customStartInput} s/d ${this.customEndInput}...`;
+      this.dateFilter = 'CUSTOM';
+      this.isCustomDateOpen = true;
+      this.startDate = this.customStartInput;
+      this.endDate = this.customEndInput;
+      this.currentPage = 1;
+      this.updateActiveDateLabel(this.visits);
+      this.saveSessionState();
 
-      setTimeout(() => {
-        this.dateFilter = 'CUSTOM';
-        this.isCustomDateOpen = true;
-        this.startDate = this.customStartInput;
-        this.endDate = this.customEndInput;
-        this.currentPage = 1;
-        this.updateActiveDateLabel(this.visits);
-        this.saveSessionState();
-
-        this.$nextTick(() => {
-          this.refreshCharts();
-          if (window.lucide) lucide.createIcons();
-          if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
-            MapService.renderVisitsOnMap(this.filteredVisits);
-          }
-          if (this.activeTab === 'evaluasi') {
-            this.refreshSpvCharts();
-          }
-          setTimeout(() => {
-            this.isLoading = false;
-          }, 200);
-        });
-      }, 30);
+      this.$nextTick(() => {
+        this.refreshCharts();
+        if (window.lucide) lucide.createIcons();
+        if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
+          MapService.renderVisitsOnMap(this.filteredVisits);
+        }
+        if (this.activeTab === 'evaluasi') {
+          this.refreshSpvCharts();
+        }
+      });
     },
 
     onPeriodChange() {
@@ -2902,38 +2873,19 @@ function dashboardApp() {
       const selected = [...(this.tempSelectedCrews || [])];
       this.crewDropdownOpen = false;
       this.selectedCrew = '';
+      this.selectedCrews = selected;
+      this.currentPage = 1;
 
-      // Tampilkan animasi overlay loading secara instan sebelum komputasi berat dimulai
-      this.isLoading = true;
-      const count = selected.length;
-      this.loadingMessage = count > 0 
-        ? `Memfilter Data ${count} MDS Terpilih...` 
-        : 'Memuat Semua Data Monitoring...';
-      this.loadingStage = 3;
-
-      // Beri jeda 30ms agar browser merender overlay loading terlebih dahulu sebelum Alpine recompute
-      setTimeout(() => {
-        this.selectedCrews = selected;
-        this.currentPage = 1;
-
-        requestAnimationFrame(() => {
-          if (this.activeTab === 'kunjungan' && document.getElementById('visits-map')) {
-            MapService.renderVisitsOnMap(this.filteredVisits);
-          }
-          if (window.lucide) window.lucide.createIcons();
-          if (this.initCharts) this.initCharts();
-
-          setTimeout(() => {
-            this.isLoading = false;
-          }, 200);
-        });
-      }, 30);
+      requestAnimationFrame(() => {
+        if (this.activeTab === 'kunjungan' && document.getElementById('visits-map')) {
+          MapService.renderVisitsOnMap(this.filteredVisits);
+        }
+        if (window.lucide) window.lucide.createIcons();
+        if (this.initCharts) this.initCharts();
+      });
     },
 
     clearAllSelectedCrews() {
-      this.isLoading = true;
-      this.loadingMessage = 'Mereset Filter MDS...';
-      this.loadingStage = 3;
       this.tempSelectedCrews = [];
       if (this.currentUser && this.currentUser.role === 'MDS') {
         const myCrew = this.getCurrentMdsCrewName();
@@ -2944,28 +2896,15 @@ function dashboardApp() {
         this.selectedCrews = [];
       }
       this.crewDropdownSearch = '';
+      this.currentPage = 1;
 
-      setTimeout(() => {
-        if (this.currentUser && this.currentUser.role === 'MDS') {
-          const myCrew = this.getCurrentMdsCrewName();
-          this.selectedCrews = myCrew ? [myCrew] : [];
-        } else {
-          this.selectedCrews = [];
+      requestAnimationFrame(() => {
+        if (this.activeTab === 'kunjungan' && document.getElementById('visits-map')) {
+          MapService.renderVisitsOnMap(this.filteredVisits);
         }
-        this.currentPage = 1;
-
-        requestAnimationFrame(() => {
-          if (this.activeTab === 'kunjungan' && document.getElementById('visits-map')) {
-            MapService.renderVisitsOnMap(this.filteredVisits);
-          }
-          if (window.lucide) window.lucide.createIcons();
-          if (this.initCharts) this.initCharts();
-
-          setTimeout(() => {
-            this.isLoading = false;
-          }, 200);
-        });
-      }, 30);
+        if (window.lucide) window.lucide.createIcons();
+        if (this.initCharts) this.initCharts();
+      });
     },
 
     toggleCrewCardExpand(crewKey) {

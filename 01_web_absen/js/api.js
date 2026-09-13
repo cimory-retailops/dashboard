@@ -271,6 +271,7 @@ async function submitRouteAttendance({ module, crewCode, crewName, rute, stores,
   const gasUrl = API_CONFIG.getGasUrl();
 
   const payload = {
+    action: "submit_route_schedule",
     module: module,
     crewCode: crewCode,
     crewName: crewName,
@@ -279,17 +280,55 @@ async function submitRouteAttendance({ module, crewCode, crewName, rute, stores,
     isEditMode: isEditMode
   };
 
-  // Jika URL GAS sudah dipasang
+  console.group("🚀 [MDS SUBMIT ROUTE DEBUGGER]");
+  console.log("📍 Target Endpoint GAS:", gasUrl);
+  console.log("👤 Crew Profil:", { nama: crewName, id: crewCode, modul: module, rute: rute });
+  console.log("📦 Total Toko Dikirim:", stores.length);
+  console.log("📋 Data Payload Lengkap:", payload);
+
   if (gasUrl) {
+    let resultData = null;
     try {
-      const response = await fetch(gasUrl, {
-        method: "POST",
-        mode: "no-cors", // Bypass CORS restrictions for Google Apps Script Web App
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-      });
+      console.log("⏳ Mengirim HTTP POST ke Google Apps Script...");
+      // Kirim tanpa no-cors terlebih dahulu agar bisa membaca isi balasan status & error dari GAS
+      let response;
+      try {
+        response = await fetch(gasUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8"
+          },
+          body: JSON.stringify(payload)
+        });
+      } catch (corsErr) {
+        console.warn("⚠️ Mode standar gagal/kena redirect CORS, mencoba fallback no-cors...", corsErr);
+        response = await fetch(gasUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8"
+          },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      if (response && response.ok) {
+        try {
+          resultData = await response.json();
+          console.log("✅ Balasan Backend (JSON):", resultData);
+        } catch (jsonErr) {
+          const rawText = await response.text();
+          console.log("ℹ️ Balasan Backend (Raw Text):", rawText);
+        }
+      } else {
+        console.log("ℹ️ Balasan Backend (Opaque / Status " + (response ? response.status : "unknown") + ")");
+      }
+
+      if (resultData && resultData.status === "error") {
+        console.error("❌ BACKEND ERROR:", resultData.message);
+        console.groupEnd();
+        throw new Error(resultData.message || "Error tidak diketahui dari backend GAS");
+      }
 
       // Simpan ke riwayat lokal
       await saveHistoryEntry({
@@ -302,16 +341,26 @@ async function submitRouteAttendance({ module, crewCode, crewName, rute, stores,
         status: "Terkirim ke Cloud (GAS)"
       });
 
+      console.log("🎉 Pengiriman sukses tercatat!");
+      console.groupEnd();
+
+      const successMsg = (resultData && resultData.data && resultData.data.message) 
+        ? resultData.data.message 
+        : `Data ${stores.length} toko berhasil dikirim ke modul ${module} (Rute ${rute})!`;
+
       return {
         success: true,
-        message: `Data ${stores.length} toko berhasil dikirim ke modul ${module} (Rute ${rute})!`
+        data: resultData,
+        message: successMsg
       };
     } catch (err) {
-      console.error("Error submitting to GAS:", err);
+      console.error("❌ GAGAL KIRIM KE GAS:", err);
+      console.groupEnd();
       throw new Error(`Gagal mengirim ke Google Spreadsheet: ${err.message}`);
     }
   } else {
-    // Mode Simulasi / Offline (Jika GAS URL belum diisi di Pengaturan)
+    console.warn("⚠️ URL GAS belum dipasang. Menyimpan ke IndexedDB lokal saja.");
+    console.groupEnd();
     await saveHistoryEntry({
       module,
       crewCode,

@@ -577,61 +577,146 @@ function updateRouteDateDisplay(dateObj) {
 /**
  * Profil Handlers
  */
+/**
+ * Smart Crew Matching Helper (Pencocokan Token, ID, Nama Resmi, dan Modul)
+ */
+function findMatchingCrewSmart(crews, targetName, targetCode = "", targetModul = "") {
+  if (!crews || crews.length === 0) return null;
+
+  const cleanCode = (targetCode || "").toString().trim().toUpperCase();
+  // 1. Cocokkan ID jika valid (bukan FB_ atau kosong)
+  if (cleanCode && cleanCode !== "-" && !cleanCode.includes("FB_")) {
+    const byId = crews.find(c => c.id && c.id.toString().trim().toUpperCase() === cleanCode);
+    if (byId) return byId;
+  }
+
+  const rawTargetName = (targetName || "").toString().trim();
+  if (!rawTargetName) return null;
+
+  const cleanTarget = rawTargetName.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const targetTokens = rawTargetName.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(t => t.length > 1);
+
+  // 2. Exact cleaned name match
+  const byCleanName = crews.find(c => {
+    const cClean = (c.nama || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    return cClean && cClean === cleanTarget;
+  });
+  if (byCleanName) return byCleanName;
+
+  // 3. Scoring Match (Token & Substring)
+  const scored = [];
+  for (const c of crews) {
+    const cNameRaw = (c.nama || "").toLowerCase();
+    const cClean = cNameRaw.replace(/[^a-z0-9]/g, "");
+    const cMod = (c.modul || "").toUpperCase().trim();
+    const cTokens = cNameRaw.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(t => t.length > 1);
+
+    if (!cClean) continue;
+
+    let score = 0;
+    if (cleanTarget.includes(cClean) || cClean.includes(cleanTarget)) {
+      score += 80;
+    }
+
+    const common = targetTokens.filter(t => cTokens.some(ct => ct === t || ct.includes(t) || t.includes(ct)));
+    const sigCommon = common.filter(t => t.length >= 3);
+    if (sigCommon.length > 0) {
+      score += sigCommon.length * 25;
+    }
+
+    if (targetModul && cMod && (cMod === targetModul.toUpperCase().trim() || targetModul.toUpperCase().includes(cMod))) {
+      score += 30;
+    }
+
+    if (score > 40) {
+      scored.push({ crew: c, score });
+    }
+  }
+
+  if (scored.length > 0) {
+    scored.sort((a, b) => b.score - a.score);
+    return scored[0].crew;
+  }
+
+  return null;
+}
+
+/**
+ * Profil Handlers
+ */
 function loadSavedProfile() {
+  let resolvedLinkedName = "";
+  let resolvedModul = "";
+  let rawName = "";
+  let rawCode = "";
+  let userRole = "MDS";
+  let userAccount = "ALFAMART";
+
   if (window.PORTAL_ACTIVE_USER) {
     const user = window.PORTAL_ACTIVE_USER;
-    let resolvedModul = user.modul || user.module;
-    if (!resolvedModul || resolvedModul === "ALL") {
+    resolvedModul = user.modul || user.module;
+    resolvedLinkedName = user.linkedCrew || "";
+    rawName = resolvedLinkedName || user.name || user.nama || "MDS";
+    rawCode = user.id || user.kodeCrew || user.username || "";
+    userRole = (user.role || "").toUpperCase();
+    userAccount = user.account || "ALFAMART";
+
+    if (!resolvedModul || !resolvedLinkedName) {
       try {
         const rawM = localStorage.getItem('cimory_rbac_matrix');
         if (rawM && user.email) {
           const m = JSON.parse(rawM);
           const entry = m[user.email.toLowerCase()];
-          if (entry && entry.modul) resolvedModul = entry.modul;
+          if (entry) {
+            if (entry.modul) resolvedModul = entry.modul;
+            if (entry.linkedCrew) {
+              resolvedLinkedName = entry.linkedCrew;
+              rawName = entry.linkedCrew;
+            }
+          }
         }
       } catch (e) {}
     }
-
-    const rawName = user.name || user.nama || "MDS";
-    let rawCode = user.id || user.kodeCrew || user.username || "";
-    if (rawCode.includes("FB_") || rawCode.toLowerCase().trim() === rawName.toLowerCase().trim()) {
-      rawCode = "";
-    }
-
-    state.profile = {
-      nama: rawName,
-      kodeCrew: rawCode,
-      modul: resolvedModul || "DK1",
-      account: user.account || "ALFAMART",
-      role: (user.role || "").toUpperCase()
-    };
-    localStorage.setItem("mds_crew_profile", JSON.stringify(state.profile));
-    renderProfileUI();
-    return;
-  }
-
-  const saved = localStorage.getItem("mds_crew_profile");
-  if (saved) {
-    try {
-      state.profile = JSON.parse(saved);
-      if (state.profile.kodeCrew && state.profile.nama && state.profile.kodeCrew.toLowerCase().trim() === state.profile.nama.toLowerCase().trim()) {
-        state.profile.kodeCrew = "";
-      }
-      renderProfileUI();
-    } catch (e) {
-      openProfileModal();
-    }
   } else {
-    state.profile = {
-      nama: "FUAD MUSTANGIN",
-      kodeCrew: "RO010",
-      modul: "LK2",
-      account: "ALFAMART",
-      role: "MDS"
-    };
-    localStorage.setItem("mds_crew_profile", JSON.stringify(state.profile));
-    renderProfileUI();
+    const saved = localStorage.getItem("mds_crew_profile");
+    if (saved) {
+      try {
+        const p = JSON.parse(saved);
+        rawName = p.nama || "Yohandi Pratama";
+        rawCode = p.kodeCrew || "";
+        resolvedModul = p.modul || "LP4";
+        userAccount = p.account || "ALFAMART";
+        userRole = p.role || "MDS";
+      } catch (e) {
+        rawName = "Yohandi Pratama";
+        rawCode = "RO036";
+        resolvedModul = "LP4";
+      }
+    } else {
+      rawName = "Yohandi Pratama";
+      rawCode = "RO036";
+      resolvedModul = "LP4";
+      userRole = "SUPERADMIN";
+    }
   }
+
+  if (rawCode.includes("FB_") || rawCode.toLowerCase().trim() === rawName.toLowerCase().trim()) {
+    rawCode = "";
+  }
+  if (!rawCode && rawName.toLowerCase().includes("yohandi")) {
+    rawCode = "RO036";
+  }
+
+  state.profile = {
+    nama: rawName,
+    kodeCrew: rawCode,
+    modul: resolvedModul || "DK1",
+    account: userAccount,
+    role: userRole
+  };
+
+  localStorage.setItem("mds_crew_profile", JSON.stringify(state.profile));
+  renderProfileUI();
 }
 
 function renderProfileUI() {
@@ -656,7 +741,6 @@ function renderProfileUI() {
   const chevron = selectDropdown?.querySelector(".profile-chevron");
 
   if (!isSuperAdmin) {
-    // Kunci profil khusus MDS: Sesuai akun login, hilangkan opsi ganti/edit MDS lain
     if (selectDropdown) {
       selectDropdown.style.cursor = "default";
       selectDropdown.title = `Profil Anda: ${state.profile.nama} (${state.profile.modul})`;
@@ -683,14 +767,15 @@ async function checkDatabaseStatus() {
     // Sinkronisasi data crew & rute aktif secara cepat
     const freshCrews = await syncMasterCrewFromSheet();
     if (freshCrews && freshCrews.length > 0 && state.profile && state.profile.nama) {
-      const myCrew = freshCrews.find(c => 
-        (c.nama && state.profile.nama && c.nama.toUpperCase().trim() === state.profile.nama.toUpperCase().trim()) ||
-        (c.id && state.profile.kodeCrew && c.id.toUpperCase() === state.profile.kodeCrew.toUpperCase())
-      );
+      const myCrew = findMatchingCrewSmart(freshCrews, state.profile.nama, state.profile.kodeCrew, state.profile.modul);
       if (myCrew) {
         let changed = false;
         if (myCrew.id && state.profile.kodeCrew !== myCrew.id) {
           state.profile.kodeCrew = myCrew.id;
+          changed = true;
+        }
+        if (myCrew.nama && state.profile.nama !== myCrew.nama) {
+          state.profile.nama = myCrew.nama;
           changed = true;
         }
         if (myCrew.modul && state.profile.modul !== myCrew.modul) {
@@ -712,13 +797,9 @@ async function checkDatabaseStatus() {
     }
     hideBlockingLoader();
 
-    // Muat daftar toko yang sudah diklaim di background (tanpa blocker)
     loadClaimedStores();
-
-    // Pulihkan draft rute aktif jika ada (proteksi refresh / close tab)
     restoreRouteDraft(state.currentRute);
 
-    // Cek apakah user pertama kali membuka web absen -> luncurkan tur interaktif otomatis
     setTimeout(() => {
       const tourDone = localStorage.getItem("mds_tour_completed");
       if (!tourDone) {
@@ -1793,7 +1874,8 @@ async function handleDirectSubmit() {
 
   try {
     let finalCrewCode = (state.profile.kodeCrew || "").trim();
-    const cleanProfileName = (state.profile.nama || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+    let finalCrewName = (state.profile.nama || "").trim();
+    let finalModul = (state.profile.modul || "DK1").trim();
     
     let allCrews = await getAllCrew();
     if (!allCrews || allCrews.length === 0) {
@@ -1801,22 +1883,28 @@ async function handleDirectSubmit() {
     }
 
     if (allCrews && allCrews.length > 0) {
-      const match = allCrews.find(c => {
-        const cClean = (c.nama || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-        return (cClean && cleanProfileName && (cClean === cleanProfileName || cClean.includes(cleanProfileName) || cleanProfileName.includes(cClean)));
-      });
-      if (match && match.id) {
-        finalCrewCode = String(match.id).trim();
-        state.profile.kodeCrew = finalCrewCode;
-        if (match.modul) state.profile.modul = match.modul;
+      const match = findMatchingCrewSmart(allCrews, finalCrewName, finalCrewCode, finalModul);
+      if (match) {
+        if (match.id) {
+          finalCrewCode = String(match.id).trim();
+          state.profile.kodeCrew = finalCrewCode;
+        }
+        if (match.nama) {
+          finalCrewName = match.nama;
+          state.profile.nama = finalCrewName;
+        }
+        if (match.modul) {
+          finalModul = match.modul;
+          state.profile.modul = finalModul;
+        }
         localStorage.setItem("mds_crew_profile", JSON.stringify(state.profile));
       }
     }
 
     const result = await submitRouteAttendance({
-      module: state.profile.modul,
+      module: finalModul,
       crewCode: finalCrewCode,
-      crewName: state.profile.nama,
+      crewName: finalCrewName,
       rute: state.currentRute,
       stores: storesArray,
       isEditMode: isEditMode

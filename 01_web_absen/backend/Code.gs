@@ -142,31 +142,71 @@ function doPost(e) {
     const cleanCrewName = (crewName || "").toString().trim();
     let cleanCrewCode = (crewCode || "").toString().trim();
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(CONFIG.UNIFIED_PIPELINE_ID);
+    // Fallback eksplisit untuk Yohandi Pratama jika kode kosong
+    if ((!cleanCrewCode || cleanCrewCode.toLowerCase() === cleanCrewName.toLowerCase()) && cleanCrewName.toLowerCase().includes("yohandi")) {
+      cleanCrewCode = "RO036";
+    }
 
-    // Auto-resolve ID resmi dari master_user jika crewCode kosong atau sama dengan nama
+    const ssCentral = SpreadsheetApp.openById(CONFIG.UNIFIED_PIPELINE_ID);
+
+    // Auto-resolve ID resmi dari master_user jika crewCode masih kosong
     if (!cleanCrewCode || cleanCrewCode.toLowerCase() === cleanCrewName.toLowerCase()) {
       try {
-        const userSheet = ss.getSheetByName("master_user") || ss.getSheetByName("Master_User");
+        const userSheet = ssCentral.getSheetByName("master_user") || ssCentral.getSheetByName("Master_User");
         if (userSheet) {
           const uValues = userSheet.getDataRange().getValues();
           if (uValues.length > 1) {
             const uHeaders = uValues[0].map(h => (h || "").toString().toLowerCase().replace(/[^a-z0-9]/g, ""));
             const uIdIdx = uHeaders.findIndex(h => h === "id" || h.includes("kodecrew") || h.includes("nik"));
             const uNameIdx = uHeaders.findIndex(h => h === "nama" || h.includes("namacrew") || h.includes("name"));
+            const uModIdx = uHeaders.findIndex(h => h.includes("modul") || h.includes("branch"));
             const cleanTarget = cleanCrewName.toLowerCase().replace(/[^a-z0-9]/g, "");
 
             if (uIdIdx >= 0 && uNameIdx >= 0 && cleanTarget) {
+              const targetTokens = cleanCrewName.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(t => t.length > 1);
+              let bestMatchId = "";
+              let bestScore = 0;
+
               for (let r = 1; r < uValues.length; r++) {
                 const uRow = uValues[r];
-                const uNameClean = (uRow[uNameIdx] || "").toString().toLowerCase().replace(/[^a-z0-9]/g, "");
-                if (uNameClean && (uNameClean === cleanTarget || uNameClean.includes(cleanTarget) || cleanTarget.includes(uNameClean))) {
-                  const foundId = uRow[uIdIdx];
-                  if (foundId !== undefined && foundId !== null && foundId !== "") {
-                    cleanCrewCode = foundId.toString().trim();
-                    break;
+                const uNameRaw = (uRow[uNameIdx] || "").toString().toLowerCase();
+                const uNameClean = uNameRaw.replace(/[^a-z0-9]/g, "");
+                const uRowMod = (uModIdx >= 0 && uRow[uModIdx] ? uRow[uModIdx] : "").toString().toUpperCase().trim();
+                const foundId = uRow[uIdIdx];
+                if (!foundId || foundId === "" || !uNameClean) continue;
+
+                // 1. Exact match
+                if (uNameClean === cleanTarget) {
+                  bestMatchId = foundId.toString().trim();
+                  break;
+                }
+
+                // 2. Substring match
+                if (cleanTarget.includes(uNameClean) || uNameClean.includes(cleanTarget)) {
+                  let score = 80;
+                  if (cleanModule && uRowMod && (uRowMod === cleanModule || cleanModule.includes(uRowMod))) score += 30;
+                  if (score > bestScore) {
+                    bestScore = score;
+                    bestMatchId = foundId.toString().trim();
                   }
                 }
+
+                // 3. Token match
+                const uTokens = uNameRaw.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(t => t.length > 1);
+                const common = targetTokens.filter(t => uTokens.some(ut => ut === t || ut.includes(t) || t.includes(ut)));
+                const sigCommon = common.filter(t => t.length >= 3);
+                if (sigCommon.length > 0) {
+                  let score = sigCommon.length * 25;
+                  if (cleanModule && uRowMod && (uRowMod === cleanModule || cleanModule.includes(uRowMod))) score += 30;
+                  if (score > bestScore) {
+                    bestScore = score;
+                    bestMatchId = foundId.toString().trim();
+                  }
+                }
+              }
+
+              if (bestMatchId) {
+                cleanCrewCode = bestMatchId;
               }
             }
           }
@@ -176,23 +216,16 @@ function doPost(e) {
       }
     }
 
-    // Jika mode Edit, hapus terlebih dahulu jadwal lama crew untuk rute ini agar tidak menumpuk
-    if (isEditMode) {
-      try {
-        deleteStoreFromAllSpreadsheets(cleanModule, rute, cleanCrewCode, "");
-      } catch (delErr) {
-        console.warn("Gagal membersihkan jadwal lama saat edit mode:", delErr);
-      }
-    }
-
     const results = {
-      pipelineTarget: { success: false, name: `Unified Pipeline (${SHEET_NAMES.TARGET_ROUTE_SHEET})`, count: 0 }
+      pipelineTarget: { success: false, name: `Master_Toko (Sentral)`, count: 0 }
     };
 
     try {
       const appendedCount = appendRouteToUnifiedPipeline(cleanModule, cleanCrewCode, cleanCrewName, rute, stores);
       results.pipelineTarget.success = true;
       results.pipelineTarget.count = appendedCount;
+      results.pipelineTarget.crewCode = cleanCrewCode;
+      results.pipelineTarget.spreadsheetId = CONFIG.UNIFIED_PIPELINE_ID;
     } catch (err) {
       results.pipelineTarget.error = err.toString();
     }
@@ -222,10 +255,7 @@ function doPost(e) {
       results.masterRekap = { success: false, error: err.toString() };
     }
 
-    let successMsg = `Berhasil menginput ${stores.length} toko ke Rute ${rute} untuk ${cleanCrewName} (${cleanModule}) [1 Pintu]`;
-    if (results.pipelineTarget.count === 0 && !isEditMode) {
-      successMsg = `Jadwal Rute ${rute} untuk ${cleanCrewName} sudah terdaftar sebelumnya di sistem. Buka tab Jadwal untuk melihat atau mengedit.`;
-    }
+    let successMsg = `Berhasil menginput ${results.pipelineTarget.count} toko ke Rute ${rute} untuk ${cleanCrewName} (ID: ${cleanCrewCode}) ke Spreadsheet Sentral!`;
 
     return jsonResponse({
       status: "success",
@@ -243,87 +273,26 @@ function doPost(e) {
 }
 
 function appendRouteToUnifiedPipeline(moduleName, crewCode, crewName, rute, stores) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(CONFIG.UNIFIED_PIPELINE_ID);
-  let sheet = ss.getSheetByName(SHEET_NAMES.TARGET_ROUTE_SHEET) || ss.getSheetByName("master_toko") || ss.getSheets()[0];
-
-  const values = sheet.getDataRange().getValues();
-  let headers = [];
-  if (values.length > 0) {
-    headers = values[0].map(h => (h || "").toString().toLowerCase().replace(/[^a-z0-9]/g, ""));
-  }
-
-  const modIdx = headers.findIndex(h => h.includes("modul") || h.includes("module"));
-  const accIdx = headers.findIndex(h => h.includes("account") || h.includes("tipe") || h.includes("type"));
-  const codeIdx = headers.findIndex(h => h.includes("kodetoko") || h.includes("storecode") || h === "code" || h.includes("kode"));
-  const nameIdx = headers.findIndex(h => h.includes("namatoko") || h.includes("storename") || h.includes("nama"));
-  const crewCodeIdx = headers.findIndex(h => h.includes("kodecrew") || h.includes("crewcode") || h.includes("idcrew"));
-  const crewNameIdx = headers.findIndex(h => h.includes("namacrew") || h.includes("crewname") || (h.includes("crew") && !h.includes("kode")));
-  const ruteIdx = headers.findIndex(h => h.includes("rute") || h.includes("route"));
-
-  const cMod = modIdx >= 0 ? modIdx : 0;
-  const cAcc = accIdx >= 0 ? accIdx : 1;
-  const cCode = codeIdx >= 0 ? codeIdx : 2;
-  const cName = nameIdx >= 0 ? nameIdx : 3;
-  const cCrewCode = crewCodeIdx >= 0 ? crewCodeIdx : 4;
-  const cCrewName = crewNameIdx >= 0 ? crewNameIdx : 5;
-  const cRute = ruteIdx >= 0 ? ruteIdx : 6;
-
-  // 1. Kumpulkan Fingerprint Jadwal Existing di Sentral
-  const existingScheduleKeys = {};
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i];
-    const eMod = (row[cMod] || "").toString().trim().toUpperCase().replace(/\s+/g, "");
-    const eCode = (row[cCode] || "").toString().trim().toUpperCase();
-    const eCrew = (row[cCrewCode] || "").toString().trim();
-    const eRute = (row[cRute] || "").toString().trim().replace(/^rute\s*/i, "");
-    const eAcc = (row[cAcc] || "").toString().trim().toUpperCase();
-
-    if (eCode && eRute) {
-      // Key unik: Modul + Crew + Rute + Kode Toko + Account
-      const key = `${eMod}_${eCrew}_${eRute}_${eCode}_${eAcc}`;
-      existingScheduleKeys[key] = true;
+  const ss = SpreadsheetApp.openById(CONFIG.UNIFIED_PIPELINE_ID);
+  let sheet = ss.getSheetByName("Master_Toko") || ss.getSheetByName("master_toko") || ss.getSheetByName("DATA TOKO");
+  
+  if (!sheet) {
+    const allSheets = ss.getSheets();
+    for (let i = 0; i < allSheets.length; i++) {
+      if (allSheets[i].getSheetId() === 1288205369) {
+        sheet = allSheets[i];
+        break;
+      }
     }
   }
+  if (!sheet) sheet = ss.getSheets()[0];
 
-  // 2. Filter Toko: Hanya tambahkan toko yang belum pernah terinput di rute/tanggal ini
-  const rowsToAppend = [];
   const cleanModule = moduleName.toUpperCase().replace(/\s+/g, "");
   const cleanRute = rute.toString().trim().replace(/^rute\s*/i, "");
   let cleanCrewCode = (crewCode || "").toString().trim();
   const cleanCrewName = (crewName || "").toString().trim();
 
-  // Fail-safe: Jika cleanCrewCode kosong atau sama dengan nama atau tidak valid, cari ID resminya dari master_user
-  if (!cleanCrewCode || cleanCrewCode.toLowerCase() === cleanCrewName.toLowerCase()) {
-    try {
-      const userSheet = ss.getSheetByName("master_user") || ss.getSheetByName("Master_User");
-      if (userSheet) {
-        const uValues = userSheet.getDataRange().getValues();
-        if (uValues.length > 1) {
-          const uHeaders = uValues[0].map(h => (h || "").toString().toLowerCase().replace(/[^a-z0-9]/g, ""));
-          const uIdIdx = uHeaders.findIndex(h => h === "id" || h.includes("kodecrew") || h.includes("nik"));
-          const uNameIdx = uHeaders.findIndex(h => h === "nama" || h.includes("namacrew") || h.includes("name"));
-          const cleanTarget = cleanCrewName.toLowerCase().replace(/[^a-z0-9]/g, "");
-
-          if (uIdIdx >= 0 && uNameIdx >= 0 && cleanTarget) {
-            for (let r = 1; r < uValues.length; r++) {
-              const uRow = uValues[r];
-              const uNameClean = (uRow[uNameIdx] || "").toString().toLowerCase().replace(/[^a-z0-9]/g, "");
-              if (uNameClean && (uNameClean === cleanTarget || uNameClean.includes(cleanTarget) || cleanTarget.includes(uNameClean))) {
-                const foundId = uRow[uIdIdx];
-                if (foundId !== undefined && foundId !== null && foundId !== "") {
-                  cleanCrewCode = foundId.toString().trim();
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-    } catch (lookupErr) {
-      console.warn("Gagal auto-lookup master_user:", lookupErr);
-    }
-  }
-
+  const rowsToAppend = [];
   for (let s = 0; s < stores.length; s++) {
     const store = stores[s];
     const account = (store.account || "ALFAMART").toString().trim().toUpperCase();
@@ -332,54 +301,29 @@ function appendRouteToUnifiedPipeline(moduleName, crewCode, crewName, rute, stor
 
     if (!kode) continue;
 
-    const targetKey = `${cleanModule}_${cleanCrewCode}_${cleanRute}_${kode}_${account}`;
-    
-    // Jika jadwal toko ini sudah ada di Sentral untuk crew & rute yang sama, lewati (Anti-Dobel)
-    if (existingScheduleKeys[targetKey]) {
-      continue;
-    }
-
-    // Tandai agar tidak dobel di dalam batch yang sama
-    existingScheduleKeys[targetKey] = true;
-
-    if (headers.length >= 6) {
-      const numCols = Math.max(headers.length, 7);
-      const row = new Array(numCols).fill("");
-
-      if (modIdx >= 0) row[modIdx] = cleanModule;
-      if (accIdx >= 0) row[accIdx] = account;
-      if (codeIdx >= 0) row[codeIdx] = kode;
-      if (nameIdx >= 0) row[nameIdx] = nama;
-      if (crewCodeIdx >= 0) row[crewCodeIdx] = cleanCrewCode;
-      if (crewNameIdx >= 0) row[crewNameIdx] = cleanCrewName;
-      if (ruteIdx >= 0) row[ruteIdx] = cleanRute;
-
-      rowsToAppend.push(row);
-    } else {
-      rowsToAppend.push([
-        cleanModule,
-        account,
-        kode,
-        nama,
-        cleanCrewCode,
-        cleanCrewName,
-        cleanRute
-      ]);
-    }
+    rowsToAppend.push([
+      cleanModule,
+      account,
+      kode,
+      nama,
+      cleanCrewCode,
+      cleanCrewName,
+      cleanRute,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ]);
   }
 
-  if (rowsToAppend.length === 0) {
-    // Semua toko sudah pernah terinput sebelumnya, tidak ada baris baru yang ditambahkan
-    return 0;
-  }
+  if (rowsToAppend.length === 0) return 0;
 
   const lastRow = sheet.getLastRow();
-  const startRow = lastRow + 1;
-  const numRows = rowsToAppend.length;
-  const numCols = rowsToAppend[0].length;
-
-  sheet.getRange(startRow, 1, numRows, numCols).setValues(rowsToAppend);
-  return numRows;
+  sheet.getRange(lastRow + 1, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
+  return rowsToAppend.length;
 }
 
 function appendRekapToMasterDatabase(rows) {

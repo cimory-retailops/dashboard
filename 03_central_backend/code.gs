@@ -1537,10 +1537,18 @@ function doPost(e) {
       throw new Error("Payload kosong atau format JSON tidak valid");
     }
 
-    var action = payload.action || "ping";
+    var action = payload.action || "";
+    if (!action && payload.stores && payload.stores.length > 0) {
+      action = "submit_route_schedule";
+    }
+    if (!action) {
+      action = "ping";
+    }
     var result = { status: "success", action: action, timestamp: new Date().toISOString() };
 
-    if (action === "update_store_route_info") {
+    if (action === "submit_route_schedule" || action === "save_route") {
+      result.data = handleSubmitRouteSchedule_(payload);
+    } else if (action === "update_store_route_info") {
       result.data = handleUpdateStoreRouteInfo_(payload);
     } else if (action === "transfer_store_crew") {
       result.data = handleTransferStoreCrew_(payload);
@@ -2067,6 +2075,96 @@ function handleAssignScheduledStore_(payload) {
   return {
     message: "Toko " + namaToko + " (" + kodeToko + ") berhasil dijadwalkan ke " + targetCrewName + " (Modul " + targetModul + ", Rute " + targetRute + ")",
     audit: audit
+  };
+}
+
+/**
+ * 4.B SUBMIT BATCH ROUTE SCHEDULE (Web Absen MDS Input)
+ */
+function handleSubmitRouteSchedule_(payload) {
+  var targetModul = normalizeModulKey_(payload.module || payload.modul || "");
+  var targetCrewName = String(payload.crewName || payload.namaCrew || "").trim();
+  var targetCrewCode = String(payload.crewCode || payload.kodeCrew || "").trim();
+  var targetRute = String(payload.rute || "1").trim().replace(/[^0-9]/g, "") || "1";
+  var stores = payload.stores || [];
+
+  if (!stores.length) throw new Error("Daftar toko kosong");
+
+  var centralSs = SpreadsheetApp.getActiveSpreadsheet();
+  var centralSheet = centralSs.getSheetByName("Master_Toko");
+  if (!centralSheet) throw new Error("Sheet Master_Toko tidak ditemukan");
+
+  // Auto-resolve ID resmi dari master_user jika kode kru kosong atau sama dengan nama
+  if (!targetCrewCode || targetCrewCode.toLowerCase() === targetCrewName.toLowerCase()) {
+    try {
+      var userSheet = centralSs.getSheetByName("master_user") || centralSs.getSheetByName("Master_User");
+      if (userSheet) {
+        var uData = userSheet.getDataRange().getValues();
+        var uClean = targetCrewName.toLowerCase().replace(/[^a-z0-9]/g, "");
+        for (var u = 1; u < uData.length; u++) {
+          var uRowName = String(uData[u][1] || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+          if (uRowName && (uRowName === uClean || uRowName.indexOf(uClean) !== -1 || uClean.indexOf(uRowName) !== -1)) {
+            targetCrewCode = String(uData[u][0] || "").trim();
+            break;
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  var cValues = centralSheet.getDataRange().getValues();
+  var existingKeys = {};
+  for (var k = 1; k < cValues.length; k++) {
+    var cRow = cValues[k];
+    var eMod = normalizeModulKey_(String(cRow[0] || ""));
+    var eAcc = String(cRow[1] || "").trim().toUpperCase();
+    var eCode = String(cRow[2] || "").trim().toUpperCase();
+    var eCrew = String(cRow[4] || "").trim();
+    var eRute = String(cRow[6] || "").trim().replace(/[^0-9]/g, "");
+    if (eCode && eRute) {
+      existingKeys[eMod + "_" + eCrew + "_" + eRute + "_" + eCode + "_" + eAcc] = true;
+    }
+  }
+
+  var rowsToAppend = [];
+  for (var i = 0; i < stores.length; i++) {
+    var st = stores[i];
+    var acc = String(st.account || "ALFAMART").trim().toUpperCase();
+    var kTok = String(st.kodeToko || st.kode || "").trim().toUpperCase();
+    var nTok = String(st.namaToko || st.nama || "").trim();
+    if (!kTok) continue;
+
+    var targetKey = targetModul + "_" + targetCrewCode + "_" + targetRute + "_" + kTok + "_" + acc;
+    if (existingKeys[targetKey]) continue;
+    existingKeys[targetKey] = true;
+
+    rowsToAppend.push([targetModul, acc, kTok, nTok, targetCrewCode, targetCrewName, targetRute, "", "", "", "", "", "", ""]);
+  }
+
+  if (rowsToAppend.length > 0) {
+    var lastRow = centralSheet.getLastRow();
+    centralSheet.getRange(lastRow + 1, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
+  }
+
+  // Sinkronkan juga ke modul cabang masing-masing
+  if (targetModul && modulIDs[targetModul] && rowsToAppend.length > 0) {
+    try {
+      var mSs = SpreadsheetApp.openById(modulIDs[targetModul]);
+      var mSheet = getSheetByNames_(mSs, ["Master_Toko", "master_toko", "Master Toko", "DATA TOKO", "Sheet1"]);
+      if (mSheet) {
+        var branchRows = rowsToAppend.map(function(r) {
+          return [r[1], r[2], r[3], r[4], r[5], r[6], "", "", "", "", "", "", "AKTIF"];
+        });
+        var mLastRow = mSheet.getLastRow();
+        mSheet.getRange(mLastRow + 1, 1, branchRows.length, branchRows[0].length).setValues(branchRows);
+      }
+    } catch (e) {}
+  }
+
+  return {
+    success: true,
+    count: rowsToAppend.length,
+    message: "Berhasil menginput " + rowsToAppend.length + " toko ke Master_Toko untuk " + targetCrewName + " (Rute " + targetRute + ")"
   };
 }
 

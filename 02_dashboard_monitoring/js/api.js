@@ -132,8 +132,19 @@ const ApiService = {
   async getVisits(params = {}) {
     const cacheKey = 'visits_' + JSON.stringify(params);
     const cached = this.memoryCache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp < CONFIG.CACHE_EXPIRY_MS)) {
+    if (!params.forceRefresh && cached && (Date.now() - cached.timestamp < CONFIG.CACHE_EXPIRY_MS)) {
       return cached.data;
+    }
+
+    // Check IndexedDB persistent cache (< 10ms)
+    if (!params.forceRefresh && window.DashboardDB) {
+      try {
+        const idbData = await DashboardDB.get('visits_data');
+        if (idbData && idbData.length > 0) {
+          this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: idbData });
+          return idbData;
+        }
+      } catch (e) {}
     }
 
     // 1. Direct High-Speed Parallel Fetch (1.5 - 2.5s across all 15 branch sheets)
@@ -141,6 +152,7 @@ const ApiService = {
       const directVisits = await this.getVisitsDirect(params);
       if (directVisits && directVisits.length > 0) {
         this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: directVisits });
+        if (window.DashboardDB) DashboardDB.set('visits_data', directVisits, 30 * 60 * 1000);
         return directVisits;
       }
     } catch (e) {
@@ -153,12 +165,14 @@ const ApiService = {
       const res = await this.fetchWithTimeout(url, CONFIG.DEFAULT_TIMEOUT_MS);
       if (res && res.status === 'success' && res.data && res.data.length > 0) {
         this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: res.data });
+        if (window.DashboardDB) DashboardDB.set('visits_data', res.data, 30 * 60 * 1000);
         return res.data;
       }
     } catch (err) {
       console.warn('Central API getVisits failed:', err);
     }
 
+    if (cached) return cached.data;
     return [];
   },
 
@@ -281,14 +295,26 @@ const ApiService = {
   async getAbsensi(params = {}) {
     const cacheKey = 'absensi_' + JSON.stringify(params);
     const cached = this.memoryCache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp < CONFIG.CACHE_EXPIRY_MS)) {
+    if (!params.forceRefresh && cached && (Date.now() - cached.timestamp < CONFIG.CACHE_EXPIRY_MS)) {
       return cached.data;
+    }
+
+    // Check IndexedDB persistent cache (< 10ms)
+    if (!params.forceRefresh && window.DashboardDB) {
+      try {
+        const idbData = await DashboardDB.get('absensi_data');
+        if (idbData && idbData.length > 0) {
+          this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: idbData });
+          return idbData;
+        }
+      } catch (e) {}
     }
 
     try {
       const directAbs = await this.getAbsensiDirect(params);
       if (directAbs && directAbs.length > 0) {
         this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: directAbs });
+        if (window.DashboardDB) DashboardDB.set('absensi_data', directAbs, 30 * 60 * 1000);
         return directAbs;
       }
     } catch (e) {
@@ -301,12 +327,14 @@ const ApiService = {
       const res = await this.fetchWithTimeout(url, CONFIG.FAST_TIMEOUT_MS);
       if (res && res.status === 'success' && res.data) {
         this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: res.data });
+        if (window.DashboardDB) DashboardDB.set('absensi_data', res.data, 30 * 60 * 1000);
         return res.data;
       }
     } catch (err) {
       console.warn('Central API getAbsensi failed:', err);
     }
 
+    if (cached) return cached.data;
     return [];
   },
 
