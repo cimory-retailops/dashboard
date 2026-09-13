@@ -17,6 +17,10 @@ function dashboardApp() {
     isLoading: false,
     loadingMessage: 'Menghubungkan ke Database Central...',
     loadingStage: 1, // 1: Connecting, 2: Fetching, 3: Processing
+    isSilentSyncing: false, // Non-blocking background sync indicator
+    lastSyncTime: Date.now(), // Timestamp of last successful sync
+    syncTimer: null, // Heartbeat timer for tab-active polling
+    isSyncLocked: false, // Mutex lock to prevent race conditions
 
     // Firebase & RBAC Authentication State
     currentUser: null, // { uid, email, displayName, role, isSuperAdmin }
@@ -302,37 +306,28 @@ function dashboardApp() {
     async saveSessionState() {
       try {
         const state = {
-          selectedModul: this.selectedModul,
-          selectedAccount: this.selectedAccount,
-          selectedPeriod: this.selectedPeriod,
-          dateFilter: this.dateFilter,
-          startDate: this.startDate,
-          endDate: this.endDate,
-          activeTab: this.activeTab,
-          waReportModal: {
-            isOpen: this.waReportModal.isOpen,
-            selectedRegion: this.waReportModal.selectedRegion
-          },
+          selectedModul: this.selectedModul || 'ALL',
+          selectedAccount: this.selectedAccount || 'ALL',
+          selectedPeriod: this.selectedPeriod || 'LIVE',
+          dateFilter: this.dateFilter || 'LATEST_DAY',
+          startDate: this.startDate || '',
+          endDate: this.endDate || '',
+          activeTab: this.activeTab || 'kunjungan',
           timestamp: Date.now()
         };
 
         if (window.DashboardDB) {
-          await DashboardDB.set('app_state', state);
-          if (this.visits && this.visits.length > 0) {
-            await DashboardDB.set('visits_data', this.visits);
-          }
-          if (this.absensi && this.absensi.length > 0) {
-            await DashboardDB.set('absensi_data', this.absensi);
-          }
-          if (this.masterToko && this.masterToko.length > 0) {
-            await DashboardDB.set('master_toko', this.masterToko, 7 * 24 * 60 * 60 * 1000);
-          }
-          if (this.masterUser && this.masterUser.length > 0) {
-            await DashboardDB.set('master_user', this.masterUser, 7 * 24 * 60 * 60 * 1000);
-          }
-          if (this.archiveList && this.archiveList.length > 0) {
-            await DashboardDB.set('archive_list', this.archiveList);
-          }
+          const entries = {
+            app_state: state
+          };
+          if (this.visits && this.visits.length > 0) entries.visits_data = this.visits;
+          if (this.absensi && this.absensi.length > 0) entries.absensi_data = this.absensi;
+          if (this.masterToko && this.masterToko.length > 0) entries.master_toko = this.masterToko;
+          if (this.masterUser && this.masterUser.length > 0) entries.master_user = this.masterUser;
+          if (this.archiveList && this.archiveList.length > 0) entries.archive_list = this.archiveList;
+
+          await DashboardDB.setMany(entries);
+          console.log(`%c[IndexedDB Save]%c State & ${this.visits ? this.visits.length : 0} kunjungan tersimpan permanen di memori HP`, 'background:#059669;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#34d399;');
         }
       } catch (e) {
         console.warn('Gagal menyimpan cache IndexedDB:', e);
@@ -345,22 +340,9 @@ function dashboardApp() {
     async restoreSessionState() {
       try {
         if (!window.DashboardDB) return false;
-        const state = await DashboardDB.get('app_state', true);
-        if (!state) return false;
 
-        this.selectedModul = state.selectedModul || 'ALL';
-        this.selectedAccount = state.selectedAccount || 'ALL';
-        this.selectedPeriod = state.selectedPeriod || 'LIVE';
-        this.dateFilter = state.dateFilter || 'LATEST_DAY';
-        this.startDate = state.startDate || '';
-        this.endDate = state.endDate || '';
-        this.activeTab = state.activeTab || 'kunjungan';
-        if (state.waReportModal) {
-          this.waReportModal.isOpen = !!state.waReportModal.isOpen;
-          this.waReportModal.selectedRegion = state.waReportModal.selectedRegion || 'JABODETABEK';
-        }
-
-        const [cachedVisits, cachedAbsensi, cachedMaster, cachedUsers, cachedArchives] = await Promise.all([
+        const [state, cachedVisits, cachedAbsensi, cachedMaster, cachedUsers, cachedArchives] = await Promise.all([
+          DashboardDB.get('app_state', true),
           DashboardDB.get('visits_data', true),
           DashboardDB.get('absensi_data', true),
           DashboardDB.get('master_toko', true),
@@ -368,15 +350,27 @@ function dashboardApp() {
           DashboardDB.get('archive_list', true)
         ]);
 
+        if (state) {
+          this.selectedModul = state.selectedModul || 'ALL';
+          this.selectedAccount = state.selectedAccount || 'ALL';
+          this.selectedPeriod = state.selectedPeriod || 'LIVE';
+          this.dateFilter = state.dateFilter || 'LATEST_DAY';
+          this.startDate = state.startDate || '';
+          this.endDate = state.endDate || '';
+          this.activeTab = state.activeTab || 'kunjungan';
+        }
+
+        if (cachedMaster && cachedMaster.length > 0) this.masterToko = cachedMaster;
+        if (cachedUsers && cachedUsers.length > 0) this.masterUser = cachedUsers;
+        if (cachedAbsensi && cachedAbsensi.length > 0) this.absensi = cachedAbsensi;
+        if (cachedArchives && cachedArchives.length > 0) this.archiveList = cachedArchives;
+
         if (cachedVisits && cachedVisits.length > 0) {
           this.visits = cachedVisits;
-          this.absensi = cachedAbsensi || [];
-          this.masterToko = cachedMaster || [];
-          this.masterUser = cachedUsers || [];
-          this.archiveList = cachedArchives || [];
           this.updateCrewModulMap();
           this.indexDataStore();
           this.updateActiveDateLabel(this.visits);
+          console.log(`%c[IndexedDB Restored]%c Berhasil memulihkan ${this.visits.length} data kunjungan dari storage lokal tanpa download!`, 'background:#4338ca;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#818cf8;');
           return true;
         }
         return false;
@@ -403,16 +397,17 @@ function dashboardApp() {
       this.initTheme();
       this.setDefaultDates();
       this.dismissPreloader();
+      this.isLoading = false; // Zero blocking modal
 
       // Inisialisasi Firebase Auth & RBAC Permissions Matrix
-      await this.initRbac();
+      try { await this.initRbac(); } catch(e) {}
 
-      // Check if session can be restored instantly from IndexedDB (< 15ms) - Zero Loading Screen!
+      // Check if session can be restored instantly from cache (< 1ms)
       const restored = await this.restoreSessionState();
 
-      if (restored && this.visits.length > 0) {
-        this.isLoading = false;
+      if (restored && this.visits && this.visits.length > 0) {
         this.currentPage = 1;
+        this.lastSyncTime = Date.now();
 
         requestAnimationFrame(() => {
           this.refreshCharts();
@@ -423,25 +418,16 @@ function dashboardApp() {
           }
         });
 
-        // Background Silent Revalidation: Refresh data quietly without blocking user screen
-        setTimeout(() => {
-          this.refreshAllData(false);
-          this.loadArchiveMonths();
-        }, 150);
+        this.loadArchiveMonths();
       } else {
-        // Initial Cold Fetch (Only when no cache in IndexedDB)
-        await this.refreshAllData(true);
+        // Cold Fetch non-blocking in background without locking screen
+        this.refreshAllData(false);
         this.loadArchiveMonths();
       }
 
-      // Watchdog fallback: Paksa tutup loading setelah 8 detik jika koneksi HP lambat/stuck
-      setTimeout(() => {
-        if (this.isLoading) {
-          console.warn('[Watchdog] InitApp timeout, forced loader dismissal');
-          this.isLoading = false;
-          this.dismissPreloader();
-        }
-      }, 8000);
+      // Inisialisasi onResume & Lifecycle Event Listeners
+      this.initLifecycleListeners();
+      this.dismissPreloader();
 
       // Setup Lucide icons & Watch activeTab for Lazy Loading heavy modules
       this.$nextTick(() => {
@@ -473,11 +459,6 @@ function dashboardApp() {
       // Auto-save session state when user switches apps (e.g. to WhatsApp)
       window.addEventListener('pagehide', () => this.saveSessionState());
       window.addEventListener('beforeunload', () => this.saveSessionState());
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-          this.saveSessionState();
-        }
-      });
 
       // Global event delegation for Leaflet interactive popups
       document.addEventListener('click', (e) => {
@@ -500,6 +481,120 @@ function dashboardApp() {
       });
     },
 
+    /**
+     * Web onResume & Smart Lifecycle Listeners
+     */
+    initLifecycleListeners() {
+      // 1. Web onResume (Tab Switch / App Resume dari WA / Background)
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          const elapsed = Date.now() - (this.lastSyncTime || 0);
+          // Jika sudah lewat 3 menit sejak sync terakhir, auto-sync data realtime tanpa block layar
+          if (elapsed > 3 * 60 * 1000 && this.selectedPeriod === 'LIVE') {
+            this.syncRealtimeDataOnly();
+          }
+        } else if (document.visibilityState === 'hidden') {
+          this.saveSessionState();
+        }
+      });
+
+      // 2. Window Focus (Alt-Tab atau klik balik ke browser)
+      window.addEventListener('focus', () => {
+        const elapsed = Date.now() - (this.lastSyncTime || 0);
+        if (elapsed > 3 * 60 * 1000 && this.selectedPeriod === 'LIVE') {
+          this.syncRealtimeDataOnly();
+        }
+      });
+
+      // 3. Online Reconnect
+      window.addEventListener('online', () => {
+        if (this.selectedPeriod === 'LIVE') {
+          this.syncRealtimeDataOnly();
+        }
+      });
+
+      // 4. Smart Heartbeat Polling: Tiap 3.5 menit HANYA jika tab sedang aktif dilihat
+      if (this.syncTimer) clearInterval(this.syncTimer);
+      this.syncTimer = setInterval(() => {
+        if (document.visibilityState === 'visible' && this.selectedPeriod === 'LIVE' && !this.isLoading) {
+          this.syncRealtimeDataOnly();
+        }
+      }, 3.5 * 60 * 1000);
+    },
+
+    /**
+     * Dapatkan target modul efektif berdasarkan role login (MDS: 1 modul, SPV: 1 wilayah, SuperAdmin: filter aktif)
+     */
+    getEffectiveFetchModul() {
+      if (this.currentUser) {
+        const role = (this.currentUser.role || '').toUpperCase();
+        if (role === 'MDS' && this.currentUser.modul && this.currentUser.modul !== 'ALL') {
+          return this.currentUser.modul;
+        }
+        if (role === 'SPV' && this.currentUser.modul && this.currentUser.modul !== 'ALL') {
+          return this.currentUser.modul;
+        }
+      }
+      try {
+        const raw = localStorage.getItem('cimory_portal_active_session');
+        if (raw) {
+          const u = JSON.parse(raw);
+          const r = (u.role || '').toUpperCase();
+          if (r === 'MDS' && u.modul && u.modul !== 'ALL') return u.modul;
+          if (r === 'SPV' && u.modul && u.modul !== 'ALL') return u.modul;
+        }
+      } catch (e) {}
+
+      return this.selectedModul || 'ALL';
+    },
+
+    /**
+     * Silent Background Realtime Sync (Hanya Kunjungan & Absensi, Nol Loading Screen)
+     */
+    async syncRealtimeDataOnly() {
+      if (this.isSyncLocked || this.selectedPeriod !== 'LIVE') return;
+      this.isSyncLocked = true;
+      this.isSilentSyncing = true;
+
+      const targetModul = this.getEffectiveFetchModul();
+
+      try {
+        const [visitsData, absensiData] = await Promise.all([
+          ApiService.getVisitsDirect({ modul: targetModul }),
+          ApiService.getAbsensiDirect({ modul: targetModul })
+        ]);
+
+        if (visitsData && visitsData.length > 0) {
+          this.visits = visitsData;
+          if (window.DashboardDB) DashboardDB.set('visits_data', this.visits, 24 * 60 * 60 * 1000);
+        }
+        if (absensiData && absensiData.length > 0) {
+          this.absensi = absensiData;
+          if (window.DashboardDB) DashboardDB.set('absensi_data', this.absensi, 24 * 60 * 60 * 1000);
+        }
+
+        this.lastSyncTime = Date.now();
+        this.updateCrewModulMap();
+        this.indexDataStore();
+        this.updateActiveDateLabel(this.visits);
+        this.saveSessionState();
+
+        this.$nextTick(() => {
+          this.refreshCharts();
+          if (this.activeTab === 'kunjungan' && document.getElementById('visits-map')) {
+            MapService.renderVisitsOnMap(this.filteredVisits);
+          }
+        });
+
+        console.log(`%c[Realtime Sync]%c Data Kunjungan & Absensi terupdate mulus (${new Date().toLocaleTimeString()})`, 'background:#059669;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#34d399;');
+      } catch (err) {
+        console.warn('[Realtime Sync] Background sync skipped:', err);
+      } finally {
+        this.isSilentSyncing = false;
+        this.isSyncLocked = false;
+      }
+    },
+
     initTheme() {
       if (this.theme === 'dark') {
         document.documentElement.classList.add('dark');
@@ -513,14 +608,9 @@ function dashboardApp() {
       localStorage.setItem('mds_theme', this.theme);
       this.initTheme();
       this.refreshCharts();
-      if (this.activeTab === 'kunjungan') {
+      if (document.getElementById('visits-map')) {
         MapService.initMap('visits-map', this.theme === 'dark');
         MapService.renderVisitsOnMap(this.filteredVisits);
-      } else if (this.activeTab === 'jadwal' && this.isJadwalRouteActive) {
-        this.renderJadwalRouteMap();
-      } else if (this.activeTab === 'tokonasional' && this.selectedStoreForMap) {
-        this.selectStoreForMap(this.selectedStoreForMap);
-      } else if (this.activeTab === 'evaluasi') {
         this.refreshSpvCharts();
       }
     },
@@ -728,6 +818,9 @@ function dashboardApp() {
      * Master Data Refresh Function
      */
     async refreshAllData(showLoader = true, forceNetwork = false) {
+      if (this.isSyncLocked) return;
+      this.isSyncLocked = true;
+
       if (showLoader) {
         this.isLoading = true;
         this.loadingStage = 1;
@@ -735,10 +828,12 @@ function dashboardApp() {
       }
 
       try {
+        const targetModul = this.getEffectiveFetchModul();
+
         if (this.selectedPeriod === 'LIVE') {
           if (showLoader) {
             this.loadingStage = 2;
-            this.loadingMessage = 'Mengunduh data Kunjungan, Absensi & Master Rute...';
+            this.loadingMessage = targetModul !== 'ALL' ? `Mengunduh data modul ${targetModul}...` : 'Mengunduh data Kunjungan & Absensi...';
           }
 
           // Clear in-memory API cache on explicit network refresh
@@ -747,12 +842,12 @@ function dashboardApp() {
           }
 
           // Fetch Live Data (reads from IndexedDB in <10ms if not forceNetwork)
-          const masterTokoPromise = ApiService.getMasterToko({ modul: 'ALL', forceRefresh: forceNetwork });
-          const masterUserPromise = ApiService.getMasterUser({ modul: 'ALL', forceRefresh: forceNetwork });
+          const masterTokoPromise = ApiService.getMasterToko({ modul: targetModul, forceRefresh: forceNetwork });
+          const masterUserPromise = ApiService.getMasterUser({ modul: targetModul, forceRefresh: forceNetwork });
 
           const [visitsData, absensiData, masterTokoData, masterUserData] = await Promise.all([
-            ApiService.getVisits({ modul: 'ALL', forceRefresh: forceNetwork }),
-            ApiService.getAbsensi({ modul: 'ALL', forceRefresh: forceNetwork }),
+            ApiService.getVisits({ modul: targetModul, forceRefresh: forceNetwork }),
+            ApiService.getAbsensi({ modul: targetModul, forceRefresh: forceNetwork }),
             masterTokoPromise,
             masterUserPromise
           ]);
@@ -761,12 +856,13 @@ function dashboardApp() {
           this.absensi = absensiData || [];
           if (masterTokoData && masterTokoData.length > 0) {
             this.masterToko = masterTokoData;
-            if (window.DashboardDB) DashboardDB.set('master_toko', masterTokoData);
           }
           if (masterUserData && masterUserData.length > 0) {
             this.masterUser = masterUserData;
-            if (window.DashboardDB) DashboardDB.set('master_user', masterUserData);
           }
+
+          this.lastSyncTime = Date.now();
+          await this.saveSessionState();
 
           console.log(`%c[Data Sync Selesai]%c Visits: ${this.visits.length} baris | Absensi: ${this.absensi.length} baris | Master Toko: ${this.masterToko.length} toko | Master User: ${this.masterUser.length} personil`, 'background:#4338ca;color:white;padding:3px 8px;border-radius:4px;font-weight:bold;', 'color:#818cf8;');
 
@@ -778,6 +874,7 @@ function dashboardApp() {
           }
           const archiveVisits = await ApiService.getArchiveVisits(this.selectedPeriod, { modul: 'ALL' });
           this.visits = archiveVisits || [];
+          await this.saveSessionState();
         }
 
         if (showLoader) {
@@ -790,7 +887,6 @@ function dashboardApp() {
         this.indexDataStore();
         this.currentPage = 1;
         this.updateActiveDateLabel(this.visits);
-        this.saveSessionState();
         this.$nextTick(() => {
           this.refreshCharts();
           if (window.lucide) lucide.createIcons();
@@ -803,6 +899,7 @@ function dashboardApp() {
       } catch (error) {
         console.error('Error refresh data:', error);
       } finally {
+        this.isSyncLocked = false;
         if (showLoader) {
           setTimeout(() => {
             this.isLoading = false;
@@ -7692,11 +7789,6 @@ function dashboardApp() {
 
     toggleCategoryMenu() {
       this.showCategoryMenu = !this.showCategoryMenu;
-      if (this.showCategoryMenu) {
-        this.$nextTick(() => {
-          if (window.lucide) lucide.createIcons();
-        });
-      }
     },
 
     /**

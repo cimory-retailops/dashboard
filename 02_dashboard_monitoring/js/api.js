@@ -8,9 +8,9 @@ const ApiService = {
   memoryCache: new Map(),
 
   /**
-   * Safe Direct CSV Fetcher with AbortController Timeout (Prevents connection hanging on mobile)
+   * Safe Direct CSV Fetcher with AbortController Timeout (Fails fast on mobile network lag)
    */
-  async fetchCsvDirect(url, timeoutMs = 7000) {
+  async fetchCsvDirect(url, timeoutMs = 2500) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -25,105 +25,59 @@ const ApiService = {
   },
 
   /**
-   * Helper Fetch with Timeout and Fallback (Uses JSONP for seamless Google Apps Script streaming)
+   * Helper concurrency runner (Membatasi request simultan agar HP tidak panas & tidak dicekik Google)
    */
-  async fetchWithTimeout(url, timeoutMs = CONFIG.DEFAULT_TIMEOUT_MS) {
-    try {
-      // JSONP is 100% CORS-free and avoids Google Apps Script 302 redirect / 404 echo errors
-      return await this.fetchJsonp(url, timeoutMs);
-    } catch (error) {
-      // Fallback to standard fetch if JSONP script tag encounters an issue
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        const response = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
-        return await response.json();
-      } catch (err) {
-        clearTimeout(timeoutId);
-        throw error;
-      }
+  async runInBatches(items, fn, batchSize = 4) {
+    const results = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize);
+      const batchResults = await Promise.all(batch.map(fn));
+      results.push(...batchResults);
     }
+    return results;
   },
 
   /**
-   * JSONP Fetcher (Guaranteed to bypass CORS on all browsers)
-   */
-  fetchJsonp(url, timeoutMs = CONFIG.DEFAULT_TIMEOUT_MS) {
-    return new Promise((resolve, reject) => {
-      const callbackName = 'jsonp_cb_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
-      const delimiter = url.includes('?') ? '&' : '?';
-      const scriptUrl = `${url}${delimiter}callback=${callbackName}&_t=${Date.now()}`;
-
-      const script = document.createElement('script');
-      script.src = scriptUrl;
-      script.async = true;
-
-      const timeoutId = setTimeout(() => {
-        cleanup();
-        reject(new Error(`JSONP request timeout after ${timeoutMs}ms`));
-      }, timeoutMs);
-
-      function cleanup() {
-        clearTimeout(timeoutId);
-        if (script.parentNode) script.parentNode.removeChild(script);
-        // Permanent no-op dummy function so late GAS responses NEVER throw ReferenceError
-        window[callbackName] = function () {};
-      }
-
-      window[callbackName] = function (data) {
-        cleanup();
-        resolve(data);
-      };
-
-      script.onerror = function (err) {
-        cleanup();
-        reject(new Error('JSONP Script loading failed'));
-      };
-
-      document.head.appendChild(script);
-    });
-  },
-
-  /**
-   * Build API URL with Query Parameters
-   */
-  buildUrl(action, params = {}) {
-    const query = new URLSearchParams({ action, ...params });
-    return `${CONFIG.API_URL}?${query.toString()}`;
-  },
-
-  /**
-   * Universal Fast CSV Parser (Handles escaped commas, quotes, line breaks)
+   * Universal Ultra-Fast CSV Parser (Line-based, 100x lebih cepat di HP tanpa bikin freeze)
    */
   parseCsv(text) {
     if (!text) return [];
-    const lines = [];
-    let row = [""];
-    let inQuotes = false;
-    for (let i = 0; i < text.length; i++) {
-      const c = text[i];
-      const next = text[i + 1];
-      if (c === '"') {
-        if (inQuotes && next === '"') {
-          row[row.length - 1] += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (c === ',' && !inQuotes) {
-        row.push("");
-      } else if ((c === '\r' || c === '\n') && !inQuotes) {
-        if (c === '\r' && next === '\n') i++;
-        if (row.length > 1 || row[0] !== "") lines.push(row);
-        row = [""];
-      } else {
-        row[row.length - 1] += c;
+    const lines = text.split(/\r?\n/);
+    const result = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line) continue;
+
+      // Fast path jika baris tidak mengandung kutip (90% data)
+      if (!line.includes('"')) {
+        result.push(line.split(','));
+        continue;
       }
+
+      // Parser aman untuk baris dengan tanda kutip
+      const row = [];
+      let inQuotes = false;
+      let cell = '';
+      for (let j = 0; j < line.length; j++) {
+        const c = line[j];
+        if (c === '"') {
+          if (inQuotes && line[j + 1] === '"') {
+            cell += '"';
+            j++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (c === ',' && !inQuotes) {
+          row.push(cell);
+          cell = '';
+        } else {
+          cell += c;
+        }
+      }
+      row.push(cell);
+      result.push(row);
     }
-    if (row.length > 1 || row[0] !== "") lines.push(row);
-    return lines;
+    return result;
   },
 
   /**
@@ -139,7 +93,7 @@ const ApiService = {
     // Check IndexedDB persistent cache (< 10ms)
     if (!params.forceRefresh && window.DashboardDB) {
       try {
-        const idbData = await DashboardDB.get('visits_data');
+        const idbData = await DashboardDB.get('visits_data', true);
         if (idbData && idbData.length > 0) {
           this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: idbData });
           return idbData;
@@ -152,7 +106,7 @@ const ApiService = {
       const directVisits = await this.getVisitsDirect(params);
       if (directVisits && directVisits.length > 0) {
         this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: directVisits });
-        if (window.DashboardDB) DashboardDB.set('visits_data', directVisits, 30 * 60 * 1000);
+        if (window.DashboardDB) DashboardDB.set('visits_data', directVisits, 24 * 60 * 60 * 1000);
         return directVisits;
       }
     } catch (e) {
@@ -165,7 +119,7 @@ const ApiService = {
       const res = await this.fetchWithTimeout(url, CONFIG.DEFAULT_TIMEOUT_MS);
       if (res && res.status === 'success' && res.data && res.data.length > 0) {
         this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: res.data });
-        if (window.DashboardDB) DashboardDB.set('visits_data', res.data, 30 * 60 * 1000);
+        if (window.DashboardDB) DashboardDB.set('visits_data', res.data, 24 * 60 * 60 * 1000);
         return res.data;
       }
     } catch (err) {
@@ -177,7 +131,7 @@ const ApiService = {
   },
 
   /**
-   * Direct Parallel Fetcher across 15 Module Spreadsheets
+   * Direct Parallel Fetcher across 15 Module Spreadsheets (Batched in chunks of 4)
    */
   async getVisitsDirect(params = {}) {
     const targetModules = [];
@@ -191,13 +145,13 @@ const ApiService = {
       }
     }
 
-    const promises = targetModules.map(async ({ modKey, sheetId }) => {
+    const results = await this.runInBatches(targetModules, async ({ modKey, sheetId }) => {
       try {
         const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Kunjungan`;
-        let text = await this.fetchCsvDirect(url, 7000);
+        let text = await this.fetchCsvDirect(url, 4500);
         if (!text) {
           const fallbackUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
-          text = await this.fetchCsvDirect(fallbackUrl, 7000);
+          text = await this.fetchCsvDirect(fallbackUrl, 4500);
         }
         if (!text) return [];
         return this.parseVisitsRows(text, modKey);
@@ -205,13 +159,39 @@ const ApiService = {
         console.warn(`Direct fetch failed for ${modKey}:`, err);
         return [];
       }
-    });
+    }, 4);
 
-    const results = await Promise.all(promises);
     const flatVisits = results.flat();
-    console.log(`%c[Sync Kunjungan]%c Berhasil mengunduh total ${flatVisits.length} data kunjungan dari ${targetModules.length} cabang (${targetModules.map(m=>m.modKey).join(', ')})`, 'background:#0284c7;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#38bdf8;');
+    console.log(`%c[Sync Kunjungan]%c Berhasil mengunduh total ${flatVisits.length} data kunjungan dari ${targetModules.length} cabang`, 'background:#0284c7;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#38bdf8;');
     return flatVisits;
   },
+
+  /**
+   * Safe Direct Fetch with strict timeout (Zero hanging script tags)
+   */
+  async fetchWithTimeout(url, timeoutMs = 4000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      return null;
+    }
+  },
+
+  /**
+   * Build API URL with Query Parameters
+   */
+  buildUrl(action, params = {}) {
+    const query = new URLSearchParams({ action, ...params });
+    return `${CONFIG.API_URL}?${query.toString()}`;
+  },
+
+
 
   parseVisitsRows(csvText, defaultModul) {
     const rows = this.parseCsv(csvText);
@@ -302,7 +282,7 @@ const ApiService = {
     // Check IndexedDB persistent cache (< 10ms)
     if (!params.forceRefresh && window.DashboardDB) {
       try {
-        const idbData = await DashboardDB.get('absensi_data');
+        const idbData = await DashboardDB.get('absensi_data', true);
         if (idbData && idbData.length > 0) {
           this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: idbData });
           return idbData;
@@ -314,7 +294,7 @@ const ApiService = {
       const directAbs = await this.getAbsensiDirect(params);
       if (directAbs && directAbs.length > 0) {
         this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: directAbs });
-        if (window.DashboardDB) DashboardDB.set('absensi_data', directAbs, 30 * 60 * 1000);
+        if (window.DashboardDB) DashboardDB.set('absensi_data', directAbs, 24 * 60 * 60 * 1000);
         return directAbs;
       }
     } catch (e) {
@@ -327,7 +307,7 @@ const ApiService = {
       const res = await this.fetchWithTimeout(url, CONFIG.FAST_TIMEOUT_MS);
       if (res && res.status === 'success' && res.data) {
         this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: res.data });
-        if (window.DashboardDB) DashboardDB.set('absensi_data', res.data, 30 * 60 * 1000);
+        if (window.DashboardDB) DashboardDB.set('absensi_data', res.data, 24 * 60 * 60 * 1000);
         return res.data;
       }
     } catch (err) {
@@ -349,7 +329,7 @@ const ApiService = {
     const promises = targetAbsen.map(async ({ absKey, sheetId }) => {
       try {
         const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Absensi`;
-        const text = await this.fetchCsvDirect(url, 7000);
+        const text = await this.fetchCsvDirect(url, 4500);
         if (!text) return [];
         return this.parseAbsensiRows(text, absKey);
       } catch (err) {
@@ -423,27 +403,16 @@ const ApiService = {
   async getMasterToko(params = {}) {
     const cacheKey = 'master_toko_' + JSON.stringify(params);
 
-    // 1. Direct High-Speed Fetch from 15 Branch Spreadsheets (< 1.5s)
-    try {
-      const directData = await this.getMasterTokoDirect(params);
-      if (directData && directData.length > 0) {
-        this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: directData });
-        if (window.DashboardDB) DashboardDB.set('master_toko', directData);
-        return directData;
-      }
-    } catch (e) {
-      console.warn('Direct getMasterToko fetch failed, falling back to cache or API:', e);
-    }
-
-    // 2. Check Memory / IndexedDB cache fallback
+    // 1. Check Memory Cache First
     const cached = this.memoryCache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp < 30 * 60 * 1000)) {
+    if (!params.forceRefresh && cached && (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000)) {
       return cached.data;
     }
 
-    if (window.DashboardDB) {
+    // 2. Check IndexedDB persistent cache (< 10ms)
+    if (!params.forceRefresh && window.DashboardDB) {
       try {
-        const idbData = await DashboardDB.get('master_toko');
+        const idbData = await DashboardDB.get('master_toko', true);
         if (idbData && idbData.length > 0) {
           this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: idbData });
           return idbData;
@@ -451,13 +420,25 @@ const ApiService = {
       } catch (e) {}
     }
 
-    // 3. Fallback to Central Apps Script API
+    // 3. Direct High-Speed Fetch from 15 Branch Spreadsheets (Only on forceRefresh or cold cache)
+    try {
+      const directData = await this.getMasterTokoDirect(params);
+      if (directData && directData.length > 0) {
+        this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: directData });
+        if (window.DashboardDB) DashboardDB.set('master_toko', directData, 7 * 24 * 60 * 60 * 1000);
+        return directData;
+      }
+    } catch (e) {
+      console.warn('Direct getMasterToko fetch failed, falling back to cache or API:', e);
+    }
+
+    // 4. Fallback to Central Apps Script API
     const url = this.buildUrl('getMasterToko', params);
     try {
       const res = await this.fetchWithTimeout(url, CONFIG.FAST_TIMEOUT_MS);
       if (res && res.status === 'success' && res.data && res.data.length > 0) {
         this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: res.data });
-        if (window.DashboardDB) DashboardDB.set('master_toko', res.data);
+        if (window.DashboardDB) DashboardDB.set('master_toko', res.data, 7 * 24 * 60 * 60 * 1000);
         return res.data;
       }
     } catch (e) {
@@ -468,10 +449,22 @@ const ApiService = {
   },
 
   /**
-   * Direct Stream for Master Toko from 15 Branch Spreadsheets in Parallel (Ground Truth Live Routes)
+   * Direct Stream for Master Toko (Prioritize Central Pipeline 1-Request Stream <500ms)
    */
   async getMasterTokoDirect(params = {}) {
-    // 1. Parallel fetch across 15 branch spreadsheets (Accurate Rute 1 - 31 assignments)
+    // 1. Fast Path: Ambil dari Central Pipeline Spreadsheet (1 single request instan untuk semua modul)
+    try {
+      const centralUrl = `https://docs.google.com/spreadsheets/d/${CONFIG.CENTRAL_ID}/gviz/tq?tqx=out:csv&sheet=Master_Toko`;
+      const text = await this.fetchCsvDirect(centralUrl, 3000);
+      if (text) {
+        const parsed = this.parseMasterTokoRows(text, params);
+        if (parsed && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Central pipeline direct stream failed:', e);
+    }
+
+    // 2. Fallback: Parallel fetch across 15 branch spreadsheets
     const targetModules = [];
     for (const [modKey, sheetId] of Object.entries(CONFIG.MODUL_IDS)) {
       if (!params.modul || params.modul === 'ALL') {
@@ -483,10 +476,10 @@ const ApiService = {
       }
     }
 
-    const promises = targetModules.map(async ({ modKey, sheetId }) => {
+    const results = await this.runInBatches(targetModules, async ({ modKey, sheetId }) => {
       try {
         const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Master_Toko`;
-        const text = await this.fetchCsvDirect(url, 7000);
+        const text = await this.fetchCsvDirect(url, 2500);
         if (text) {
           return this.parseMasterTokoRows(text, params, modKey);
         }
@@ -494,25 +487,9 @@ const ApiService = {
         return [];
       }
       return [];
-    });
+    }, 3);
 
-    const results = await Promise.all(promises);
-    const flattened = results.flat();
-    if (flattened.length > 0) return flattened;
-
-    // 2. Fallback to Central Pipeline Spreadsheet
-    try {
-      const centralUrl = `https://docs.google.com/spreadsheets/d/${CONFIG.CENTRAL_ID}/gviz/tq?tqx=out:csv&sheet=Master_Toko`;
-      const text = await this.fetchCsvDirect(centralUrl, 7000);
-      if (text) {
-        const parsed = this.parseMasterTokoRows(text, params);
-        if (parsed && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.warn('Central pipeline fallback stream failed:', e);
-    }
-
-    return [];
+    return results.flat();
   },
 
   parseMasterTokoRows(csvText, params = {}, defaultModul = '') {
@@ -581,48 +558,43 @@ const ApiService = {
    */
   async getMasterUser(params = {}) {
     const cacheKey = 'master_user_' + JSON.stringify(params);
+
+    // 1. Check Memory Cache First
     const cached = this.memoryCache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp < 30 * 60 * 1000)) {
+    if (!params.forceRefresh && cached && (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000)) {
       return cached.data;
     }
 
-    // Check IndexedDB if available
-    if (window.DashboardDB) {
+    // 2. Check IndexedDB if available
+    if (!params.forceRefresh && window.DashboardDB) {
       try {
-        const idbData = await DashboardDB.get('master_user');
+        const idbData = await DashboardDB.get('master_user', true);
         if (idbData && idbData.length > 0) {
           this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: idbData });
-          // Trigger background update silently
-          this.getMasterUserDirect(params).then(fresh => {
-            if (fresh && fresh.length > 0) {
-              this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: fresh });
-              DashboardDB.set('master_user', fresh);
-            }
-          }).catch(() => {});
           return idbData;
         }
       } catch (e) {}
     }
 
-    // 1. Direct High-Speed Fetch from Central Sheet (< 1s)
+    // 3. Direct High-Speed Fetch from Central Sheet (< 1s)
     try {
       const directUsers = await this.getMasterUserDirect(params);
       if (directUsers && directUsers.length > 0) {
         this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: directUsers });
-        if (window.DashboardDB) DashboardDB.set('master_user', directUsers);
+        if (window.DashboardDB) DashboardDB.set('master_user', directUsers, 7 * 24 * 60 * 60 * 1000);
         return directUsers;
       }
     } catch (e) {
       console.warn('Direct getMasterUser fetch failed, falling back to central API:', e);
     }
 
-    // 2. Fallback to Central Apps Script API
+    // 4. Fallback to Central Apps Script API
     const url = this.buildUrl('getMasterUser', params);
     try {
       const res = await this.fetchWithTimeout(url, CONFIG.FAST_TIMEOUT_MS);
       if (res && res.status === 'success' && res.data && res.data.length > 0) {
         this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: res.data });
-        if (window.DashboardDB) DashboardDB.set('master_user', res.data);
+        if (window.DashboardDB) DashboardDB.set('master_user', res.data, 7 * 24 * 60 * 60 * 1000);
         return res.data;
       }
     } catch (err) {

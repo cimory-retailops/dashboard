@@ -72,8 +72,8 @@ const CONFIG = {
     'YOMART'
   ],
 
-  // Cache & Request Timeouts
-  DEFAULT_TIMEOUT_MS: 60000,
-  FAST_TIMEOUT_MS: 45000,
+  // Cache & Request Timeouts (Fast fail-safe to prevent mobile freeze)
+  DEFAULT_TIMEOUT_MS: 8000,
+  FAST_TIMEOUT_MS: 5000,
   CACHE_EXPIRY_MS: 5 * 60 * 1000 // 5 minutes local memory cache
 };
