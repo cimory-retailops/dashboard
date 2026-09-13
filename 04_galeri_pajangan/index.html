@@ -37,18 +37,28 @@
           const u = window.PORTAL_ACTIVE_USER;
           const r = (u.role || '').toUpperCase();
           if (u.isSuperAdmin || r === 'SUPERADMIN' || r === 'MANAGER' || r === 'SPV') return true;
+          if (key === 'absen') return true;
+          if (key === 'dashboard') {
+            const p = u.permissions || {};
+            return !!(p.dashboard || p.kunjungan || p.absensi || p.jadwal || p.tokonasional || p.laporan || p.evaluasi);
+          }
           if (u.permissions && u.permissions[key] !== undefined) return Boolean(u.permissions[key]);
           try {
             const rawM = localStorage.getItem('cimory_rbac_matrix');
             if (rawM && u.email) {
               const m = JSON.parse(rawM);
               const entry = m[u.email.toLowerCase()];
-              if (entry && entry.permissions && entry.permissions[key] !== undefined) {
-                return Boolean(entry.permissions[key]);
+              if (entry && entry.permissions) {
+                if (key === 'dashboard') {
+                  const p = entry.permissions;
+                  return !!(p.dashboard || p.kunjungan || p.absensi || p.jadwal || p.tokonasional || p.laporan || p.evaluasi);
+                }
+                if (entry.permissions[key] !== undefined) {
+                  return Boolean(entry.permissions[key]);
+                }
               }
             }
           } catch(e) {}
-          if (key === 'absen') return true;
           return false;
         };
 

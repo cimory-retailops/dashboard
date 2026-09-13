@@ -434,6 +434,15 @@ function dashboardApp() {
         this.loadArchiveMonths();
       }
 
+      // Watchdog fallback: Paksa tutup loading setelah 8 detik jika koneksi HP lambat/stuck
+      setTimeout(() => {
+        if (this.isLoading) {
+          console.warn('[Watchdog] InitApp timeout, forced loader dismissal');
+          this.isLoading = false;
+          this.dismissPreloader();
+        }
+      }, 8000);
+
       // Setup Lucide icons & Watch activeTab for Lazy Loading heavy modules
       this.$nextTick(() => {
         if (window.lucide) lucide.createIcons();

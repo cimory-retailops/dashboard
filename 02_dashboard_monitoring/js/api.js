@@ -8,6 +8,23 @@ const ApiService = {
   memoryCache: new Map(),
 
   /**
+   * Safe Direct CSV Fetcher with AbortController Timeout (Prevents connection hanging on mobile)
+   */
+  async fetchCsvDirect(url, timeoutMs = 7000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!response.ok) return null;
+      return await response.text();
+    } catch (e) {
+      clearTimeout(timeoutId);
+      return null;
+    }
+  },
+
+  /**
    * Helper Fetch with Timeout and Fallback (Uses JSONP for seamless Google Apps Script streaming)
    */
   async fetchWithTimeout(url, timeoutMs = CONFIG.DEFAULT_TIMEOUT_MS) {
@@ -163,15 +180,12 @@ const ApiService = {
     const promises = targetModules.map(async ({ modKey, sheetId }) => {
       try {
         const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Kunjungan`;
-        const res = await fetch(url);
-        if (!res.ok) {
+        let text = await this.fetchCsvDirect(url, 7000);
+        if (!text) {
           const fallbackUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
-          const fRes = await fetch(fallbackUrl);
-          if (!fRes.ok) return [];
-          const text = await fRes.text();
-          return this.parseVisitsRows(text, modKey);
+          text = await this.fetchCsvDirect(fallbackUrl, 7000);
         }
-        const text = await res.text();
+        if (!text) return [];
         return this.parseVisitsRows(text, modKey);
       } catch (err) {
         console.warn(`Direct fetch failed for ${modKey}:`, err);
@@ -307,9 +321,8 @@ const ApiService = {
     const promises = targetAbsen.map(async ({ absKey, sheetId }) => {
       try {
         const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Absensi`;
-        const res = await fetch(url);
-        if (!res.ok) return [];
-        const text = await res.text();
+        const text = await this.fetchCsvDirect(url, 7000);
+        if (!text) return [];
         return this.parseAbsensiRows(text, absKey);
       } catch (err) {
         console.warn(`Direct fetch absensi failed for ${absKey}:`, err);
@@ -445,9 +458,8 @@ const ApiService = {
     const promises = targetModules.map(async ({ modKey, sheetId }) => {
       try {
         const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Master_Toko`;
-        const res = await fetch(url);
-        if (res.ok) {
-          const text = await res.text();
+        const text = await this.fetchCsvDirect(url, 7000);
+        if (text) {
           return this.parseMasterTokoRows(text, params, modKey);
         }
       } catch (err) {
@@ -463,9 +475,8 @@ const ApiService = {
     // 2. Fallback to Central Pipeline Spreadsheet
     try {
       const centralUrl = `https://docs.google.com/spreadsheets/d/${CONFIG.CENTRAL_ID}/gviz/tq?tqx=out:csv&sheet=Master_Toko`;
-      const resp = await fetch(centralUrl);
-      if (resp.ok) {
-        const text = await resp.text();
+      const text = await this.fetchCsvDirect(centralUrl, 7000);
+      if (text) {
         const parsed = this.parseMasterTokoRows(text, params);
         if (parsed && parsed.length > 0) return parsed;
       }
@@ -599,10 +610,9 @@ const ApiService = {
    */
   async getMasterUserDirect(params = {}) {
     const url = `https://docs.google.com/spreadsheets/d/${CONFIG.CENTRAL_ID}/gviz/tq?tqx=out:csv&sheet=master_user`;
-    const resp = await fetch(url);
-    if (!resp.ok) return [];
+    const text = await this.fetchCsvDirect(url, 7000);
+    if (!text) return [];
 
-    const text = await resp.text();
     const rows = this.parseCsv(text);
     if (rows.length < 2) return [];
 
