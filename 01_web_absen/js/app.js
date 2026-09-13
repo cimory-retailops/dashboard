@@ -281,7 +281,7 @@ function renderMapMarkers(stores, autoFit = false) {
               <i data-lucide="plus-circle"></i>
               <span>+ Pilih Re-Visit Toko</span>
             </button>
-            <button type="button" class="btn-popup-toggle" style="width: 34px; background: var(--bg-main); color: var(--text-main); border: 1px solid var(--border);" onclick="editStoreByCode('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')">
+            <button type="button" class="btn-popup-toggle" style="width: 34px; background: var(--bg-main); color: var(--text-main); border: 1px solid var(--border);" onclick="event.stopPropagation(); editStoreByCode('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')" title="Edit Data Toko">
               <i data-lucide="edit-3"></i>
             </button>
           </div>
@@ -309,7 +309,7 @@ function renderMapMarkers(stores, autoFit = false) {
               <i data-lucide="plus"></i>
               <span>Tambah Rute</span>
             </button>
-            <button type="button" class="btn-popup-toggle" style="width: 34px; background: var(--bg-main); color: var(--text-main); border: 1px solid var(--border);" onclick="editStoreByCode('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')">
+            <button type="button" class="btn-popup-toggle" style="width: 34px; background: var(--bg-main); color: var(--text-main); border: 1px solid var(--border);" onclick="event.stopPropagation(); editStoreByCode('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')" title="Edit Data Toko">
               <i data-lucide="edit-3"></i>
             </button>
           </div>
@@ -403,7 +403,7 @@ function renderSelectedRouteMarkersAndPolyline(stores) {
         </div>
         <div style="display: flex; gap: 4px; margin-top: 2px;">
           ${toggleActionHtml}
-          <button type="button" class="btn-popup-toggle" style="width: 34px; background: var(--bg-main); color: var(--text-main); border: 1px solid var(--border);" onclick="editStoreByCode('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')" title="Edit Data Toko">
+          <button type="button" class="btn-popup-toggle" style="width: 34px; background: var(--bg-main); color: var(--text-main); border: 1px solid var(--border);" onclick="event.stopPropagation(); editStoreByCode('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')" title="Edit Data Toko">
             <i data-lucide="edit-3"></i>
           </button>
         </div>
@@ -926,6 +926,12 @@ function bindEvents() {
         modal.classList.remove("active");
       }
     });
+    const dialog = modal.querySelector(".modal-dialog");
+    if (dialog) {
+      dialog.addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+    }
   });
 
   // Forms
@@ -1618,8 +1624,10 @@ function clearRouteDraft(rute) {
 function updateFloatingBar() {
   const count = state.selectedStores.size;
   const bar = elements.floatingBar;
+  if (!bar) return;
 
   if (count > 0 && state.currentView === "input") {
+    bar.style.display = "block";
     bar.classList.add("visible");
     if (elements.summaryCount) {
       elements.summaryCount.innerHTML = `<i data-lucide="shopping-bag" style="width: 15px; height: 15px; color: var(--primary);"></i> ${count} Toko Dipilih`;
@@ -1628,6 +1636,7 @@ function updateFloatingBar() {
       elements.summaryRoute.textContent = `Siap masuk ke Rute ${state.currentRute}`;
     }
   } else {
+    bar.style.display = "none";
     bar.classList.remove("visible");
   }
   if (window.lucide) lucide.createIcons();
@@ -2233,7 +2242,9 @@ function openCustomStoreModal(initialData = null) {
     };
   }
 
-  modal.classList.add("active");
+  requestAnimationFrame(() => {
+    modal.classList.add("active");
+  });
 }
 
 function handleAutofillGps() {

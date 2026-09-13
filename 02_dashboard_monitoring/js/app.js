@@ -766,7 +766,7 @@ function dashboardApp() {
             this.loadingStage = 2;
             this.loadingMessage = 'Membuka snapshot arsip Google Drive...';
           }
-          const archiveVisits = await ApiService.getArchiveVisits(this.selectedPeriod, visitParams);
+          const archiveVisits = await ApiService.getArchiveVisits(this.selectedPeriod, { modul: 'ALL' });
           this.visits = archiveVisits || [];
         }
 
@@ -1093,6 +1093,19 @@ function dashboardApp() {
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
       const monthName = months[mIdx] || parts[1];
       return `${d} ${monthName} ${y}`;
+    },
+
+    /**
+     * Helper: Parse Time String (HH:mm:ss atau HH:mm) ke Detik
+     */
+    parseTimeToSeconds(tStr) {
+      if (!tStr) return 0;
+      const clean = String(tStr).trim().replace(/[^\d:]/g, '');
+      const parts = clean.split(':');
+      const h = parseInt(parts[0], 10) || 0;
+      const m = parseInt(parts[1], 10) || 0;
+      const s = parseInt(parts[2], 10) || 0;
+      return h * 3600 + m * 60 + s;
     },
 
     /**
