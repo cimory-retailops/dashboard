@@ -196,7 +196,7 @@ async function syncMasterStoresFromSheet(onProgress) {
  * Sinkronisasi Master Crew dari Google Spreadsheet
  */
 async function syncMasterCrewFromSheet() {
-  const url = `https://docs.google.com/spreadsheets/d/${API_CONFIG.MASTER_SHEET_ID}/gviz/tq?tqx=out:csv`;
+  const url = `https://docs.google.com/spreadsheets/d/${API_CONFIG.CENTRAL_ID}/gviz/tq?tqx=out:csv&sheet=master_user`;
   
   try {
     const response = await fetch(url);
@@ -205,6 +205,24 @@ async function syncMasterCrewFromSheet() {
     const csvText = await response.text();
     const rows = parseCSV(csvText);
     if (rows.length < 2) return [];
+
+    const headers = rows[0].map(h => (h || "").toUpperCase().replace(/[\s_-]/g, ""));
+    const findCol = (names, def) => {
+      for (const n of names) {
+        const idx = headers.indexOf(n);
+        if (idx !== -1) return idx;
+        const subIdx = headers.findIndex(h => h.includes(n));
+        if (subIdx !== -1) return subIdx;
+      }
+      return def;
+    };
+
+    const idxId = findCol(["ID", "KODECREW", "NIK", "IDCREW"], 0);
+    const idxNama = findCol(["NAMA", "NAMACREW", "CREWNAME"], 1);
+    const idxJabatan = findCol(["JABATAN", "ROLE", "POSITION"], 2);
+    const idxDivisi = findCol(["DIVISI", "DIVISION"], 3);
+    const idxAccount = findCol(["ACCOUNT", "AKUN"], 4);
+    const idxModul = findCol(["MODUL", "BRANCH", "WILAYAH"], 7);
 
     const crews = [];
 
@@ -223,13 +241,15 @@ async function syncMasterCrewFromSheet() {
     // 2. Baris 1..N: Data Merchandiser Lapangan
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      const id = (row[0] || "").toString().trim();
-      const nama = (row[1] || "").toString().trim();
-      const modul = (row[7] || row[6] || "").toString().trim();
-      const account = (row[4] || "").toString().trim();
-      const jabatan = (row[2] || "").toString().trim();
+      if (!row || row.length < 2) continue;
 
-      if (nama && id && !crews.some(c => c.id === id && c.nama.toLowerCase() === nama.toLowerCase() && c.modul.toLowerCase() === modul.toLowerCase())) {
+      const id = (row[idxId] || "").toString().trim();
+      const nama = (row[idxNama] || "").toString().trim();
+      const modul = (row[idxModul] || "").toString().trim().toUpperCase();
+      const account = (row[idxAccount] || "").toString().trim().toUpperCase();
+      const jabatan = (row[idxJabatan] || "").toString().trim();
+
+      if (nama && id && !crews.some(c => c.id === id && c.nama.toLowerCase() === nama.toLowerCase() && c.modul === modul)) {
         crews.push({ id, nama, modul, account, jabatan });
       }
     }
