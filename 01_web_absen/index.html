@@ -36,18 +36,14 @@
           const u = window.PORTAL_ACTIVE_USER;
           const r = (u.role || '').toUpperCase();
           if (u.isSuperAdmin || r === 'SUPERADMIN' || r === 'MANAGER' || r === 'SPV') return true;
-          if (u.permissions && u.permissions[key]) return true;
+          if (u.permissions && u.permissions[key] !== undefined) return Boolean(u.permissions[key]);
           try {
             const rawM = localStorage.getItem('cimory_rbac_matrix');
             if (rawM && u.email) {
               const m = JSON.parse(rawM);
               const entry = m[u.email.toLowerCase()];
-              if (entry && entry.permissions) {
-                const p = entry.permissions;
-                if (key === 'absen') return true;
-                if (key === 'dashboard') return !!(p.dashboard || p.jadwal || p.tokonasional || p.laporan || p.evaluasi);
-                if (key === 'galeri') return !!(p.galeri || p.laporan);
-                if (key === 'simulasi') return !!(p.simulasi || p.jadwal);
+              if (entry && entry.permissions && entry.permissions[key] !== undefined) {
+                return Boolean(entry.permissions[key]);
               }
             }
           } catch (e) {}
@@ -520,15 +516,15 @@
 
   </main>
 
-  <!-- FULLSCREEN BLOCKING LOADER OVERLAY (Active by default on startup) -->
-  <div class="blocking-loader-backdrop active" id="blockingLoader">
+  <!-- FULLSCREEN BLOCKING LOADER OVERLAY (Default hidden) -->
+  <div class="blocking-loader-backdrop" id="blockingLoader">
     <div class="blocking-loader-card">
       <div class="spinner-glow"></div>
       <div>
         <div class="loader-title" id="loaderTitle">Memuat Peta & Data Toko</div>
         <div class="loader-subtitle" id="loaderSubtitle">Menyiapkan database lokal dan koordinat GPS...</div>
       </div>
-      <div class="loader-progress-track" id="loaderProgressTrack" style="display: block;">
+      <div class="loader-progress-track" id="loaderProgressTrack" style="display: none;">
         <div class="loader-progress-bar" id="loaderProgressBar" style="width: 25%;"></div>
       </div>
     </div>
@@ -1200,9 +1196,9 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="js/db.js?v=20260913_10"></script>
-  <script src="js/api.js?v=20260913_10"></script>
-  <script src="js/app.js?v=20260913_10"></script>
+  <script src="js/db.js?v=20260913_11"></script>
+  <script src="js/api.js?v=20260913_11"></script>
+  <script src="js/app.js?v=20260913_11"></script>
 
   <script>
     if (window.lucide) {

@@ -37,24 +37,26 @@
           const u = window.PORTAL_ACTIVE_USER;
           const r = (u.role || '').toUpperCase();
           if (u.isSuperAdmin || r === 'SUPERADMIN' || r === 'MANAGER' || r === 'SPV') return true;
-          if (u.permissions && u.permissions[key]) return true;
+          if (u.permissions && u.permissions[key] !== undefined) return Boolean(u.permissions[key]);
           try {
             const rawM = localStorage.getItem('cimory_rbac_matrix');
             if (rawM && u.email) {
               const m = JSON.parse(rawM);
               const entry = m[u.email.toLowerCase()];
-              if (entry && entry.permissions) {
-                const p = entry.permissions;
-                if (key === 'absen') return true;
-                if (key === 'dashboard') return !!(p.dashboard || p.jadwal || p.tokonasional || p.laporan || p.evaluasi);
-                if (key === 'galeri') return !!(p.galeri || p.laporan);
-                if (key === 'simulasi') return !!(p.simulasi || p.jadwal);
+              if (entry && entry.permissions && entry.permissions[key] !== undefined) {
+                return Boolean(entry.permissions[key]);
               }
             }
           } catch(e) {}
           if (key === 'absen') return true;
           return false;
         };
+
+        if (!window.canAccessPortalModule(MODULE_KEY)) {
+          alert('⛔ Akses Ditolak: Anda tidak memiliki izin untuk membuka modul ' + MODULE_TITLE + '.');
+          window.location.replace('../02_dashboard_monitoring/index.html');
+          return;
+        }
       } catch (err) {
         window.location.replace('../index.html');
       }

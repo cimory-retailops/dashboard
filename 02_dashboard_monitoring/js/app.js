@@ -7900,6 +7900,7 @@ function dashboardApp() {
     },
 
     canAccessTab(tabId) {
+      if (tabId === 'absen') return true;
       if (tabId === 'rbac' || tabId === 'control_panel') {
         return this.currentUser && (this.currentUser.role === 'SUPERADMIN' || this.currentUser.isSuperAdmin || this.currentUser.role === 'MANAGER');
       }

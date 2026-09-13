@@ -41,21 +41,18 @@
           const u = window.PORTAL_ACTIVE_USER;
           const r = (u.role || '').toUpperCase();
           if (u.isSuperAdmin || r === 'SUPERADMIN' || r === 'MANAGER' || r === 'SPV') return true;
-          if (u.permissions && u.permissions[key]) return true;
+          if (u.permissions && u.permissions[key] !== undefined) return Boolean(u.permissions[key]);
           try {
             const rawM = localStorage.getItem('cimory_rbac_matrix');
             if (rawM && u.email) {
               const m = JSON.parse(rawM);
               const entry = m[u.email.toLowerCase()];
-              if (entry && entry.permissions) {
-                const p = entry.permissions;
-                if (key === 'absen') return true;
-                if (key === 'dashboard') return !!(p.kunjungan || p.absensi || p.jadwal || p.tokonasional || p.laporan || p.evaluasi);
-                if (key === 'galeri') return !!(p.laporan || p.kunjungan);
-                if (key === 'simulasi') return !!(p.jadwal || p.kunjungan);
+              if (entry && entry.permissions && entry.permissions[key] !== undefined) {
+                return Boolean(entry.permissions[key]);
               }
             }
           } catch(e) {}
+          if (key === 'absen') return true;
           return false;
         };
       } catch (err) {
@@ -291,7 +288,7 @@
                 <span>Laporan</span>
               </button>
 
-              <button type="button" x-show="window.canAccessPortalModule ? (window.canAccessPortalModule('absen') || window.canAccessPortalModule('galeri') || window.canAccessPortalModule('simulasi')) : true" @click="activeMegaCategory = 'modul'"
+              <button type="button" x-show="canAccessTab('absen') || canAccessTab('galeri') || canAccessTab('simulasi')" @click="activeMegaCategory = 'modul'"
                 class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex-shrink-0 cursor-pointer"
                 :class="activeMegaCategory === 'modul' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'">
                 <span>🌐</span>
@@ -570,7 +567,7 @@
 
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <a href="../01_web_absen/index.html"
-                      x-show="window.canAccessPortalModule ? window.canAccessPortalModule('absen') : true"
+                      x-show="canAccessTab('absen')"
                       class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-brand-500/5 transition-all block group">
                       <div class="flex items-center space-x-2 mb-1">
                         <span class="text-sm">📱</span>
@@ -580,7 +577,7 @@
                     </a>
 
                     <a href="../04_galeri_pajangan/index.html"
-                      x-show="window.canAccessPortalModule ? window.canAccessPortalModule('galeri') : true"
+                      x-show="canAccessTab('galeri')"
                       class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-brand-500/5 transition-all block group">
                       <div class="flex items-center space-x-2 mb-1">
                         <span class="text-sm">🖼️</span>
@@ -590,7 +587,7 @@
                     </a>
 
                     <a href="../05_simulasi_rute/index.html"
-                      x-show="window.canAccessPortalModule ? window.canAccessPortalModule('simulasi') : true"
+                      x-show="canAccessTab('simulasi')"
                       class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-brand-500/5 transition-all block group">
                       <div class="flex items-center space-x-2 mb-1">
                         <span class="text-sm">🗺️</span>
@@ -1408,9 +1405,9 @@
                 </div>
 
                 <!-- ============================================================================== -->
-                <!-- 1. GROUPED VISIT TRANSACTIONS TABLE FOR THIS MDS -->
+                <!-- 1. GROUPED VISIT TRANSACTIONS TABLE FOR THIS MDS (PAGINATED) -->
                 <!-- ============================================================================== -->
-                <div class="space-y-2.5">
+                <div class="space-y-2.5" x-data="{ visitPage: 1, visitPageSize: 10 }" x-effect="visitPage; visitPageSize; $nextTick(() => window.lucide && window.lucide.createIcons())">
                   <div class="flex items-center justify-between">
                     <div class="flex items-center space-x-2">
                       <i data-lucide="history" class="w-4 h-4 text-brand-500"></i>
@@ -1435,7 +1432,7 @@
                         </tr>
                       </thead>
                       <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
-                        <template x-for="(v, vIdx) in (card.visits || [])" :key="(v.idVisit || '') + '_' + vIdx">
+                        <template x-for="(v, vIdx) in (visitPageSize === 'ALL' ? (card.visits || []) : (card.visits || []).slice((visitPage - 1) * (parseInt(visitPageSize) || 10), visitPage * (parseInt(visitPageSize) || 10)))" :key="(v.idVisit || '') + '_' + vIdx">
                           <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                             <td class="py-2.5 px-3 whitespace-nowrap">
                               <span class="font-bold text-slate-900 dark:text-slate-100 block" x-text="v.time || v.jam"></span>
@@ -1487,6 +1484,36 @@
                         </tr>
                       </tbody>
                     </table>
+                  </div>
+
+                  <!-- Pagination Controls for Visit Log -->
+                  <div x-show="(card.visits || []).length > 10" class="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-1 text-xs text-slate-500 dark:text-slate-400">
+                    <div class="flex items-center gap-2">
+                      <span class="text-[11px]">Tampilkan:</span>
+                      <select x-model="visitPageSize" @change="visitPage = 1"
+                        class="px-2 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold focus:ring-1 focus:ring-brand-500 focus:outline-none cursor-pointer">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="ALL">Semua</option>
+                      </select>
+                      <span class="text-[11px] text-slate-400">
+                        (Menampilkan <strong class="text-slate-700 dark:text-slate-200" x-text="visitPageSize === 'ALL' ? `1 - ${(card.visits || []).length}` : `${((visitPage - 1) * (parseInt(visitPageSize) || 10)) + 1} - ${Math.min(visitPage * (parseInt(visitPageSize) || 10), (card.visits || []).length)}`"></strong> dari <strong class="text-slate-700 dark:text-slate-200" x-text="(card.visits || []).length"></strong>)
+                      </span>
+                    </div>
+
+                    <div x-show="visitPageSize !== 'ALL' && Math.ceil((card.visits || []).length / (parseInt(visitPageSize) || 10)) > 1" class="flex items-center gap-1">
+                      <button type="button" @click="if (visitPage > 1) visitPage--" :disabled="visitPage === 1"
+                        class="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-[11px] transition-all cursor-pointer">
+                        ‹ Prev
+                      </button>
+                      <span class="px-2.5 py-1 text-[11px] font-bold text-slate-700 dark:text-slate-200"
+                        x-text="`Hal ${visitPage} / ${Math.ceil((card.visits || []).length / (parseInt(visitPageSize) || 10))}`"></span>
+                      <button type="button" @click="if (visitPage < Math.ceil((card.visits || []).length / (parseInt(visitPageSize) || 10))) visitPage++" :disabled="visitPage >= Math.ceil((card.visits || []).length / (parseInt(visitPageSize) || 10))"
+                        class="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-[11px] transition-all cursor-pointer">
+                        Next ›
+                      </button>
+                    </div>
                   </div>
                 </div>
 

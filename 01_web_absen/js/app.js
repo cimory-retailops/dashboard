@@ -32,16 +32,28 @@ let userLocationMarker = null;
 const elements = {};
 
 document.addEventListener("DOMContentLoaded", async () => {
-  cacheDOMElements();
-  if (window.lucide) lucide.createIcons();
-  initTheme();
-  setupRuteDatePicker();
-  loadSavedProfile();
-  initMap();
-  bindEvents();
-  initPwaInstall();
+  try {
+    cacheDOMElements();
+    if (window.lucide) lucide.createIcons();
+    initTheme();
+    setupRuteDatePicker();
+    loadSavedProfile();
+    initMap();
+    bindEvents();
+    initPwaInstall();
+  } catch (err) {
+    console.warn("Init UI warning:", err);
+  } finally {
+    hideBlockingLoader();
+  }
 
-  await checkDatabaseStatus();
+  try {
+    await checkDatabaseStatus();
+  } catch (err) {
+    console.warn("DB Check warning:", err);
+  } finally {
+    hideBlockingLoader();
+  }
 });
 
 /**

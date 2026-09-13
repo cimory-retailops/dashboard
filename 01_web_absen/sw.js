@@ -2,7 +2,7 @@
  * SERVICE WORKER - RETAIL OPS RUTE MASTER PWA
  */
 
-const CACHE_NAME = "mds-pwa-cache-v10";
+const CACHE_NAME = "mds-pwa-cache-v11";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
