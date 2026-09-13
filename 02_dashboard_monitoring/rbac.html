@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="id" class="min-h-full scroll-smooth" :class="theme === 'dark' ? 'dark' : ''" x-data="standaloneRbacApp()" x-init="init()">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Pusat Kontrol RBAC & Approval User - Cimory Retail Ops</title>
+  <meta name="description" content="Pusat Kontrol Hak Akses RBAC & Approval Pengguna Terpadu Cimory Retail Ops. Ringan, Cepat & Bebas Download.">
+
+  <!-- AUTH GATEKEEPER (Khusus Super Admin & Manager) -->
+  <script>
+    (function() {
+      try {
+        const raw = localStorage.getItem('cimory_portal_active_session');
+        if (!raw) {
+          window.location.replace('../index.html?redirect=' + encodeURIComponent(window.location.pathname));
+          return;
+        }
+        const user = JSON.parse(raw);
+        const role = (user.role || '').toUpperCase();
+        const isSuperAdmin = user.isSuperAdmin === true || role === 'SUPERADMIN' || role === 'MANAGER';
+        if (!isSuperAdmin) {
+          alert('Akses Ditolak: Halaman Pusat Kontrol RBAC hanya dapat diakses oleh Super Admin.');
+          window.location.replace('../index.html');
+        }
+      } catch(e) {
+        window.location.replace('../index.html');
+      }
+    })();
+  </script>
+
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Outfit', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Firebase SDK Compat v10 (App & Firestore) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Alpine.js -->
+  <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .dark .glass-card {
+      background: rgba(15, 23, 42, 0.88);
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(156, 163, 175, 0.4);
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans antialiased transition-colors duration-200 flex flex-col">
+
+  <!-- TOP HEADER & MODULE SWITCHER -->
+  <header class="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
+      
+      <!-- Brand & Title -->
+      <div class="flex items-center space-x-2.5 min-w-0">
+        <a href="../index.html" class="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-purple-500/25 flex-shrink-0 hover:scale-105 transition-transform" title="Kembali ke Portal Hub">
+          <i data-lucide="shield-check" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+        </a>
+        <div class="min-w-0">
+          <div class="flex items-center space-x-1.5 sm:space-x-2">
+            <h1 class="font-display font-black text-xs sm:text-base text-slate-900 dark:text-white truncate">Pusat RBAC & Approval</h1>
+            <span class="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[9.5px] font-black bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 flex-shrink-0">
+              ⚡ Instant
+            </span>
+          </div>
+          <p class="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 truncate hidden sm:block">
+            Kelola izin hak akses 8 modul & approval pendaftaran
+          </p>
+        </div>
+      </div>
+
+      <!-- Action Controls -->
+      <div class="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
+        <!-- Pindah ke Dashboard 02 -->
+        <a href="./index.html" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1 border border-slate-200 dark:border-slate-700" title="Buka Dashboard Monitoring">
+          <i data-lucide="layout-dashboard" class="w-3.5 h-3.5 text-indigo-500"></i>
+          <span class="hidden md:inline">Dashboard</span>
+        </a>
+
+        <!-- Toggle Theme -->
+        <button type="button" @click="toggleTheme()" class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors border border-slate-200 dark:border-slate-700 cursor-pointer">
+          <i :data-lucide="theme === 'dark' ? 'sun' : 'moon'" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+        </button>
+
+        <!-- Portal Hub Link -->
+        <a href="../index.html" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] sm:text-xs font-bold transition-all shadow-md shadow-indigo-600/20 flex items-center gap-1">
+          <i data-lucide="home" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">Portal</span>
+        </a>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-5">
+
+    <!-- 1. STATS OVERVIEW CARDS -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3">
+      <!-- Total Terdaftar -->
+      <div class="glass-card rounded-2xl p-3 sm:p-3.5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-1 cursor-pointer"
+        @click="filterRole = 'ALL'">
+        <span class="text-[10px] sm:text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Total User</span>
+        <div class="flex items-center justify-between">
+          <span class="font-display font-black text-lg sm:text-xl text-slate-900 dark:text-white" x-text="`${users.length} Akun`"></span>
+          <i data-lucide="users" class="w-4 h-4 text-purple-500"></i>
+        </div>
+      </div>
+
+      <!-- Pending Approval (Highlight) -->
+      <div class="glass-card rounded-2xl p-3 sm:p-3.5 border shadow-sm space-y-1 cursor-pointer transition-all hover:scale-[1.02]"
+        :class="pendingUsers.length > 0 ? 'border-amber-500/60 bg-amber-500/10 ring-1 ring-amber-500/30' : 'border-slate-200 dark:border-slate-800'"
+        @click="filterRole = 'PENDING'">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] sm:text-[10.5px] font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">⏳ Approval</span>
+          <span x-show="pendingUsers.length > 0" class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="font-display font-black text-lg sm:text-xl text-amber-600 dark:text-amber-400" x-text="`${pendingUsers.length} Pending`"></span>
+          <i data-lucide="user-check" class="w-4 h-4 text-amber-500"></i>
+        </div>
+      </div>
+
+      <!-- Super Admin -->
+      <div class="glass-card rounded-2xl p-3 sm:p-3.5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-1 cursor-pointer"
+        @click="filterRole = 'SUPERADMIN'">
+        <span class="text-[10px] sm:text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Super Admin</span>
+        <div class="flex items-center justify-between">
+          <span class="font-display font-black text-lg sm:text-xl text-indigo-600 dark:text-indigo-400" x-text="`${countRole('SUPERADMIN')} User`"></span>
+          <i data-lucide="shield" class="w-4 h-4 text-indigo-500"></i>
+        </div>
+      </div>
+
+      <!-- SPV -->
+      <div class="glass-card rounded-2xl p-3 sm:p-3.5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-1 cursor-pointer"
+        @click="filterRole = 'SPV'">
+        <span class="text-[10px] sm:text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">SPV Wilayah</span>
+        <div class="flex items-center justify-between">
+          <span class="font-display font-black text-lg sm:text-xl text-sky-600 dark:text-sky-400" x-text="`${countRole('SPV')} SPV`"></span>
+          <i data-lucide="user-cog" class="w-4 h-4 text-sky-500"></i>
+        </div>
+      </div>
+
+      <!-- Field MDS -->
+      <div class="glass-card rounded-2xl p-3 sm:p-3.5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-1 col-span-2 sm:col-span-4 lg:col-span-1 cursor-pointer"
+        @click="filterRole = 'MDS'">
+        <span class="text-[10px] sm:text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Field MDS</span>
+        <div class="flex items-center justify-between">
+          <span class="font-display font-black text-lg sm:text-xl text-emerald-600 dark:text-emerald-400" x-text="`${countRole('MDS')} Personil`"></span>
+          <i data-lucide="map-pin" class="w-4 h-4 text-emerald-500"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. FILTER & ACTION BAR -->
+    <div class="glass-card rounded-2xl p-3.5 sm:p-4 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        
+        <!-- Filters (Search + Role + Modul) -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5 flex-1">
+          <!-- Search -->
+          <div class="relative">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+            <input type="text" x-model="searchQuery" placeholder="Cari nama, email, modul..."
+              class="w-full h-9 sm:h-10 pl-9 pr-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold focus:ring-2 focus:ring-purple-500 focus:outline-none transition-all">
+          </div>
+
+          <!-- Role Filter -->
+          <div>
+            <select x-model="filterRole"
+              class="w-full h-9 sm:h-10 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-purple-500 cursor-pointer">
+              <option value="ALL">Semua Role Pengguna</option>
+              <option value="PENDING">⏳ Hanya Menunggu Approval</option>
+              <option value="SUPERADMIN">👑 Super Admin</option>
+              <option value="MANAGER">💼 Manager</option>
+              <option value="SPV">👔 Supervisor (SPV)</option>
+              <option value="MDS">🛵 Field MDS</option>
+            </select>
+          </div>
+
+          <!-- Modul Filter -->
+          <div>
+            <select x-model="filterModul"
+              class="w-full h-9 sm:h-10 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-purple-500 cursor-pointer">
+              <option value="ALL">Semua Modul Wilayah</option>
+              <option value="DK">Semua DK (Jabodetabek)</option>
+              <option value="LK">Semua LK (Jawa & Bali)</option>
+              <option value="LP">Semua LP (Luar Pulau)</option>
+              <template x-for="m in ['DK1','DK2','DK3','DK4','DK5','DK6','LK1','LK2','LK3','LK4','LK5','LP1','LP2','LP3','LP4']" :key="m">
+                <option :value="m" x-text="m"></option>
+              </template>
+            </select>
+          </div>
+        </div>
+
+        <!-- Action Buttons (Desktop only in bar, mobile has floating bar) -->
+        <div class="hidden sm:flex items-center gap-2 flex-shrink-0">
+          <button type="button" @click="showAddUserModal = true"
+            class="h-10 px-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-purple-600 dark:text-purple-400 border border-purple-500/30 text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+            <span>Tambah User</span>
+          </button>
+
+          <button type="button" @click="saveAllToFirestore()" :disabled="isSaving"
+            class="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/25 active:scale-95 cursor-pointer disabled:opacity-50">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            <span x-text="isSaving ? 'Menyimpan...' : 'Simpan Matriks'"></span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- 3A. MOBILE INTERACTIVE CARDS (< sm)                     -->
+    <!-- ======================================================== -->
+    <div class="block sm:hidden space-y-2.5 pb-20">
+      
+      <!-- Quick Info & Expand/Collapse All Buttons -->
+      <div class="flex items-center justify-between px-1 text-xs">
+        <span class="font-bold text-slate-500 dark:text-slate-400 text-[11px]">
+          Daftar Personil (<span class="text-slate-900 dark:text-white font-extrabold" x-text="filteredUsers.length"></span>)
+        </span>
+        <div class="flex items-center gap-2">
+          <button type="button" @click="expandAllCards()" class="text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer">
+            Buka Semua
+          </button>
+          <span class="text-slate-300 dark:text-slate-700">&bull;</span>
+          <button type="button" @click="collapseAllCards()" class="text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:underline cursor-pointer">
+            Tutup Semua
+          </button>
+        </div>
+      </div>
+
+      <template x-for="(u, idx) in filteredUsers" :key="u.id || u.email">
+        <div class="glass-card rounded-2xl border transition-all duration-200 shadow-sm overflow-hidden"
+          :class="u.status === 'PENDING' ? 'border-amber-500/80 bg-amber-500/5 ring-1 ring-amber-500/30' : 'border-slate-200 dark:border-slate-800'">
+          
+          <!-- Card Header (Sentuh untuk Expand / Collapse) -->
+          <div @click="toggleCard(u)" class="p-3.5 flex items-center justify-between gap-2 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-900/40 select-none">
+            <div class="flex items-center space-x-2.5 min-w-0">
+              <div class="w-9 h-9 rounded-xl font-black text-xs flex items-center justify-center flex-shrink-0 text-white shadow-sm"
+                :class="u.status === 'PENDING' ? 'bg-amber-500' : (u.role === 'SUPERADMIN' ? 'bg-purple-600' : (u.role === 'SPV' ? 'bg-sky-600' : (u.role === 'MANAGER' ? 'bg-indigo-600' : 'bg-emerald-600')))"
+                x-text="(u.name || u.email || 'U').charAt(0).toUpperCase()">
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-extrabold text-sm text-slate-900 dark:text-white truncate" x-text="u.name || u.email"></span>
+                  <template x-if="u.status === 'PENDING'">
+                    <span class="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-500 text-amber-950 animate-pulse">PENDING</span>
+                  </template>
+                </div>
+                <span class="text-[11px] text-slate-400 block truncate" x-text="u.email"></span>
+              </div>
+            </div>
+
+            <!-- Role Badge + Modul Pill + Chevron Icon -->
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <div class="flex flex-col items-end gap-0.5">
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                  :class="u.role === 'SUPERADMIN' ? 'bg-purple-500/20 text-purple-600 dark:text-purple-300' : (u.role === 'SPV' ? 'bg-sky-500/20 text-sky-600 dark:text-sky-300' : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300')"
+                  x-text="u.role"></span>
+                <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                  x-text="u.modul || 'Nasional'"></span>
+              </div>
+              <div class="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400">
+                <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" :class="isCardExpanded(u) ? 'rotate-180 text-purple-500' : ''"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Collapsible Content Body (Muncul saat di-tap) -->
+          <div x-show="isCardExpanded(u)" class="px-3.5 pb-3.5 pt-1 space-y-2.5 border-t border-slate-100 dark:border-slate-800/80">
+            
+            <!-- Pending Action Banner (If Pending) -->
+            <template x-if="u.status === 'PENDING'">
+              <div class="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-between gap-2">
+                <span class="text-[11px] font-bold text-amber-700 dark:text-amber-300">Menunggu approval</span>
+                <div class="flex items-center gap-1.5">
+                  <button type="button" @click="approveUser(u)" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-sm active:scale-95 cursor-pointer">
+                    ✓ Setujui
+                  </button>
+                  <button type="button" @click="rejectUser(u)" class="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold active:scale-95 cursor-pointer">
+                    ✕ Tolak
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <!-- Row: Role & Modul Selector -->
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Role Akun</label>
+                <select x-model="u.role" @change="onRoleChange(u)"
+                  class="w-full h-8 px-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-extrabold text-slate-800 dark:text-slate-200 cursor-pointer">
+                  <option value="MDS">MDS Lapangan</option>
+                  <option value="SPV">Supervisor (SPV)</option>
+                  <option value="MANAGER">Manager</option>
+                  <option value="SUPERADMIN">Super Admin</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Wilayah / Modul</label>
+                <select x-model="u.modul" @change="onUserFieldChange(u)"
+                  class="w-full h-8 px-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-extrabold text-slate-800 dark:text-slate-200 cursor-pointer">
+                  <option value="ALL">Nasional</option>
+                  <template x-for="m in ['DK1','DK2','DK3','DK4','DK5','DK6','LK1','LK2','LK3','LK4','LK5','LP1','LP2','LP3','LP4']" :key="m">
+                    <option :value="m" x-text="m"></option>
+                  </template>
+                </select>
+              </div>
+            </div>
+
+            <!-- Linked Official Crew (Mapping Personil Lapangan) -->
+            <div>
+              <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Hubungkan Personil Master</label>
+              <select x-model="u.linkedCrew" @change="onLinkedCrewChange(u)"
+                class="w-full h-8 px-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer">
+                <option value="">-- Bebas / Belum Terikat --</option>
+                <template x-for="c in officialCrews" :key="c.name">
+                  <option :value="c.name" x-text="`${c.name} (${c.modul || '-'})`"></option>
+                </template>
+              </select>
+            </div>
+
+            <!-- 8 Modul Access Chips Matrix (Touch-Friendly Pills) -->
+            <div>
+              <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Hak Akses Modul (Sentuh On/Off)</label>
+              <div class="grid grid-cols-4 gap-1.5">
+                <template x-for="page in rbacPages" :key="page.id">
+                  <button type="button" @click="togglePerm(u, page.id)"
+                    class="py-1 px-1 rounded-lg text-[10px] font-bold transition-all text-center flex flex-col items-center justify-center gap-0.5 border cursor-pointer active:scale-95"
+                    :class="(u.permissions && u.permissions[page.id])
+                      ? 'bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-500/40 font-extrabold shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700/60'">
+                    <span class="text-xs" x-text="page.id === 'kunjungan' ? '📍' : (page.id === 'absensi' ? '🕒' : (page.id === 'jadwal' ? '📅' : (page.id === 'tokonasional' ? '🏪' : (page.id === 'laporan' ? '📊' : (page.id === 'evaluasi' ? '🏆' : (page.id === 'galeri' ? '🖼️' : '🗺️'))))))"></span>
+                    <span class="truncate w-full leading-tight" x-text="page.label"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
+
+            <!-- Bottom Action Row: SPV Team & Delete User -->
+            <div class="flex items-center justify-between pt-1 gap-2">
+              <template x-if="u.role === 'SPV'">
+                <button type="button" @click="openSpvModal(u)"
+                  class="px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/30 text-xs font-bold flex items-center gap-1 transition-all">
+                  <i data-lucide="users" class="w-3.5 h-3.5"></i>
+                  <span>Tim MDS (<span x-text="(u.managedMds || []).length"></span>)</span>
+                </button>
+              </template>
+              <div x-show="u.role !== 'SPV'"></div>
+
+              <button type="button" @click="deleteUser(u)"
+                :disabled="u.role === 'SUPERADMIN' && countRole('SUPERADMIN') <= 1"
+                class="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-xs font-bold flex items-center gap-1 transition-all ml-auto disabled:opacity-30">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span>Hapus</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </template>
+
+      <!-- Empty State Mobile -->
+      <div x-show="filteredUsers.length === 0" class="glass-card rounded-2xl p-8 text-center text-slate-400 space-y-2">
+        <i data-lucide="users" class="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600"></i>
+        <p class="text-xs font-bold">Tidak ada data pengguna yang sesuai dengan filter.</p>
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- 3B. DESKTOP MATRIKS TABLE (hidden sm:block)             -->
+    <!-- ======================================================== -->
+    <div class="hidden sm:block glass-card rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      
+      <div class="overflow-x-auto custom-scrollbar">
+        <table class="w-full text-left text-xs border-collapse min-w-[950px]">
+          <thead>
+            <tr class="bg-slate-100/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 text-[10.5px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 select-none">
+              <th class="py-3.5 px-3 text-center w-12">No</th>
+              <th class="py-3.5 px-4 min-w-[200px]">Nama Personil & Email</th>
+              <th class="py-3.5 px-3 text-center">Modul</th>
+              <th class="py-3.5 px-3 text-center">Role Preset</th>
+              <th class="py-3.5 px-3 min-w-[180px]">Personil Lapangan (Master)</th>
+              
+              <!-- 8 Modul Checkboxes Header -->
+              <th class="py-3.5 px-2 text-center" title="Tab 1: Kunjungan Lapangan"><span class="block">📍</span>Kunjungan</th>
+              <th class="py-3.5 px-2 text-center" title="Tab 2: Presensi Absensi"><span class="block">🕒</span>Absensi</th>
+              <th class="py-3.5 px-2 text-center" title="Tab 3: Target Jadwal Rute"><span class="block">📅</span>Jadwal</th>
+              <th class="py-3.5 px-2 text-center" title="Tab 4: Database 49k Toko"><span class="block">🏪</span>49k Toko</th>
+              <th class="py-3.5 px-2 text-center" title="Tab 5: Pusat Laporan WA"><span class="block">📊</span>Laporan</th>
+              <th class="py-3.5 px-2 text-center" title="Tab 6: Evaluasi SPV"><span class="block">🏆</span>Evaluasi</th>
+              <th class="py-3.5 px-2 text-center" title="Modul 04: Galeri Pajangan"><span class="block">🖼️</span>Galeri</th>
+              <th class="py-3.5 px-2 text-center" title="Modul 05: Simulasi Rute"><span class="block">🗺️</span>Simulasi</th>
+
+              <th class="py-3.5 px-3 text-center">Aksi</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
+            <template x-for="(u, idx) in filteredUsers" :key="u.id || u.email">
+              <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-900/50 transition-colors"
+                :class="u.status === 'PENDING' ? 'bg-amber-500/5 border-l-4 border-amber-500' : ''">
+                
+                <!-- No -->
+                <td class="py-3 px-3 text-center text-slate-400 font-bold" x-text="idx + 1"></td>
+
+                <!-- Nama Personil & Email -->
+                <td class="py-3 px-4">
+                  <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-xl font-black text-xs flex items-center justify-center flex-shrink-0 text-white"
+                      :class="u.status === 'PENDING' ? 'bg-amber-500' : (u.role === 'SUPERADMIN' ? 'bg-purple-600' : (u.role === 'SPV' ? 'bg-sky-600' : (u.role === 'MANAGER' ? 'bg-indigo-600' : 'bg-emerald-600')))"
+                      x-text="(u.name || u.email || 'U').charAt(0).toUpperCase()">
+                    </div>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-1.5">
+                        <span class="font-extrabold text-slate-900 dark:text-white truncate" x-text="u.name || u.email"></span>
+                        <template x-if="u.status === 'PENDING'">
+                          <span class="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">PENDING</span>
+                        </template>
+                      </div>
+                      <span class="text-[10.5px] text-slate-400 block truncate" x-text="u.email"></span>
+                    </div>
+                  </div>
+                </td>
+
+                <!-- Modul Dropdown / Tag -->
+                <td class="py-3 px-3 text-center">
+                  <select x-model="u.modul" @change="onUserFieldChange(u)"
+                    class="text-[11px] font-extrabold px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 cursor-pointer">
+                    <option value="ALL">Nasional</option>
+                    <template x-for="m in ['DK1','DK2','DK3','DK4','DK5','DK6','LK1','LK2','LK3','LK4','LK5','LP1','LP2','LP3','LP4']" :key="m">
+                      <option :value="m" x-text="m"></option>
+                    </template>
+                  </select>
+                </td>
+
+                <!-- Role Preset Dropdown -->
+                <td class="py-3 px-3 text-center">
+                  <select x-model="u.role" @change="onRoleChange(u)"
+                    class="text-[11px] font-black px-2.5 py-1 rounded-lg border text-center cursor-pointer"
+                    :class="u.role === 'SUPERADMIN' ? 'bg-purple-500/10 border-purple-500/40 text-purple-600 dark:text-purple-400' : (u.role === 'SPV' ? 'bg-sky-500/10 border-sky-500/40 text-sky-600 dark:text-sky-400' : (u.role === 'MANAGER' ? 'bg-indigo-500/10 border-indigo-500/40 text-indigo-600 dark:text-indigo-400' : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'))">
+                    <option value="SUPERADMIN">👑 SUPERADMIN</option>
+                    <option value="MANAGER">💼 MANAGER</option>
+                    <option value="SPV">👔 SPV</option>
+                    <option value="MDS">🛵 MDS</option>
+                  </select>
+                </td>
+
+                <!-- Binding Personil Lapangan Dropdown -->
+                <td class="py-3 px-3">
+                  <select x-model="u.linkedCrew" @change="onLinkedCrewChange(u)"
+                    class="w-full text-[11px] font-semibold px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 cursor-pointer">
+                    <option value="">-- Bebas / Belum Terikat --</option>
+                    <template x-for="c in officialCrews" :key="c.name">
+                      <option :value="c.name" x-text="`${c.name} (${c.modul || '-'})`"></option>
+                    </template>
+                  </select>
+                </td>
+
+                <!-- 8 Checkbox Hak Akses Modul -->
+                <template x-for="page in rbacPages" :key="page.id">
+                  <td class="py-3 px-2 text-center">
+                    <input type="checkbox" :checked="!!(u.permissions && u.permissions[page.id])"
+                      @change="togglePerm(u, page.id)"
+                      :disabled="u.role === 'SUPERADMIN'"
+                      class="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 cursor-pointer disabled:opacity-40">
+                  </td>
+                </template>
+
+                <!-- Actions (Approve / Reject / Config / Delete) -->
+                <td class="py-3 px-3 text-center">
+                  <div class="flex items-center justify-center gap-1">
+                    
+                    <!-- Jika Pending: Tombol Setujui & Tolak -->
+                    <template x-if="u.status === 'PENDING'">
+                      <div class="flex items-center gap-1">
+                        <button type="button" @click="approveUser(u)"
+                          class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10.5px] shadow-sm transition-transform active:scale-95 cursor-pointer" title="Setujui pendaftaran user ini">
+                          ✓ Approve
+                        </button>
+                        <button type="button" @click="rejectUser(u)"
+                          class="p-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold text-[10.5px] transition-colors cursor-pointer" title="Tolak user ini">
+                          ✕
+                        </button>
+                      </div>
+                    </template>
+
+                    <!-- Jika Approved: Tombol SPV Team & Delete -->
+                    <template x-if="u.status !== 'PENDING'">
+                      <div class="flex items-center gap-1">
+                        <!-- Tombol SPV Team Manager (Khusus SPV) -->
+                        <template x-if="u.role === 'SPV'">
+                          <button type="button" @click="openSpvModal(u)"
+                            class="px-2 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-extrabold text-[10px] border border-sky-500/30 flex items-center gap-1 transition-all cursor-pointer" title="Kelola Anggota Tim MDS di bawah SPV ini">
+                            <i data-lucide="users" class="w-3 h-3"></i>
+                            <span x-text="`${(u.managedMds || []).length} MDS`"></span>
+                          </button>
+                        </template>
+
+                        <!-- Tombol Hapus User -->
+                        <button type="button" @click="deleteUser(u)"
+                          :disabled="u.role === 'SUPERADMIN' && countRole('SUPERADMIN') <= 1"
+                          class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-20" title="Hapus User">
+                          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                      </div>
+                    </template>
+
+                  </div>
+                </td>
+
+              </tr>
+            </template>
+
+            <!-- Empty State Desktop -->
+            <tr x-show="filteredUsers.length === 0">
+              <td colspan="14" class="py-12 text-center text-slate-400 space-y-2">
+                <i data-lucide="users" class="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600"></i>
+                <p class="text-xs font-bold">Tidak ada data pengguna yang sesuai dengan filter.</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+
+    <!-- FLOATING MOBILE BOTTOM SAVE BAR (sm:hidden) -->
+    <div class="sm:hidden fixed bottom-3 inset-x-3 z-30 flex items-center gap-2 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 p-2 rounded-2xl shadow-2xl">
+      <button type="button" @click="showAddUserModal = true"
+        class="h-11 px-3.5 rounded-xl bg-slate-800 text-purple-300 border border-purple-500/30 text-xs font-extrabold flex items-center gap-1.5 flex-shrink-0 active:scale-95">
+        <i data-lucide="user-plus" class="w-4 h-4"></i>
+        <span>User</span>
+      </button>
+
+      <button type="button" @click="saveAllToFirestore()" :disabled="isSaving"
+        class="flex-1 h-11 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 active:scale-95 disabled:opacity-50">
+        <i data-lucide="save" class="w-4 h-4"></i>
+        <span x-text="isSaving ? 'Menyimpan...' : '💾 Simpan Perubahan'"></span>
+      </button>
+    </div>
+
+  </main>
+
+  <!-- MODAL 1: TAMBAH USER BARU -->
+  <div x-show="showAddUserModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+    <div class="glass-card rounded-3xl p-5 sm:p-6 max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4" @click.stop>
+      <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <h3 class="font-display font-extrabold text-sm sm:text-base text-slate-900 dark:text-white">Tambah Personil Baru</h3>
+        <button type="button" @click="showAddUserModal = false" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="submitNewUser()" class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Nama Lengkap</label>
+          <input type="text" x-model="newUserForm.name" required placeholder="Contoh: Ahmad Ghozali"
+            class="w-full h-10 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold focus:ring-2 focus:ring-purple-500">
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Email Pengguna</label>
+          <input type="email" x-model="newUserForm.email" required placeholder="nama@cimory.com"
+            class="w-full h-10 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold focus:ring-2 focus:ring-purple-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Role</label>
+            <select x-model="newUserForm.role"
+              class="w-full h-10 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+              <option value="MDS">MDS Lapangan</option>
+              <option value="SPV">Supervisor (SPV)</option>
+              <option value="MANAGER">Manager</option>
+              <option value="SUPERADMIN">Super Admin</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Modul Wilayah</label>
+            <select x-model="newUserForm.modul"
+              class="w-full h-10 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+              <option value="ALL">Nasional</option>
+              <template x-for="m in ['DK1','DK2','DK3','DK4','DK5','DK6','LK1','LK2','LK3','LK4','LK5','LP1','LP2','LP3','LP4']" :key="m">
+                <option :value="m" x-text="m"></option>
+              </template>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <button type="button" @click="showAddUserModal = false" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">Batal</button>
+          <button type="submit" class="px-4 py-2 rounded-xl text-xs font-black bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/20">Simpan User</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 2: SPV MANAGED TEAM -->
+  <div x-show="showSpvModalFlag" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+    <div class="glass-card rounded-3xl p-5 sm:p-6 max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4" @click.stop>
+      <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div>
+          <h3 class="font-display font-extrabold text-sm sm:text-base text-slate-900 dark:text-white" x-text="`Kelola Tim MDS: ${activeSpvUser?.name || 'SPV'}`"></h3>
+          <p class="text-[11px] text-slate-400" x-text="`Modul: ${activeSpvUser?.modul || 'Nasional'}`"></p>
+        </div>
+        <button type="button" @click="showSpvModalFlag = false" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-1">
+        <template x-for="c in officialCrews" :key="c.name">
+          <label class="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/60 cursor-pointer">
+            <div class="flex items-center space-x-2.5">
+              <input type="checkbox" :checked="isCrewInSpv(c.name)" @change="toggleCrewInSpv(c.name)"
+                class="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 cursor-pointer">
+              <span class="text-xs font-bold text-slate-800 dark:text-slate-200" x-text="c.name"></span>
+            </div>
+            <span class="px-2 py-0.5 rounded text-[9.5px] font-black bg-slate-100 dark:bg-slate-800 text-slate-500" x-text="c.modul || '-'"></span>
+          </label>
+        </template>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+        <button type="button" @click="showSpvModalFlag = false" class="px-4 py-2 rounded-xl text-xs font-black bg-sky-600 hover:bg-sky-500 text-white shadow-md">Selesai</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIREBASE SCRIPTS -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="./js/firebase-config.js?v=20260914_1"></script>
+  <script src="../05_simulasi_rute/js/geo_data.js"></script>
+
+  <!-- STANDALONE RBAC CONTROLLER -->
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAqgUmhDRwmtPmR9MhWhXqHwH581UoCA7k",
+      authDomain: "dashboard-portal-cimory.firebaseapp.com",
+      projectId: "dashboard-portal-cimory",
+      storageBucket: "dashboard-portal-cimory.firebasestorage.app",
+      messagingSenderId: "100882358004",
+      appId: "1:100882358004:web:545a8d36d96cbf408f48a1",
+      measurementId: "G-DE5EJ0KYHB"
+    };
+
+    let fbDb = null;
+    try {
+      if (typeof firebase !== 'undefined') {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(firebaseConfig);
+        }
+        if (typeof firebase.firestore === 'function') {
+          fbDb = firebase.firestore();
+        }
+      }
+    } catch(e) {
+      console.warn("Firebase direct init:", e);
+    }
+
+    function standaloneRbacApp() {
+      return {
+        theme: localStorage.getItem('mds_theme') || 'dark',
+        users: [],
+        searchQuery: '',
+        filterRole: 'ALL',
+        filterModul: 'ALL',
+        isSaving: false,
+        showAddUserModal: false,
+        showSpvModalFlag: false,
+        activeSpvUser: null,
+        officialCrews: [],
+        expandedCards: {},
+        rbacPages: window.RBAC_PAGES || [
+          { id: 'kunjungan', label: 'Kunjungan' },
+          { id: 'absensi', label: 'Absensi' },
+          { id: 'jadwal', label: 'Jadwal' },
+          { id: 'tokonasional', label: '49k Toko' },
+          { id: 'laporan', label: 'Laporan' },
+          { id: 'evaluasi', label: 'Evaluasi' },
+          { id: 'galeri', label: 'Galeri' },
+          { id: 'simulasi', label: 'Simulasi' }
+        ],
+        newUserForm: {
+          name: '',
+          email: '',
+          role: 'MDS',
+          modul: 'ALL'
+        },
+
+        toggleCard(u) {
+          const key = u.id || u.email;
+          this.expandedCards[key] = !this.expandedCards[key];
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        },
+
+        isCardExpanded(u) {
+          if (u.status === 'PENDING') return true;
+          const key = u.id || u.email;
+          return !!this.expandedCards[key];
+        },
+
+        expandAllCards() {
+          const m = {};
+          this.filteredUsers.forEach(u => { m[u.id || u.email] = true; });
+          this.expandedCards = m;
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        },
+
+        collapseAllCards() {
+          this.expandedCards = {};
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        },
+
+        async init() {
+          this.initTheme();
+          this.loadOfficialCrews();
+          await this.loadUsersFromFirestore();
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        },
+
+        initTheme() {
+          if (this.theme === 'dark') document.documentElement.classList.add('dark');
+          else document.documentElement.classList.remove('dark');
+        },
+
+        toggleTheme() {
+          this.theme = this.theme === 'dark' ? 'light' : 'dark';
+          localStorage.setItem('mds_theme', this.theme);
+          this.initTheme();
+        },
+
+        loadOfficialCrews() {
+          const list = [];
+          if (typeof window !== 'undefined' && Array.isArray(window.MDS_PERSONNEL_DATA)) {
+            window.MDS_PERSONNEL_DATA.forEach(p => {
+              if (p && p.nama) {
+                list.push({ name: p.nama.trim(), modul: p.modul || '' });
+              }
+            });
+          }
+          this.officialCrews = list.sort((a, b) => a.name.localeCompare(b.name));
+        },
+
+        async loadUsersFromFirestore() {
+          let loaded = [];
+
+          if (fbDb) {
+            try {
+              const snapshot = await fbDb.collection('portal_users').get();
+              if (!snapshot.empty) {
+                snapshot.forEach(doc => {
+                  const d = doc.data();
+                  loaded.push({
+                    id: doc.id,
+                    name: d.name || doc.id,
+                    email: d.email || doc.id,
+                    role: (d.role || 'MDS').toUpperCase(),
+                    modul: d.modul || d.moduleOrArea || 'ALL',
+                    status: d.status || 'APPROVED',
+                    linkedCrew: d.linkedCrew || '',
+                    managedMds: Array.isArray(d.managedMds) ? d.managedMds : [],
+                    permissions: d.permissions || this.getDefaultPerms(d.role || 'MDS')
+                  });
+                });
+              }
+            } catch(e) {
+              console.warn('Gagal membaca Firestore, fallback ke cache lokal:', e);
+            }
+          }
+
+          if (loaded.length === 0) {
+            try {
+              const raw = localStorage.getItem('cimory_rbac_matrix');
+              if (raw) {
+                const matrix = JSON.parse(raw);
+                Object.keys(matrix).forEach(k => {
+                  const m = matrix[k];
+                  loaded.push({
+                    id: m.id || k,
+                    name: m.name || k,
+                    email: m.email || k,
+                    role: (m.role || 'MDS').toUpperCase(),
+                    modul: m.modul || 'ALL',
+                    status: m.status || 'APPROVED',
+                    linkedCrew: m.linkedCrew || '',
+                    managedMds: Array.isArray(m.managedMds) ? m.managedMds : [],
+                    permissions: m.permissions || this.getDefaultPerms(m.role || 'MDS')
+                  });
+                });
+              }
+            } catch(e) {}
+          }
+
+          this.users = loaded;
+        },
+
+        getDefaultPerms(role) {
+          const r = (role || 'MDS').toUpperCase();
+          const presets = {
+            SUPERADMIN: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true, galeri: true, simulasi: true },
+            MANAGER: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true, galeri: true, simulasi: true },
+            SPV: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true, galeri: true, simulasi: true },
+            MDS: { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false, galeri: false, simulasi: false }
+          };
+          return presets[r] || presets.MDS;
+        },
+
+        get filteredUsers() {
+          let list = this.users || [];
+
+          if (this.filterRole === 'PENDING') {
+            list = list.filter(u => u.status === 'PENDING');
+          } else if (this.filterRole !== 'ALL') {
+            list = list.filter(u => u.role === this.filterRole && u.status !== 'PENDING');
+          }
+
+          if (this.filterModul && this.filterModul !== 'ALL') {
+            list = list.filter(u => (u.modul || '').toUpperCase().startsWith(this.filterModul.toUpperCase()));
+          }
+
+          if (this.searchQuery && this.searchQuery.trim()) {
+            const q = this.searchQuery.toLowerCase().trim();
+            list = list.filter(u =>
+              (u.name || '').toLowerCase().includes(q) ||
+              (u.email || '').toLowerCase().includes(q) ||
+              (u.modul || '').toLowerCase().includes(q) ||
+              (u.linkedCrew || '').toLowerCase().includes(q)
+            );
+          }
+
+          return list;
+        },
+
+        get pendingUsers() {
+          return (this.users || []).filter(u => u.status === 'PENDING');
+        },
+
+        countRole(role) {
+          return (this.users || []).filter(u => u.role === role && u.status !== 'PENDING').length;
+        },
+
+        onRoleChange(u) {
+          u.permissions = { ...this.getDefaultPerms(u.role) };
+        },
+
+        onLinkedCrewChange(u) {
+          if (u.linkedCrew) {
+            const found = this.officialCrews.find(c => c.name.toUpperCase() === u.linkedCrew.toUpperCase());
+            if (found && found.modul && (!u.modul || u.modul === 'ALL')) {
+              u.modul = found.modul;
+            }
+          }
+        },
+
+        onUserFieldChange(u) {
+          // Trigger reactivity
+        },
+
+        togglePerm(u, permKey) {
+          if (!u.permissions) u.permissions = {};
+          u.permissions[permKey] = !u.permissions[permKey];
+        },
+
+        async approveUser(u) {
+          u.status = 'APPROVED';
+          if (!u.permissions) u.permissions = this.getDefaultPerms(u.role);
+          await this.saveSingleUser(u);
+          alert(`✅ User ${u.name || u.email} berhasil disetujui (APPROVED) dengan role ${u.role}!`);
+        },
+
+        async rejectUser(u) {
+          if (confirm(`Tolak pendaftaran ${u.name || u.email}?`)) {
+            u.status = 'REJECTED';
+            await this.saveSingleUser(u);
+          }
+        },
+
+        deleteUser(u) {
+          if (confirm(`Hapus permanen ${u.name || u.email} dari daftar?`)) {
+            this.users = this.users.filter(x => x.id !== u.id && x.email !== u.email);
+            if (fbDb && u.id) {
+              fbDb.collection('portal_users').doc(u.id).delete().catch(() => {});
+            }
+            this.syncToLocalStorage();
+          }
+        },
+
+        openSpvModal(u) {
+          this.activeSpvUser = u;
+          if (!Array.isArray(u.managedMds)) u.managedMds = [];
+          this.showSpvModalFlag = true;
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        },
+
+        isCrewInSpv(crewName) {
+          if (!this.activeSpvUser || !Array.isArray(this.activeSpvUser.managedMds)) return false;
+          return this.activeSpvUser.managedMds.includes(crewName);
+        },
+
+        toggleCrewInSpv(crewName) {
+          if (!this.activeSpvUser) return;
+          if (!Array.isArray(this.activeSpvUser.managedMds)) this.activeSpvUser.managedMds = [];
+          const idx = this.activeSpvUser.managedMds.indexOf(crewName);
+          if (idx >= 0) this.activeSpvUser.managedMds.splice(idx, 1);
+          else this.activeSpvUser.managedMds.push(crewName);
+        },
+
+        async submitNewUser() {
+          const email = this.newUserForm.email.toLowerCase().trim();
+          const existing = this.users.find(u => u.email && u.email.toLowerCase() === email);
+          if (existing) {
+            alert('Email sudah terdaftar!');
+            return;
+          }
+
+          const newUser = {
+            id: 'USR_' + Date.now(),
+            name: this.newUserForm.name.trim(),
+            email: email,
+            role: this.newUserForm.role,
+            modul: this.newUserForm.modul,
+            status: 'APPROVED',
+            linkedCrew: '',
+            managedMds: [],
+            permissions: this.getDefaultPerms(this.newUserForm.role)
+          };
+
+          this.users.unshift(newUser);
+          await this.saveSingleUser(newUser);
+          this.showAddUserModal = false;
+          this.newUserForm = { name: '', email: '', role: 'MDS', modul: 'ALL' };
+          alert('✅ User baru berhasil ditambahkan!');
+        },
+
+        async saveSingleUser(u) {
+          if (fbDb && u.id) {
+            try {
+              await fbDb.collection('portal_users').doc(u.id).set({
+                name: u.name,
+                email: u.email,
+                role: u.role,
+                modul: u.modul,
+                status: u.status,
+                linkedCrew: u.linkedCrew || '',
+                managedMds: u.managedMds || [],
+                permissions: u.permissions || {},
+                updatedAt: new Date().toISOString()
+              }, { merge: true });
+            } catch(e) {
+              console.warn('Gagal simpan user ke Firestore:', e);
+            }
+          }
+          this.syncToLocalStorage();
+        },
+
+        async saveAllToFirestore() {
+          this.isSaving = true;
+
+          try {
+            if (fbDb) {
+              const batch = fbDb.batch();
+              this.users.forEach(u => {
+                const docRef = fbDb.collection('portal_users').doc(u.id || u.email);
+                batch.set(docRef, {
+                  name: u.name,
+                  email: u.email,
+                  role: u.role,
+                  modul: u.modul,
+                  status: u.status || 'APPROVED',
+                  linkedCrew: u.linkedCrew || '',
+                  managedMds: u.managedMds || [],
+                  permissions: u.permissions || {},
+                  updatedAt: new Date().toISOString()
+                }, { merge: true });
+              });
+              await batch.commit();
+            }
+            this.syncToLocalStorage();
+            alert('✅ Berhasil! Seluruh matriks hak akses & approval telah tersimpan aman ke Cloud Firestore.');
+          } catch(err) {
+            alert('❌ Gagal menyimpan: ' + err.message);
+          } finally {
+            this.isSaving = false;
+          }
+        },
+
+        syncToLocalStorage() {
+          const matrix = {};
+          this.users.forEach(u => {
+            if (u.email) {
+              matrix[u.email.toLowerCase()] = { ...u };
+            }
+          });
+          localStorage.setItem('cimory_rbac_matrix', JSON.stringify(matrix));
+        }
+      }
+    }
+  </script>
+
+</body>
+</html>
