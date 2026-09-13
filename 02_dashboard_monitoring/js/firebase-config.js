@@ -27,7 +27,9 @@ window.RBAC_PAGES = [
   { id: 'jadwal', label: 'Target Jadwal Rute', icon: 'calendar', desc: 'Rute mingguan, matriks tanggal 1-31, & detail kunjungan toko' },
   { id: 'tokonasional', label: 'Database 49k Toko', icon: 'store', desc: 'Pencarian & eksplorasi 49.861 outlet nasional Cimory' },
   { id: 'laporan', label: 'Pusat Laporan WA', icon: 'share-2', desc: 'Broadcast WhatsApp, infografis KPI, & radar anomali' },
-  { id: 'evaluasi', label: 'Evaluasi Kinerja SPV', icon: 'award', desc: 'Scorecard, target visit, kepatuhan rute, & ranking tim' }
+  { id: 'evaluasi', label: 'Evaluasi Kinerja SPV', icon: 'award', desc: 'Scorecard, target visit, kepatuhan rute, & ranking tim' },
+  { id: 'galeri', label: 'Galeri Foto Pajangan', icon: 'image', desc: 'Audit foto Before/After & kepatuhan planogram per account' },
+  { id: 'simulasi', label: 'Simulasi & Editor Rute', icon: 'map', desc: 'Alokasi rute 25 hari kerja, editor MT Manager, & perizinan routing' }
 ];
 
 // 4. PRESET DEFAULT BERDASARKAN ROLE
@@ -35,31 +37,30 @@ window.RBAC_ROLE_PRESETS = {
   SUPERADMIN: {
     label: 'Super Admin (Bu Oci & Anda)',
     color: 'indigo',
-    permissions: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true }
+    permissions: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true, galeri: true, simulasi: true }
   },
   MANAGER: {
     label: 'Manager (Operasional / Regional)',
     color: 'blue',
-    permissions: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true }
+    permissions: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true, galeri: true, simulasi: true }
   },
   SPV: {
     label: 'Supervisor (SPV Wilayah)',
     color: 'sky',
-    permissions: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true }
+    permissions: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true, galeri: true, simulasi: true }
   },
   MDS: {
     label: 'Field User (MDS Lapangan)',
     color: 'emerald',
-    permissions: { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false }
+    permissions: { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false, galeri: false, simulasi: false }
   },
   CUSTOM: {
     label: 'Custom Access',
     color: 'amber',
-    permissions: { kunjungan: false, absensi: false, jadwal: false, tokonasional: false, laporan: false, evaluasi: false }
+    permissions: { kunjungan: false, absensi: false, jadwal: false, tokonasional: false, laporan: false, evaluasi: false, galeri: false, simulasi: false }
   }
 };
 
-// 5. DEFINISI SUB-TAB UNTUK KONTROL PERIZINAN LEBIH DALAM
 window.RBAC_SUBTABS_DEF = {
   laporan: [
     { id: 'rute', label: '1. Realisasi Rute', desc: 'Target toko vs realisasi harian' },
@@ -70,6 +71,16 @@ window.RBAC_SUBTABS_DEF = {
   evaluasi: [
     { id: 'TOKO', label: 'Hari Toko (Regular)', desc: 'Evaluasi kunjungan outlet' },
     { id: 'DC', label: 'Hari DC (Warehouse)', desc: 'Evaluasi tugas DC' }
+  ],
+  galeri: [
+    { id: 'katalog', label: 'Katalog & Foto Display', desc: 'Audit foto pajangan Before/After & Planogram' },
+    { id: 'filter', label: 'Filter Akun & Wilayah', desc: 'Pencarian foto per account & modul' },
+    { id: 'download', label: 'Unduh HD & Export', desc: 'Download batch foto pajangan resolusi tinggi' }
+  ],
+  simulasi: [
+    { id: 'optimasi', label: 'Engine Auto-Optimasi Rute', desc: 'Kalkulasi alokasi 25 hari rute toko MDS' },
+    { id: 'editor', label: 'Editor Rute Manual (MT Manager)', desc: 'Pemindahan toko, drag-drop rute, & validasi' },
+    { id: 'export', label: 'Export Excel Master Rute', desc: 'Unduh file Excel jadwal kunjungan format operasional' }
   ]
 };
 
@@ -86,6 +97,16 @@ window.getDefaultSubTabsForRole = function(role) {
     evaluasi: {
       TOKO: true,
       DC: true
+    },
+    galeri: {
+      katalog: true,
+      filter: true,
+      download: isSuper || isSpv
+    },
+    simulasi: {
+      optimasi: isSuper || isSpv,
+      editor: isSuper || isSpv,
+      export: true
     }
   };
 };

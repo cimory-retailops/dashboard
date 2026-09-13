@@ -46,6 +46,10 @@ function dashboardApp() {
     showSpvTeamModal: false,
     activeSpvTeamUser: null,
     spvMdsSearch: '',
+    activeCrewDropdownUserId: null,
+    crewDropdownSearch: '',
+    showNewUserCrewDropdown: false,
+    newUserCrewSearch: '',
     // Anomaly Trend & Monthly Leaderboard State
     anomalyViewMode: 'DAILY', // 'DAILY' | 'TREND'
     anomalyTrendCategory: 'ALL', // 'ALL' | 'terlambat' | 'absenNoVisit' | 'visitNoAbsen' | 'lupaPulang' | 'gpsIssue' | 'alpha'
@@ -58,6 +62,7 @@ function dashboardApp() {
       email: '',
       modul: 'ALL',
       role: 'MDS',
+      linkedCrew: '',
       jabatan: 'Merchandiser',
       permissions: {
         kunjungan: true,
@@ -65,7 +70,9 @@ function dashboardApp() {
         jadwal: false,
         tokonasional: false,
         laporan: false,
-        evaluasi: false
+        evaluasi: false,
+        galeri: false,
+        simulasi: false
       }
     },
     
@@ -7935,7 +7942,7 @@ function dashboardApp() {
     },
 
     getFirstAllowedTab() {
-      const tabs = ['kunjungan', 'absensi', 'jadwal', 'tokonasional', 'laporan', 'evaluasi'];
+      const tabs = ['kunjungan', 'absensi', 'jadwal', 'tokonasional', 'laporan', 'evaluasi', 'galeri', 'simulasi'];
       for (const t of tabs) {
         if (this.canAccessTab(t)) return t;
       }
@@ -8051,9 +8058,67 @@ function dashboardApp() {
       return this.computeOfficialCrews();
     },
 
+    get filteredOfficialCrews() {
+      const q = (this.crewDropdownSearch || '').toLowerCase().trim();
+      const list = this.availableOfficialCrews || [];
+      if (!q) return list;
+      const tokens = q.split(/\s+/).filter(Boolean);
+      return list.filter(c => {
+        const str = `${c.name || ''} ${c.code || ''} ${c.modul || ''} ${c.label || ''}`.toLowerCase();
+        return tokens.every(tok => str.includes(tok));
+      });
+    },
+
+    get filteredNewUserCrews() {
+      const q = (this.newUserCrewSearch || '').toLowerCase().trim();
+      const list = this.availableOfficialCrews || [];
+      if (!q) return list;
+      const tokens = q.split(/\s+/).filter(Boolean);
+      return list.filter(c => {
+        const str = `${c.name || ''} ${c.code || ''} ${c.modul || ''} ${c.label || ''}`.toLowerCase();
+        return tokens.every(tok => str.includes(tok));
+      });
+    },
+
+    openCrewDropdown(userId) {
+      this.activeCrewDropdownUserId = userId;
+      this.crewDropdownSearch = '';
+      this.$nextTick(() => {
+        const input = document.getElementById('crewDropdownSearchInput_' + userId) || document.getElementById('crewDropdownSearchInputGlobal');
+        if (input) input.focus();
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+
+    closeCrewDropdown() {
+      this.activeCrewDropdownUserId = null;
+      this.crewDropdownSearch = '';
+    },
+
     computeOfficialCrews() {
       const crewMap = new Map();
       const nonMdsKeywords = ['VACANT', 'OPEN', 'RESIGN', 'ADMIN', 'EMPTY', 'LEADER', 'CIMORY', 'TEST', '-'];
+
+      // 0. Dari Master 75 MDS Lengkap Nasional (MDS_PERSONNEL_DATA)
+      if (typeof window !== 'undefined' && Array.isArray(window.MDS_PERSONNEL_DATA)) {
+        window.MDS_PERSONNEL_DATA.forEach(p => {
+          const rawName = (p.nama || '').trim();
+          const rawCode = (p.id || '').trim();
+          const rawMod = (p.modul || '').trim().toUpperCase();
+          if (!rawName) return;
+          const upper = rawName.toUpperCase();
+          if (nonMdsKeywords.some(kw => upper.includes(kw))) return;
+
+          if (!crewMap.has(upper)) {
+            crewMap.set(upper, {
+              name: rawName,
+              code: rawCode,
+              modul: rawMod,
+              label: `${rawName}${rawCode ? ' (' + rawCode + ')' : ''}${rawMod ? ' - ' + rawMod : ''}`
+            });
+          }
+        });
+      }
 
       // 1. Dari masterUser
       if (Array.isArray(this.masterUser) && this.masterUser.length > 0) {
@@ -8122,7 +8187,7 @@ function dashboardApp() {
       const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
       if (!u) return;
       if (!u.permissions) u.permissions = {};
-      ['kunjungan', 'absensi', 'jadwal', 'tokonasional', 'laporan', 'evaluasi'].forEach(tab => {
+      ['kunjungan', 'absensi', 'jadwal', 'tokonasional', 'laporan', 'evaluasi', 'galeri', 'simulasi'].forEach(tab => {
         u.permissions[tab] = Boolean(state);
       });
       this.syncRbacMatrixFromUsers();
@@ -8135,15 +8200,23 @@ function dashboardApp() {
     openSubTabConfig(userId) {
       const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
       if (!u) return;
-      // Pastikan permissions.subTabs ada sebelum buka modal
       if (!u.permissions) u.permissions = {};
+      const defaults = window.getDefaultSubTabsForRole
+        ? window.getDefaultSubTabsForRole(u.role)
+        : { laporan: { rute: true, jadwal: true, absen: true, anomali: false }, evaluasi: { TOKO: true, DC: true }, galeri: { katalog: true, filter: true, download: true }, simulasi: { optimasi: true, editor: true, export: true } };
+      
       if (!u.permissions.subTabs) {
-        u.permissions.subTabs = window.getDefaultSubTabsForRole
-          ? window.getDefaultSubTabsForRole(u.role)
-          : { laporan: { rute: true, jadwal: true, absen: true, anomali: false }, evaluasi: { TOKO: true, DC: true } };
+        u.permissions.subTabs = JSON.parse(JSON.stringify(defaults));
+      } else {
+        ['laporan', 'evaluasi', 'galeri', 'simulasi'].forEach(cat => {
+          if (!u.permissions.subTabs[cat]) {
+            u.permissions.subTabs[cat] = { ...(defaults[cat] || {}) };
+          }
+        });
       }
       this.activeSubTabConfigUser = u;
       this.showSubTabConfigModal = true;
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     closeSubTabConfig() {
@@ -8482,7 +8555,9 @@ function dashboardApp() {
           jadwal: false,
           tokonasional: false,
           laporan: false,
-          evaluasi: false
+          evaluasi: false,
+          galeri: false,
+          simulasi: false
         }
       };
       alert('✅ Personil baru berhasil ditambahkan ke matriks hak akses!');
