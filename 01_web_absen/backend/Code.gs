@@ -132,18 +132,54 @@ function doPost(e) {
       });
     }
 
-    const { module, crewCode, crewName, rute, stores, isEditMode } = payload;
+    let { module, crewCode, crewName, rute, stores, isEditMode } = payload;
 
     if (!module || !crewName || !rute || !stores || !stores.length) {
       throw new Error("Data input tidak lengkap. Harap periksa modul, crew, rute, dan daftar toko.");
     }
 
     const cleanModule = module.toUpperCase().replace(/\s+/g, "");
+    const cleanCrewName = (crewName || "").toString().trim();
+    let cleanCrewCode = (crewCode || "").toString().trim();
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(CONFIG.UNIFIED_PIPELINE_ID);
+
+    // Auto-resolve ID resmi dari master_user jika crewCode kosong atau sama dengan nama
+    if (!cleanCrewCode || cleanCrewCode.toLowerCase() === cleanCrewName.toLowerCase()) {
+      try {
+        const userSheet = ss.getSheetByName("master_user") || ss.getSheetByName("Master_User");
+        if (userSheet) {
+          const uValues = userSheet.getDataRange().getValues();
+          if (uValues.length > 1) {
+            const uHeaders = uValues[0].map(h => (h || "").toString().toLowerCase().replace(/[^a-z0-9]/g, ""));
+            const uIdIdx = uHeaders.findIndex(h => h === "id" || h.includes("kodecrew") || h.includes("nik"));
+            const uNameIdx = uHeaders.findIndex(h => h === "nama" || h.includes("namacrew") || h.includes("name"));
+            const cleanTarget = cleanCrewName.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+            if (uIdIdx >= 0 && uNameIdx >= 0 && cleanTarget) {
+              for (let r = 1; r < uValues.length; r++) {
+                const uRow = uValues[r];
+                const uNameClean = (uRow[uNameIdx] || "").toString().toLowerCase().replace(/[^a-z0-9]/g, "");
+                if (uNameClean && (uNameClean === cleanTarget || uNameClean.includes(cleanTarget) || cleanTarget.includes(uNameClean))) {
+                  const foundId = uRow[uIdIdx];
+                  if (foundId !== undefined && foundId !== null && foundId !== "") {
+                    cleanCrewCode = foundId.toString().trim();
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (lookupErr) {
+        console.warn("Gagal auto-lookup master_user:", lookupErr);
+      }
+    }
 
     // Jika mode Edit, hapus terlebih dahulu jadwal lama crew untuk rute ini agar tidak menumpuk
     if (isEditMode) {
       try {
-        deleteStoreFromAllSpreadsheets(cleanModule, rute, crewCode, "");
+        deleteStoreFromAllSpreadsheets(cleanModule, rute, cleanCrewCode, "");
       } catch (delErr) {
         console.warn("Gagal membersihkan jadwal lama saat edit mode:", delErr);
       }
@@ -154,7 +190,7 @@ function doPost(e) {
     };
 
     try {
-      const appendedCount = appendRouteToUnifiedPipeline(cleanModule, crewCode, crewName, rute, stores);
+      const appendedCount = appendRouteToUnifiedPipeline(cleanModule, cleanCrewCode, cleanCrewName, rute, stores);
       results.pipelineTarget.success = true;
       results.pipelineTarget.count = appendedCount;
     } catch (err) {
@@ -169,8 +205,8 @@ function doPost(e) {
         (store.account || "").toString().trim().toUpperCase(),
         (store.kodeToko || store.kode || "").toString().trim(),
         (store.namaToko || store.nama || "").toString().trim(),
-        (crewCode || "").toString().trim(),
-        (crewName || "").toString().trim(),
+        cleanCrewCode,
+        cleanCrewName,
         rute.toString().trim(),
         cleanModule,
         statusKunjungan,
@@ -186,9 +222,9 @@ function doPost(e) {
       results.masterRekap = { success: false, error: err.toString() };
     }
 
-    let successMsg = `Berhasil menginput ${stores.length} toko ke Rute ${rute} untuk ${crewName} (${cleanModule}) [1 Pintu]`;
+    let successMsg = `Berhasil menginput ${stores.length} toko ke Rute ${rute} untuk ${cleanCrewName} (${cleanModule}) [1 Pintu]`;
     if (results.pipelineTarget.count === 0 && !isEditMode) {
-      successMsg = `Jadwal Rute ${rute} untuk ${crewName} sudah terdaftar sebelumnya di sistem. Buka tab Jadwal untuk melihat atau mengedit.`;
+      successMsg = `Jadwal Rute ${rute} untuk ${cleanCrewName} sudah terdaftar sebelumnya di sistem. Buka tab Jadwal untuk melihat atau mengedit.`;
     }
 
     return jsonResponse({
@@ -207,8 +243,8 @@ function doPost(e) {
 }
 
 function appendRouteToUnifiedPipeline(moduleName, crewCode, crewName, rute, stores) {
-  const ss = SpreadsheetApp.openById(CONFIG.UNIFIED_PIPELINE_ID);
-  let sheet = ss.getSheetByName(SHEET_NAMES.TARGET_ROUTE_SHEET) || ss.getSheets()[0];
+  const ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(CONFIG.UNIFIED_PIPELINE_ID);
+  let sheet = ss.getSheetByName(SHEET_NAMES.TARGET_ROUTE_SHEET) || ss.getSheetByName("master_toko") || ss.getSheets()[0];
 
   const values = sheet.getDataRange().getValues();
   let headers = [];
@@ -253,8 +289,40 @@ function appendRouteToUnifiedPipeline(moduleName, crewCode, crewName, rute, stor
   const rowsToAppend = [];
   const cleanModule = moduleName.toUpperCase().replace(/\s+/g, "");
   const cleanRute = rute.toString().trim().replace(/^rute\s*/i, "");
-  const cleanCrewCode = (crewCode || "").toString().trim();
+  let cleanCrewCode = (crewCode || "").toString().trim();
   const cleanCrewName = (crewName || "").toString().trim();
+
+  // Fail-safe: Jika cleanCrewCode kosong atau sama dengan nama atau tidak valid, cari ID resminya dari master_user
+  if (!cleanCrewCode || cleanCrewCode.toLowerCase() === cleanCrewName.toLowerCase()) {
+    try {
+      const userSheet = ss.getSheetByName("master_user") || ss.getSheetByName("Master_User");
+      if (userSheet) {
+        const uValues = userSheet.getDataRange().getValues();
+        if (uValues.length > 1) {
+          const uHeaders = uValues[0].map(h => (h || "").toString().toLowerCase().replace(/[^a-z0-9]/g, ""));
+          const uIdIdx = uHeaders.findIndex(h => h === "id" || h.includes("kodecrew") || h.includes("nik"));
+          const uNameIdx = uHeaders.findIndex(h => h === "nama" || h.includes("namacrew") || h.includes("name"));
+          const cleanTarget = cleanCrewName.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+          if (uIdIdx >= 0 && uNameIdx >= 0 && cleanTarget) {
+            for (let r = 1; r < uValues.length; r++) {
+              const uRow = uValues[r];
+              const uNameClean = (uRow[uNameIdx] || "").toString().toLowerCase().replace(/[^a-z0-9]/g, "");
+              if (uNameClean && (uNameClean === cleanTarget || uNameClean.includes(cleanTarget) || cleanTarget.includes(uNameClean))) {
+                const foundId = uRow[uIdIdx];
+                if (foundId !== undefined && foundId !== null && foundId !== "") {
+                  cleanCrewCode = foundId.toString().trim();
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (lookupErr) {
+      console.warn("Gagal auto-lookup master_user:", lookupErr);
+    }
+  }
 
   for (let s = 0; s < stores.length; s++) {
     const store = stores[s];

@@ -592,10 +592,16 @@ function loadSavedProfile() {
       } catch (e) {}
     }
 
+    const rawName = user.name || user.nama || "MDS";
+    let rawCode = user.id || user.kodeCrew || user.username || "";
+    if (rawCode.includes("FB_") || rawCode.toLowerCase().trim() === rawName.toLowerCase().trim()) {
+      rawCode = "";
+    }
+
     state.profile = {
-      nama: user.name || user.nama || "MDS",
-      kodeCrew: user.id || user.kodeCrew || user.username || "RO010",
-      modul: resolvedModul || "LK2",
+      nama: rawName,
+      kodeCrew: rawCode,
+      modul: resolvedModul || "DK1",
       account: user.account || "ALFAMART",
       role: (user.role || "").toUpperCase()
     };
@@ -608,6 +614,9 @@ function loadSavedProfile() {
   if (saved) {
     try {
       state.profile = JSON.parse(saved);
+      if (state.profile.kodeCrew && state.profile.nama && state.profile.kodeCrew.toLowerCase().trim() === state.profile.nama.toLowerCase().trim()) {
+        state.profile.kodeCrew = "";
+      }
       renderProfileUI();
     } catch (e) {
       openProfileModal();
@@ -1784,15 +1793,21 @@ async function handleDirectSubmit() {
 
   try {
     let finalCrewCode = (state.profile.kodeCrew || "").trim();
-    const allCrews = await getAllCrew();
+    const cleanProfileName = (state.profile.nama || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+    
+    let allCrews = await getAllCrew();
+    if (!allCrews || allCrews.length === 0) {
+      allCrews = await syncMasterCrewFromSheet();
+    }
+
     if (allCrews && allCrews.length > 0) {
-      const match = allCrews.find(c => 
-        (c.nama && state.profile.nama && c.nama.toUpperCase().trim() === state.profile.nama.toUpperCase().trim()) ||
-        (c.id && finalCrewCode && c.id.toUpperCase().trim() === finalCrewCode.toUpperCase().trim())
-      );
+      const match = allCrews.find(c => {
+        const cClean = (c.nama || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+        return (cClean && cleanProfileName && (cClean === cleanProfileName || cClean.includes(cleanProfileName) || cleanProfileName.includes(cClean)));
+      });
       if (match && match.id) {
-        finalCrewCode = match.id;
-        state.profile.kodeCrew = match.id;
+        finalCrewCode = String(match.id).trim();
+        state.profile.kodeCrew = finalCrewCode;
         if (match.modul) state.profile.modul = match.modul;
         localStorage.setItem("mds_crew_profile", JSON.stringify(state.profile));
       }
