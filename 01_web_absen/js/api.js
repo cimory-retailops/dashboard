@@ -397,11 +397,12 @@ async function syncCrewToCloud(crew) {
 /**
  * Mengambil Jadwal yang sudah terinput di Google Sheet (Direct Master_Toko CSV Stream + GAS Fallback)
  */
-async function fetchSavedSchedule({ module, rute, crewCode }) {
+async function fetchSavedSchedule({ module, rute, crewCode, crewName }) {
   const normModule = (module || "").toUpperCase().replace(/[\s_-]/g, "");
   const targetRuteStr = String(rute || "").trim();
   const targetRuteNum = parseInt(targetRuteStr.replace(/[^0-9]/g, ""), 10);
   const targetCrewCode = (crewCode || "").toUpperCase().trim();
+  const targetCrewName = (crewName || "").toUpperCase().trim();
 
   // 1. Coba tarik langsung dari Google Spreadsheet Modul Cabang / Central (Master_Toko)
   const sheetIds = [];
@@ -467,11 +468,44 @@ async function fetchSavedSchedule({ module, rute, crewCode }) {
               continue;
             }
 
-            // Filter Crew jika ada
-            if (targetCrewCode) {
-              const matchCrew = rowCrewCode.includes(targetCrewCode) || targetCrewCode.includes(rowCrewCode) ||
-                                rowCrewName.includes(targetCrewCode) || targetCrewCode.includes(rowCrewName);
-              if (!matchCrew) continue;
+            // Filter Crew jika ada (Cocokkan Kode ID maupun Nama secara presisi)
+            if (targetCrewCode || targetCrewName) {
+              const cleanTargetName = targetCrewName.replace(/[^A-Z0-9]/g, "");
+              const cleanRowName = rowCrewName.replace(/[^A-Z0-9]/g, "");
+              const cleanRowCode = rowCrewCode.replace(/[^A-Z0-9]/g, "");
+              const cleanTargetCode = targetCrewCode.replace(/[^A-Z0-9]/g, "");
+
+              let isMatch = false;
+
+              // 1. Cocokkan ID jika keduanya ada
+              if (cleanTargetCode && cleanRowCode) {
+                if (cleanRowCode === cleanTargetCode || cleanRowCode.includes(cleanTargetCode) || cleanTargetCode.includes(cleanRowCode)) {
+                  isMatch = true;
+                }
+              }
+
+              // 2. Cocokkan Nama jika keduanya ada
+              if (!isMatch && cleanTargetName && cleanRowName) {
+                if (cleanRowName === cleanTargetName || cleanRowName.includes(cleanTargetName) || cleanTargetName.includes(cleanRowName)) {
+                  isMatch = true;
+                }
+              }
+
+              // 3. Cross check jika nama row tersimpan di kolom kode
+              if (!isMatch && cleanTargetName && cleanRowCode) {
+                if (cleanRowCode === cleanTargetName || cleanRowCode.includes(cleanTargetName)) {
+                  isMatch = true;
+                }
+              }
+
+              // 4. Cross check jika targetCode tersimpan di rowName
+              if (!isMatch && cleanTargetCode && cleanRowName) {
+                if (cleanRowName === cleanTargetCode || cleanRowName.includes(cleanTargetCode)) {
+                  isMatch = true;
+                }
+              }
+
+              if (!isMatch) continue;
             }
 
             // Filter Rute jika ada

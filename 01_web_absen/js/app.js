@@ -1912,7 +1912,8 @@ async function loadScheduledStores(targetCrew = null) {
     const stores = await fetchSavedSchedule({
       module: activeCrewModul,
       rute: state.currentRute,
-      crewCode: activeCrewCode
+      crewCode: activeCrewCode,
+      crewName: activeCrewName
     });
 
     // Cari koordinat GPS (lat & lon) dari database lokal IndexedDB untuk setiap toko yang terinput
