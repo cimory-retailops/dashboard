@@ -21,7 +21,7 @@ function dashboardApp() {
     lastSyncTime: Date.now(), // Timestamp of last successful sync
     syncTimer: null, // Heartbeat timer for tab-active polling
     isSyncLocked: false, // Mutex lock to prevent race conditions
-
+    wakeLockSentinel: null, // Screen Wake Lock to prevent phone screen sleep during download
     // Firebase & RBAC Authentication State
     currentUser: null, // { uid, email, displayName, role, isSuperAdmin }
     isLoginModalOpen: false,
@@ -485,12 +485,14 @@ function dashboardApp() {
      * Web onResume & Smart Lifecycle Listeners
      */
     initLifecycleListeners() {
-      // 1. Web onResume (Tab Switch / App Resume dari WA / Background)
-      document.addEventListener('visibilitychange', () => {
+      // 1. Tab Visibility Change: Re-acquire Wake Lock if download still in progress
+      document.addEventListener('visibilitychange', async () => {
         if (document.visibilityState === 'visible') {
+          if (this.isLoading && !this.wakeLockSentinel) {
+            await this.requestWakeLock();
+          }
           const elapsed = Date.now() - (this.lastSyncTime || 0);
-          // Jika sudah lewat 3 menit sejak sync terakhir, auto-sync data realtime tanpa block layar
-          if (elapsed > 3 * 60 * 1000 && this.selectedPeriod === 'LIVE') {
+          if (elapsed > 5 * 60 * 1000 && this.selectedPeriod === 'LIVE') {
             this.syncRealtimeDataOnly();
           }
         } else if (document.visibilityState === 'hidden') {
@@ -520,6 +522,35 @@ function dashboardApp() {
           this.syncRealtimeDataOnly();
         }
       }, 3.5 * 60 * 1000);
+    },
+
+    /**
+     * Screen Wake Lock API: Mencegah layar HP mati/sleep otomatis saat download berlangsung
+     */
+    async requestWakeLock() {
+      if ('wakeLock' in navigator && !this.wakeLockSentinel) {
+        try {
+          this.wakeLockSentinel = await navigator.wakeLock.request('screen');
+          this.wakeLockSentinel.addEventListener('release', () => {
+            this.wakeLockSentinel = null;
+          });
+          console.log('%c[WakeLock Active]%c Layar HP akan tetap menyala selama proses sinkronisasi data.', 'background:#059669;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#34d399;');
+        } catch (err) {
+          console.warn('[WakeLock] Tidak dapat mengaktifkan Wake Lock:', err.name, err.message);
+        }
+      }
+    },
+
+    async releaseWakeLock() {
+      if (this.wakeLockSentinel) {
+        try {
+          await this.wakeLockSentinel.release();
+          this.wakeLockSentinel = null;
+          console.log('%c[WakeLock Released]%c Layar HP kembali ke mode sleep normal.', 'background:#64748b;color:white;padding:2px 6px;border-radius:4px;', 'color:#94a3b8;');
+        } catch (err) {
+          this.wakeLockSentinel = null;
+        }
+      }
     },
 
     /**
@@ -820,6 +851,7 @@ function dashboardApp() {
     async refreshAllData(showLoader = true, forceNetwork = false) {
       if (this.isSyncLocked) return;
       this.isSyncLocked = true;
+      await this.requestWakeLock();
 
       if (showLoader) {
         this.isLoading = true;
@@ -900,6 +932,7 @@ function dashboardApp() {
         console.error('Error refresh data:', error);
       } finally {
         this.isSyncLocked = false;
+        await this.releaseWakeLock();
         if (showLoader) {
           setTimeout(() => {
             this.isLoading = false;
