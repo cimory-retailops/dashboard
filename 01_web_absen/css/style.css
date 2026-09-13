@@ -806,6 +806,20 @@ h1, h2, h3, h4, .brand-font {
   background: var(--primary-light);
 }
 
+#floatingScheduleCard,
+#floatingSearchCard {
+  width: 100%;
+}
+
+#scheduleStoreList {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  max-height: 320px;
+  overflow-y: auto;
+  width: 100%;
+}
+
 /* SCHEDULE CREW SELECTOR ROW */
 .schedule-crew-selector-row {
   display: flex;

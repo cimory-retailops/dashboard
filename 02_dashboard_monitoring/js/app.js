@@ -555,7 +555,12 @@ function dashboardApp() {
       this.isLoading = true;
       this.loadingMessage = 'Mereset Pencarian & Filter...';
       this.loadingStage = 3;
-      this.selectedCrew = '';
+      if (this.currentUser && this.currentUser.role === 'MDS') {
+        const myCrew = this.getCurrentMdsCrewName();
+        this.selectedCrew = myCrew || '';
+      } else {
+        this.selectedCrew = '';
+      }
       this.searchInputText = '';
 
       setTimeout(() => {
@@ -1153,9 +1158,13 @@ function dashboardApp() {
           }
         });
 
-        // Sort each crew's day visits chronologically (earliest to latest in morning/afternoon) once
+        // Sort each crew's day visits chronologically (earliest to latest in morning/afternoon) accurately by seconds
         for (const list of this.crewDayVisitsMap.values()) {
-          list.sort((a, b) => String((a && (a.time || a.waktu)) || '00:00').localeCompare(String((b && (b.time || b.waktu)) || '00:00')));
+          list.sort((a, b) => {
+            const secA = this.parseTimeToSeconds(a && (a.time || a.waktu || a.jam));
+            const secB = this.parseTimeToSeconds(b && (b.time || b.waktu || b.jam));
+            return secA - secB;
+          });
         }
 
         // Sort visits newest first (Date descending, Time descending)
@@ -1163,9 +1172,9 @@ function dashboardApp() {
           const isoA = (a && a._iso) || '';
           const isoB = (b && b._iso) || '';
           if (isoA !== isoB) return isoB.localeCompare(isoA);
-          const timeA = (a && (a.time || a.waktu)) || '';
-          const timeB = (b && (b.time || b.waktu)) || '';
-          return timeB.localeCompare(timeA);
+          const secA = this.parseTimeToSeconds(a && (a.time || a.waktu || a.jam));
+          const secB = this.parseTimeToSeconds(b && (b.time || b.waktu || b.jam));
+          return secB - secA;
         });
       }
 
@@ -1600,31 +1609,40 @@ function dashboardApp() {
         const visitKey = `${entry.iso}_${entry.namaCrew.toUpperCase()}`;
         const crewVisits = (this.crewDayVisitsMap && this.crewDayVisitsMap.get(visitKey)) || [];
 
-        let firstStore = null;
-        let lastStore = null;
+        // Ambil kunjungan pertama dan terakhir yang memiliki GPS valid
+        const validVisits = crewVisits.filter(v => v && v.koordinat && !this.isGpsAnomaly(v.koordinat));
+        let firstStore = validVisits.length > 0 ? validVisits[0] : (crewVisits[0] || null);
+        let lastStore = validVisits.length > 0 ? validVisits[validVisits.length - 1] : (crewVisits[crewVisits.length - 1] || null);
         let masukDist = null;
         let masukDistText = null;
         let pulangDist = null;
         let pulangDistText = null;
 
-        if (crewVisits.length > 0) {
-          firstStore = crewVisits[0];
-          lastStore = crewVisits[crewVisits.length - 1];
+        // Jika absensi masuk memiliki nama toko spesifik, prioritaskan toko yang sesuai
+        if (entry.masuk && entry.masuk.namaToko) {
+          const mName = entry.masuk.namaToko.toUpperCase().trim();
+          const matchedFirst = validVisits.find(v => (v.namaToko || '').toUpperCase().includes(mName) || mName.includes((v.namaToko || '').toUpperCase()));
+          if (matchedFirst) firstStore = matchedFirst;
+        }
 
-          // Calculate distance for Masuk (vs Toko Pertama #1)
-          if (entry.masuk && entry.masuk.koordinat && firstStore.koordinat) {
-            if (!this.isGpsAnomaly(entry.masuk.koordinat) && !this.isGpsAnomaly(firstStore.koordinat)) {
-              masukDist = this.calculateDistanceMeters(entry.masuk.koordinat, firstStore.koordinat);
-              masukDistText = this.formatDistance(masukDist);
-            }
+        // Jika absensi pulang memiliki nama toko spesifik, prioritaskan toko yang sesuai
+        if (entry.pulang && entry.pulang.namaToko) {
+          const pName = entry.pulang.namaToko.toUpperCase().trim();
+          const matchedLast = [...validVisits].reverse().find(v => (v.namaToko || '').toUpperCase().includes(pName) || pName.includes((v.namaToko || '').toUpperCase()));
+          if (matchedLast) lastStore = matchedLast;
+        }
+
+        if (entry.masuk && entry.masuk.koordinat && firstStore && firstStore.koordinat) {
+          if (!this.isGpsAnomaly(entry.masuk.koordinat) && !this.isGpsAnomaly(firstStore.koordinat)) {
+            masukDist = this.calculateDistanceMeters(entry.masuk.koordinat, firstStore.koordinat);
+            masukDistText = this.formatDistance(masukDist);
           }
+        }
 
-          // Calculate distance for Pulang (vs Toko Terakhir #N)
-          if (entry.pulang && entry.pulang.koordinat && lastStore.koordinat) {
-            if (!this.isGpsAnomaly(entry.pulang.koordinat) && !this.isGpsAnomaly(lastStore.koordinat)) {
-              pulangDist = this.calculateDistanceMeters(entry.pulang.koordinat, lastStore.koordinat);
-              pulangDistText = this.formatDistance(pulangDist);
-            }
+        if (entry.pulang && entry.pulang.koordinat && lastStore && lastStore.koordinat) {
+          if (!this.isGpsAnomaly(entry.pulang.koordinat) && !this.isGpsAnomaly(lastStore.koordinat)) {
+            pulangDist = this.calculateDistanceMeters(entry.pulang.koordinat, lastStore.koordinat);
+            pulangDistText = this.formatDistance(pulangDist);
           }
         }
 
@@ -2403,7 +2421,17 @@ function dashboardApp() {
      */
     get filteredComplianceList() {
       let list = this.complianceList || [];
-      if (this.selectedCrews && this.selectedCrews.length > 0) {
+      if (this.currentUser && this.currentUser.role === 'MDS') {
+        const mdsCrew = this.getCurrentMdsCrewName();
+        if (mdsCrew) {
+          const mdsCrewUpper = mdsCrew.toUpperCase().trim();
+          list = list.filter(c => {
+            const cName = (c.namaCrew || '').toUpperCase().trim();
+            const cCode = (c.kodeCrew || '').toUpperCase().trim();
+            return cName === mdsCrewUpper || cCode === mdsCrewUpper || cName.includes(mdsCrewUpper) || mdsCrewUpper.includes(cName);
+          });
+        }
+      } else if (this.selectedCrews && this.selectedCrews.length > 0) {
         const selCrewsUpper = new Set(this.selectedCrews.map(c => String(c).toUpperCase().trim()));
         list = list.filter(c => selCrewsUpper.has((c.namaCrew || '').toUpperCase().trim()) || selCrewsUpper.has((c.kodeCrew || '').toUpperCase().trim()));
       } else if (this.selectedCrew) {
@@ -2894,11 +2922,23 @@ function dashboardApp() {
       this.loadingMessage = 'Mereset Filter MDS...';
       this.loadingStage = 3;
       this.tempSelectedCrews = [];
-      this.selectedCrew = '';
+      if (this.currentUser && this.currentUser.role === 'MDS') {
+        const myCrew = this.getCurrentMdsCrewName();
+        this.selectedCrew = myCrew || '';
+        this.selectedCrews = myCrew ? [myCrew] : [];
+      } else {
+        this.selectedCrew = '';
+        this.selectedCrews = [];
+      }
       this.crewDropdownSearch = '';
 
       setTimeout(() => {
-        this.selectedCrews = [];
+        if (this.currentUser && this.currentUser.role === 'MDS') {
+          const myCrew = this.getCurrentMdsCrewName();
+          this.selectedCrews = myCrew ? [myCrew] : [];
+        } else {
+          this.selectedCrews = [];
+        }
         this.currentPage = 1;
 
         requestAnimationFrame(() => {

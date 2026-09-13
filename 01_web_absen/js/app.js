@@ -884,8 +884,11 @@ function bindEvents() {
   document.getElementById("btnToggleScheduleList")?.addEventListener("click", () => {
     const list = document.getElementById("scheduleStoreList");
     if (!list) return;
-    const isHidden = list.style.display === "none" || !list.style.display;
+    const isHidden = list.style.display === "none";
     list.style.display = isHidden ? "flex" : "none";
+    if (isHidden) {
+      list.style.flexDirection = "column";
+    }
   });
 
   // Modals close on background click
@@ -990,43 +993,92 @@ window.switchAppView = function (viewName) {
   const navTabSched = document.getElementById("navTabBtnSchedule");
   const cardInput = document.getElementById("floatingSearchCard");
   const cardSched = document.getElementById("floatingScheduleCard");
+  const floatingBar = document.getElementById("floatingBar");
 
   if (viewName === "input") {
-    tabInput?.classList.add("active");
-    tabSched?.classList.remove("active");
+    if (tabInput) {
+      tabInput.style.background = "var(--primary)";
+      tabInput.style.color = "#ffffff";
+      tabInput.style.boxShadow = "0 2px 8px var(--primary-glow)";
+      tabInput.classList.remove("text-slate-600", "dark:text-slate-300");
+    }
+    if (tabSched) {
+      tabSched.style.background = "transparent";
+      tabSched.style.color = "";
+      tabSched.style.boxShadow = "none";
+      tabSched.classList.add("text-slate-600", "dark:text-slate-300");
+    }
     if (navTabInput) {
       navTabInput.style.background = "var(--primary)";
       navTabInput.style.color = "white";
       navTabInput.style.boxShadow = "0 2px 6px var(--primary-glow)";
+      navTabInput.classList.remove("text-slate-600", "dark:text-slate-300");
     }
     if (navTabSched) {
       navTabSched.style.background = "transparent";
       navTabSched.style.color = "";
       navTabSched.style.boxShadow = "none";
+      navTabSched.classList.add("text-slate-600", "dark:text-slate-300");
     }
-    if (cardInput) cardInput.style.display = "flex";
-    if (cardSched) cardSched.style.display = "none";
+    if (cardInput) {
+      cardInput.style.display = "block";
+    }
+    if (cardSched) {
+      cardSched.style.display = "none";
+    }
+    if (floatingBar && state.selectedStores.size > 0) {
+      floatingBar.style.display = "block";
+      floatingBar.classList.add("visible");
+    }
     updateFloatingBar();
-    renderMapMarkers(state.searchResults, false);
+    if (state.searchResults && state.searchResults.length > 0) {
+      renderMapMarkers(state.searchResults, false);
+    }
     renderSelectedRouteMarkersAndPolyline(Array.from(state.selectedStores.values()));
   } else {
-    tabInput?.classList.remove("active");
-    tabSched?.classList.add("active");
+    if (tabInput) {
+      tabInput.style.background = "transparent";
+      tabInput.style.color = "";
+      tabInput.style.boxShadow = "none";
+      tabInput.classList.add("text-slate-600", "dark:text-slate-300");
+    }
+    if (tabSched) {
+      tabSched.style.background = "var(--primary)";
+      tabSched.style.color = "#ffffff";
+      tabSched.style.boxShadow = "0 2px 8px var(--primary-glow)";
+      tabSched.classList.remove("text-slate-600", "dark:text-slate-300");
+    }
     if (navTabInput) {
       navTabInput.style.background = "transparent";
       navTabInput.style.color = "";
       navTabInput.style.boxShadow = "none";
+      navTabInput.classList.add("text-slate-600", "dark:text-slate-300");
     }
     if (navTabSched) {
       navTabSched.style.background = "var(--primary)";
       navTabSched.style.color = "white";
       navTabSched.style.boxShadow = "0 2px 6px var(--primary-glow)";
+      navTabSched.classList.remove("text-slate-600", "dark:text-slate-300");
     }
-    if (cardInput) cardInput.style.display = "none";
-    if (cardSched) cardSched.style.display = "flex";
-    elements.floatingBar?.classList.remove("visible");
+    if (cardInput) {
+      cardInput.style.display = "none";
+    }
+    if (cardSched) {
+      cardSched.style.display = "block";
+    }
+    if (floatingBar) {
+      floatingBar.style.display = "none";
+      floatingBar.classList.remove("visible");
+    }
+    if (markerClusterGroup) {
+      markerClusterGroup.clearLayers();
+    }
     loadScheduledStores();
   }
+
+  setTimeout(() => {
+    if (map) map.invalidateSize();
+  }, 100);
 };
 
 /**
@@ -3263,75 +3315,5 @@ function initPwaInstall() {
   });
 }
 
-/**
- * Switcher Mode Tampilan: Input Rute vs Jadwal Saya
- */
-window.switchAppView = function(view) {
-  state.currentView = view;
-  const searchCard = document.getElementById("floatingSearchCard");
-  const scheduleCard = document.getElementById("floatingScheduleCard");
-  const floatingBar = document.getElementById("floatingBar");
-  
-  const navTabInput = document.getElementById("navTabBtnInput");
-  const navTabSchedule = document.getElementById("navTabBtnSchedule");
-  const tabInput = document.getElementById("tabBtnInput");
-  const tabSchedule = document.getElementById("tabBtnSchedule");
-
-  if (view === "input") {
-    if (searchCard) searchCard.style.display = "block";
-    if (scheduleCard) scheduleCard.style.display = "none";
-    if (floatingBar && state.selectedStores.size > 0) floatingBar.style.display = "block";
-
-    [navTabInput, tabInput].forEach(btn => {
-      if (btn) {
-        btn.style.background = "var(--primary)";
-        btn.style.color = "#ffffff";
-        btn.style.boxShadow = "0 2px 8px var(--primary-glow)";
-        btn.classList.remove("text-slate-600", "dark:text-slate-300");
-      }
-    });
-    [navTabSchedule, tabSchedule].forEach(btn => {
-      if (btn) {
-        btn.style.background = "transparent";
-        btn.style.color = "";
-        btn.style.boxShadow = "none";
-        btn.classList.add("text-slate-600", "dark:text-slate-300");
-      }
-    });
-
-    if (typeof renderSelectedRouteMarkersAndPolyline === "function") {
-      renderSelectedRouteMarkersAndPolyline(Array.from(state.selectedStores.values()));
-    }
-  } else {
-    if (searchCard) searchCard.style.display = "none";
-    if (scheduleCard) scheduleCard.style.display = "block";
-    if (floatingBar) floatingBar.style.display = "none";
-
-    [navTabSchedule, tabSchedule].forEach(btn => {
-      if (btn) {
-        btn.style.background = "var(--primary)";
-        btn.style.color = "#ffffff";
-        btn.style.boxShadow = "0 2px 8px var(--primary-glow)";
-        btn.classList.remove("text-slate-600", "dark:text-slate-300");
-      }
-    });
-    [navTabInput, tabInput].forEach(btn => {
-      if (btn) {
-        btn.style.background = "transparent";
-        btn.style.color = "";
-        btn.style.boxShadow = "none";
-        btn.classList.add("text-slate-600", "dark:text-slate-300");
-      }
-    });
-
-    if (typeof loadScheduledStores === "function") {
-      loadScheduledStores();
-    }
-  }
-
-  setTimeout(() => {
-    if (map) map.invalidateSize();
-  }, 100);
-};
 
 

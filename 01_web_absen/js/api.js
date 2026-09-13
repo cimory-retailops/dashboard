@@ -6,6 +6,24 @@ const API_CONFIG = {
   // URL Default Spreadsheet Master 34k/49k Toko & Crew
   MASTER_SHEET_ID: "16cokFfnQFIajmTd553TKy-CfkNFc1Gg7ElkhAer81QA",
   MASTER_STORE_GID: "1970488135", // GID Tab master_toko (49.469+ Seluruh Toko Lengkap)
+  CENTRAL_ID: "1XqZgR70C1eqfkkKbM9jO2FhSi6-g3I9AskuhsSh7Mzs",
+  MODUL_IDS: {
+    "DK1": "1asDdjDm0kUfFmICLtkhJ5VBhmKUels2c-H8Cd22qYvk",
+    "DK2": "14d0LUW73TveimrVC5QZ5Aq8fanWFTa-endNTq5UgxU0",
+    "DK3": "1PyP2gDOltePqcadtcOzncjb8vYpqlYcUu31N_JYu_gQ",
+    "DK4": "1jiN7bi-Uc104X5Ug2p2hYlI163h-ycQ8hEqHyt4zoKw",
+    "DK5": "1QWf1cG5byneFDGmy_m2eUe_aUUUtztBc8ERgfGjjmb4",
+    "DK6": "1VV6E_MuBUNgQMopvTezXDRlHpa6Z1fKfHOlew--cPBY",
+    "LK1": "1LdoLka5rw1m8fuhOhYqvs6v0hgbY766sdlVj_JcMrb4",
+    "LK2": "1LjRvlTow7wcLDJHipCw-H2mdn5Wh7YuwBf7Ab5kN1BM",
+    "LK3": "1EuxP8f8D4Vya5kdN1_0QVCDP1dPvAkrMKErnRCO4jJM",
+    "LK4": "1GRuXwLgO_zsuW6Ai49h9w1QTFxM_TQVxBs6xWKpqEhY",
+    "LK5": "1GyTFOp8siIXfLpUmEv935hZ0976-fXqXgiwz5Juq92A",
+    "LP1": "1356ZShL_ZQaO0pwI7msWcQmINpyKCxhizMzt8c5cKpo",
+    "LP2": "1Dy6Zb6e9eWLOuLcWaUiKYWpIuv2mpz-leGJwiJu20Ss",
+    "LP3": "1S__W_tKymV2xwqx_-vthpPt5jn5u7t3ePlgPqM1opMM",
+    "LP4": "1kUWJIQxtSkjebZMualR2bIV6HyGxp-baDVz1s-7KspU"
+  },
   
   // URL Google Apps Script Web App Default
   DEFAULT_GAS_URL: "https://script.google.com/macros/s/AKfycby1QQCwXusMhaEtm79iVISFjrZ3H6RxGOTi3vTXcYF-Xvv9SOk-X4HkugRUEe1E2-pZHQ/exec",
@@ -357,11 +375,126 @@ async function syncCrewToCloud(crew) {
 }
 
 /**
- * Mengambil Jadwal yang sudah terinput di Google Sheet melalui GAS API
+ * Mengambil Jadwal yang sudah terinput di Google Sheet (Direct Master_Toko CSV Stream + GAS Fallback)
  */
 async function fetchSavedSchedule({ module, rute, crewCode }) {
-  const gasUrl = API_CONFIG.getGasUrl();
+  const normModule = (module || "").toUpperCase().replace(/[\s_-]/g, "");
+  const targetRuteStr = String(rute || "").trim();
+  const targetRuteNum = parseInt(targetRuteStr.replace(/[^0-9]/g, ""), 10);
+  const targetCrewCode = (crewCode || "").toUpperCase().trim();
 
+  // 1. Coba tarik langsung dari Google Spreadsheet Modul Cabang / Central (Master_Toko)
+  const sheetIds = [];
+  if (normModule && API_CONFIG.MODUL_IDS && API_CONFIG.MODUL_IDS[normModule]) {
+    sheetIds.push(API_CONFIG.MODUL_IDS[normModule]);
+  }
+  if (API_CONFIG.CENTRAL_ID && !sheetIds.includes(API_CONFIG.CENTRAL_ID)) {
+    sheetIds.push(API_CONFIG.CENTRAL_ID);
+  }
+
+  for (const sheetId of sheetIds) {
+    try {
+      const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Master_Toko`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const text = await res.text();
+        const rows = parseCSV(text);
+        if (rows.length >= 2) {
+          const headers = rows[0].map(h => (h || "").toUpperCase().replace(/[\s_-]/g, ""));
+          
+          const findCol = (names, def) => {
+            for (const n of names) {
+              const idx = headers.indexOf(n);
+              if (idx !== -1) return idx;
+              const subIdx = headers.findIndex(h => h.includes(n));
+              if (subIdx !== -1) return subIdx;
+            }
+            return def;
+          };
+
+          const idxAccount = findCol(["ACCOUNT", "AKUN"], 0);
+          const idxKode = findCol(["KODETOKO", "STORECODE", "KODE"], 1);
+          const idxNama = findCol(["NAMATOKO", "STORENAME", "NAMA"], 2);
+          const idxCrewCode = findCol(["KODECREW", "IDCREW", "CREWCODE", "NIK"], 3);
+          const idxCrewName = findCol(["NAMACREW", "CREW", "CREWNAME"], 4);
+          const idxRute = findCol(["RUTE", "ROUTE", "HARIKE", "HARI"], 5);
+          const idxModul = findCol(["MODUL", "BRANCH", "WILAYAH"], -1);
+          const idxLat = findCol(["LATITUDE", "LAT"], -1);
+          const idxLon = findCol(["LONGITUDE", "LON", "LNG"], -1);
+          const idxKec = findCol(["KECAMATAN", "KEC"], -1);
+          const idxKota = findCol(["KOTA", "KABKOTA"], -1);
+
+          const matched = [];
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length < 2) continue;
+
+            const rowKode = (row[idxKode] || "").toString().trim().toUpperCase();
+            const rowNama = (row[idxNama] || "").toString().trim();
+            if (!rowKode && !rowNama) continue;
+
+            const rowCrewCode = (row[idxCrewCode] || "").toString().trim().toUpperCase();
+            const rowCrewName = (row[idxCrewName] || "").toString().trim().toUpperCase();
+            const rowModul = (idxModul !== -1 && row[idxModul] ? row[idxModul] : normModule).toString().trim().toUpperCase();
+            const rowRuteRaw = (row[idxRute] || "").toString().trim();
+
+            // Filter Modul jika ada
+            if (normModule && rowModul && !rowModul.includes(normModule) && !normModule.includes(rowModul)) {
+              continue;
+            }
+
+            // Filter Crew jika ada
+            if (targetCrewCode) {
+              const matchCrew = rowCrewCode.includes(targetCrewCode) || targetCrewCode.includes(rowCrewCode) ||
+                                rowCrewName.includes(targetCrewCode) || targetCrewCode.includes(rowCrewName);
+              if (!matchCrew) continue;
+            }
+
+            // Filter Rute jika ada
+            if (targetRuteStr) {
+              const rowRuteNum = parseInt(rowRuteRaw.replace(/[^0-9]/g, ""), 10);
+              const matchRute = (rowRuteRaw === targetRuteStr) ||
+                                (rowRuteRaw.toUpperCase() === `RUTE ${targetRuteStr}`.toUpperCase()) ||
+                                (rowRuteRaw.toUpperCase() === `R${targetRuteStr}`.toUpperCase()) ||
+                                (!isNaN(targetRuteNum) && !isNaN(rowRuteNum) && targetRuteNum === rowRuteNum);
+              if (!matchRute) continue;
+            }
+
+            const lat = idxLat !== -1 && row[idxLat] ? parseFloat(row[idxLat].toString().replace(",", ".")) : null;
+            const lon = idxLon !== -1 && row[idxLon] ? parseFloat(row[idxLon].toString().replace(",", ".")) : null;
+
+            matched.push({
+              account: (row[idxAccount] || "ALFAMART").toString().trim().toUpperCase(),
+              kodeToko: rowKode,
+              namaToko: rowNama,
+              kodeCrew: row[idxCrewCode] || crewCode,
+              namaCrew: row[idxCrewName] || "",
+              rute: rowRuteRaw || targetRuteStr,
+              modul: rowModul,
+              lat: !isNaN(lat) && lat !== 0 ? lat : null,
+              lon: !isNaN(lon) && lon !== 0 ? lon : null,
+              kecamatan: idxKec !== -1 && row[idxKec] ? row[idxKec].toString().trim() : "",
+              kota: idxKota !== -1 && row[idxKota] ? row[idxKota].toString().trim() : "",
+              source: 'Spreadsheet'
+            });
+          }
+
+          if (matched.length > 0) {
+            return matched;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Direct sheet schedule fetch failed:", e);
+    }
+  }
+
+  // 2. Coba GAS API jika URL ada
+  const gasUrl = API_CONFIG.getGasUrl();
   if (gasUrl) {
     try {
       let queryUrl = `${gasUrl}?action=get_schedule&module=${encodeURIComponent(module)}`;
@@ -369,20 +502,18 @@ async function fetchSavedSchedule({ module, rute, crewCode }) {
       if (crewCode) queryUrl += `&crewCode=${encodeURIComponent(crewCode)}`;
 
       const response = await fetch(queryUrl);
-      if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-
-      const result = await response.json();
-      if (result.status === "success") {
-        return result.data || [];
-      } else {
-        throw new Error(result.message || "Gagal mengambil data jadwal");
+      if (response.ok) {
+        const result = await response.json();
+        if (result.status === "success" && Array.isArray(result.data) && result.data.length > 0) {
+          return result.data;
+        }
       }
     } catch (err) {
       console.warn("GAS fetch schedule failed, fallback to local history:", err);
     }
   }
 
-  // Fallback: Ambil dari riwayat lokal
+  // 3. Fallback: Ambil dari riwayat lokal
   const historyList = await getHistoryEntries(50);
   const matchedStores = [];
 
