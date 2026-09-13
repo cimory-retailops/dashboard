@@ -675,17 +675,29 @@ async function checkDatabaseStatus() {
     const freshCrews = await syncMasterCrewFromSheet();
     if (freshCrews && freshCrews.length > 0 && state.profile && state.profile.nama) {
       const myCrew = freshCrews.find(c => 
-        (c.id && state.profile.kodeCrew && c.id.toUpperCase() === state.profile.kodeCrew.toUpperCase()) ||
-        (c.nama && state.profile.nama && c.nama.toUpperCase().trim() === state.profile.nama.toUpperCase().trim())
+        (c.nama && state.profile.nama && c.nama.toUpperCase().trim() === state.profile.nama.toUpperCase().trim()) ||
+        (c.id && state.profile.kodeCrew && c.id.toUpperCase() === state.profile.kodeCrew.toUpperCase())
       );
-      if (myCrew && myCrew.modul && myCrew.modul !== state.profile.modul) {
-        state.profile.modul = myCrew.modul;
-        if (myCrew.id) state.profile.kodeCrew = myCrew.id;
-        if (myCrew.account) state.profile.account = myCrew.account;
-        localStorage.setItem("mds_crew_profile", JSON.stringify(state.profile));
-        renderProfileUI();
-        if (state.currentView === "schedule") {
-          loadScheduledStores();
+      if (myCrew) {
+        let changed = false;
+        if (myCrew.id && state.profile.kodeCrew !== myCrew.id) {
+          state.profile.kodeCrew = myCrew.id;
+          changed = true;
+        }
+        if (myCrew.modul && state.profile.modul !== myCrew.modul) {
+          state.profile.modul = myCrew.modul;
+          changed = true;
+        }
+        if (myCrew.account && state.profile.account !== myCrew.account) {
+          state.profile.account = myCrew.account;
+          changed = true;
+        }
+        if (changed) {
+          localStorage.setItem("mds_crew_profile", JSON.stringify(state.profile));
+          renderProfileUI();
+          if (state.currentView === "schedule") {
+            loadScheduledStores();
+          }
         }
       }
     }
@@ -1771,9 +1783,24 @@ async function handleDirectSubmit() {
   }
 
   try {
+    let finalCrewCode = (state.profile.kodeCrew || "").trim();
+    const allCrews = await getAllCrew();
+    if (allCrews && allCrews.length > 0) {
+      const match = allCrews.find(c => 
+        (c.nama && state.profile.nama && c.nama.toUpperCase().trim() === state.profile.nama.toUpperCase().trim()) ||
+        (c.id && finalCrewCode && c.id.toUpperCase().trim() === finalCrewCode.toUpperCase().trim())
+      );
+      if (match && match.id) {
+        finalCrewCode = match.id;
+        state.profile.kodeCrew = match.id;
+        if (match.modul) state.profile.modul = match.modul;
+        localStorage.setItem("mds_crew_profile", JSON.stringify(state.profile));
+      }
+    }
+
     const result = await submitRouteAttendance({
       module: state.profile.modul,
-      crewCode: state.profile.kodeCrew,
+      crewCode: finalCrewCode,
       crewName: state.profile.nama,
       rute: state.currentRute,
       stores: storesArray,
