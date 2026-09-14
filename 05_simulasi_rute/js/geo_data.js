@@ -1,8 +1,21 @@
 /**
- * DATA ALAMAT PERSONIL MDS LENGKAP 100% (75 MDS SE-INDONESIA)
- * Generated automatically from live Google Sheet Master_User
+ * DATA ALAMAT PERSONIL MDS LENGKAP 100% (71 MDS SE-INDONESIA)
+ * Generated automatically with New Personnel (Andi Irfansyah & Saskia Putri) & Firestore Sync
  */
 const MDS_PERSONNEL_DATA = [
+    {
+        "id": "3.4473",
+        "nama": "TITI SRIYATI",
+        "jabatan": "Merchandiser",
+        "account": "ALFAMART",
+        "modul": "DK3",
+        "alamat": "Jl. Pengadegan Utara IV RT 006/RW 007, Kel. Pengadegan",
+        "kecamatan": "Pancoran",
+        "kota": "Jakarta Selatan",
+        "region": "JABODETABEK",
+        "lat": -6.2615,
+        "lng": 106.8106
+    },
     {
         "id": "3.5623",
         "nama": "MUHAMMAD FEBRIMA NURSA",
@@ -23,7 +36,7 @@ const MDS_PERSONNEL_DATA = [
         "account": "ALFAMART",
         "modul": "DK1",
         "alamat": "Jl. Raya Ciruas, Kp. Pasar, RT 003/RW 001, Desa Nyapah",
-        "kecamatan": "Karawaci",
+        "kecamatan": "Walantaka",
         "kota": "Kota Tangerang",
         "region": "JABODETABEK",
         "lat": -6.195022,
@@ -49,7 +62,7 @@ const MDS_PERSONNEL_DATA = [
         "account": "ALFAMART",
         "modul": "DK1",
         "alamat": "Kp. Sumur Sawo RT 18/RW 06, Desa Citalahab",
-        "kecamatan": "\u00e2\u20ac\u201d",
+        "kecamatan": "\u2014",
         "kota": "Kabupaten Pandeglang",
         "region": "JABODETABEK",
         "lat": -6.309795,
@@ -78,8 +91,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Larangan",
         "kota": "Kota Tangerang",
         "region": "JABODETABEK",
-        "lat": -6.231715,
-        "lng": 106.73877
+        "lat": -6.237255,
+        "lng": 106.721469
     },
     {
         "id": "NEW 1",
@@ -91,8 +104,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Tanah Abang",
         "kota": "Jakarta Pusat",
         "region": "JABODETABEK",
-        "lat": -6.190053,
-        "lng": 106.814272
+        "lat": -6.1878,
+        "lng": 106.8152
     },
     {
         "id": "3.5064",
@@ -104,8 +117,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Gunung Putri",
         "kota": "Kabupaten Bogor",
         "region": "JABODETABEK",
-        "lat": -6.442939,
-        "lng": 106.920444
+        "lat": -6.448558,
+        "lng": 106.942761
     },
     {
         "id": "3.5405",
@@ -117,8 +130,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Parung",
         "kota": "Kabupaten Bogor",
         "region": "JABODETABEK",
-        "lat": -6.42772,
-        "lng": 106.730805
+        "lat": -6.425556,
+        "lng": 106.711867
     },
     {
         "id": "3.5569",
@@ -130,8 +143,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Kembangan",
         "kota": "Jakarta Barat",
         "region": "JABODETABEK",
-        "lat": -6.1685,
-        "lng": 106.745022
+        "lat": -6.160161,
+        "lng": 106.741009
     },
     {
         "id": "3.6056",
@@ -143,8 +156,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Cipocok Jaya",
         "kota": "Kota Serang",
         "region": "JABODETABEK",
-        "lat": -6.117683,
-        "lng": 106.159219
+        "lat": -6.142078,
+        "lng": 106.177002
     },
     {
         "id": "3.6413",
@@ -156,8 +169,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Bogor Tengah",
         "kota": "Kota Bogor",
         "region": "JABODETABEK",
-        "lat": -6.592899,
-        "lng": 106.799537
+        "lat": -6.591143,
+        "lng": 106.786016
     },
     {
         "id": "3.6585",
@@ -169,8 +182,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Pondok Melati",
         "kota": "Kota Bekasi",
         "region": "JABODETABEK",
-        "lat": -6.310047,
-        "lng": 106.925684
+        "lat": -6.291771,
+        "lng": 106.920959
     },
     {
         "id": "3.7332",
@@ -182,8 +195,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Cipayung",
         "kota": "Jakarta Timur",
         "region": "JABODETABEK",
-        "lat": -6.196749,
-        "lng": 106.816202
+        "lat": -6.293297,
+        "lng": 106.904256
     },
     {
         "id": "3.7644",
@@ -195,21 +208,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Ciomas",
         "kota": "Kabupaten Bogor",
         "region": "JABODETABEK",
-        "lat": -6.60644,
-        "lng": 106.760212
-    },
-    {
-        "id": "3.4473",
-        "nama": "TITI SRIYATI",
-        "jabatan": "Merchandiser",
-        "account": "ALFAMIDI",
-        "modul": "DK3",
-        "alamat": "Jl. Pengadegan Utara IV RT 006/RW 007, Kel. Pengadegan",
-        "kecamatan": "Pancoran",
-        "kota": "Jakarta Selatan",
-        "region": "JABODETABEK",
-        "lat": -6.259807,
-        "lng": 106.843624
+        "lat": -6.618641,
+        "lng": 106.782012
     },
     {
         "id": "3.4695",
@@ -221,8 +221,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Babelan",
         "kota": "Kabupaten Bekasi",
         "region": "JABODETABEK",
-        "lat": -6.178755,
-        "lng": 107.038302
+        "lat": -6.162086,
+        "lng": 107.034789
     },
     {
         "id": "3.5427",
@@ -234,8 +234,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Pasar Rebo",
         "kota": "Jakarta Timur",
         "region": "JABODETABEK",
-        "lat": -6.314251,
-        "lng": 106.869944
+        "lat": -6.326265,
+        "lng": 106.862446
     },
     {
         "id": "3.5986_DK3_19",
@@ -247,8 +247,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Pasar Minggu",
         "kota": "Jakarta Selatan",
         "region": "JABODETABEK",
-        "lat": -6.280435,
-        "lng": 106.83704
+        "lat": -6.287232,
+        "lng": 106.848805
     },
     {
         "id": "3.6488",
@@ -260,8 +260,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Curug",
         "kota": "Kabupaten Tangerang",
         "region": "JABODETABEK",
-        "lat": -6.260817,
-        "lng": 106.562261
+        "lat": -6.257177,
+        "lng": 106.565492
     },
     {
         "id": "3.6593",
@@ -273,8 +273,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Sukadiri",
         "kota": "Kabupaten Tangerang",
         "region": "JABODETABEK",
-        "lat": -6.075044,
-        "lng": 106.57
+        "lat": -6.104245,
+        "lng": 106.561491
     },
     {
         "id": "3.7405",
@@ -286,11 +286,11 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Sukmajaya",
         "kota": "Kota Depok",
         "region": "JABODETABEK",
-        "lat": -6.409231,
-        "lng": 106.842336
+        "lat": -6.393433,
+        "lng": 106.840939
     },
     {
-        "id": "3.7405",
+        "id": "3.7405_LK4",
         "nama": "RIZALDI PRASETYO BUDI",
         "jabatan": "Merchandiser",
         "account": "ALFAMART",
@@ -299,8 +299,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Sukmajaya",
         "kota": "Kota Depok",
         "region": "JABODETABEK",
-        "lat": -6.409528,
-        "lng": 106.847121
+        "lat": -6.393433,
+        "lng": 106.840939
     },
     {
         "id": "3.7466",
@@ -312,8 +312,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Batam Kota",
         "kota": "Kota Batam",
         "region": "LUAR PULAU",
-        "lat": 1.134338,
-        "lng": 104.059956
+        "lat": 1.1301,
+        "lng": 104.0529
     },
     {
         "id": "3.5743",
@@ -325,8 +325,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Ilir Timur",
         "kota": "Kota Palembang",
         "region": "LUAR PULAU",
-        "lat": -2.961187,
-        "lng": 104.758235
+        "lat": -2.9761,
+        "lng": 104.7754
     },
     {
         "id": "RO031",
@@ -338,21 +338,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Alam Barajo",
         "kota": "Kota Jambi",
         "region": "LUAR PULAU",
-        "lat": -1.610218,
-        "lng": 103.613539
-    },
-    {
-        "id": "3.7059",
-        "nama": "THERESA LIANA RUSLI",
-        "jabatan": "Merchandiser",
-        "account": "INDOMARET",
-        "modul": "LP3",
-        "alamat": "Jl. Padat Karya Sempaja, Gg. Karya Mandiri, RT 08, Kel. Sempaja Timur",
-        "kecamatan": "Samarinda Utara",
-        "kota": "Kota Samarinda",
-        "region": "LUAR PULAU",
-        "lat": -0.502106,
-        "lng": 117.153709
+        "lat": -1.6101,
+        "lng": 103.6131
     },
     {
         "id": "3.6277",
@@ -364,8 +351,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Tampan",
         "kota": "Kota Pekanbaru",
         "region": "LUAR PULAU",
-        "lat": 0.511682,
-        "lng": 101.44126
+        "lat": 0.5071,
+        "lng": 101.4478
     },
     {
         "id": "3.6867",
@@ -377,8 +364,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Medan Perjuangan",
         "kota": "Kota Medan",
         "region": "LUAR PULAU",
-        "lat": 3.58006,
-        "lng": 98.675771
+        "lat": 3.5952,
+        "lng": 98.6722
     },
     {
         "id": "RO044",
@@ -390,8 +377,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Tabanan",
         "kota": "Kabupaten Tabanan",
         "region": "LUAR PULAU",
-        "lat": -8.54702,
-        "lng": 115.129574
+        "lat": -8.5392,
+        "lng": 115.1246
     },
     {
         "id": "3.6356",
@@ -403,8 +390,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Banjar Margo",
         "kota": "Kabupaten Tulang Bawang",
         "region": "LUAR PULAU",
-        "lat": -4.292243,
-        "lng": 105.229171
+        "lat": -4.5447,
+        "lng": 105.4042
     },
     {
         "id": "RO032",
@@ -416,8 +403,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Sukarame",
         "kota": "Kota Bandar Lampung",
         "region": "LUAR PULAU",
-        "lat": -5.39,
-        "lng": 105.284934
+        "lat": -5.3971,
+        "lng": 105.2668
     },
     {
         "id": "RO033",
@@ -429,8 +416,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Metro Barat",
         "kota": "Kota Metro",
         "region": "LUAR PULAU",
-        "lat": -5.112355,
-        "lng": 105.300757
+        "lat": -6.2088,
+        "lng": 106.8456
     },
     {
         "id": "R153",
@@ -442,8 +429,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Rappocini",
         "kota": "Kota Makassar",
         "region": "LUAR PULAU",
-        "lat": -5.167141,
-        "lng": 119.430482
+        "lat": -5.1477,
+        "lng": 119.4327
     },
     {
         "id": "12410bdc",
@@ -455,8 +442,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Jonggat",
         "kota": "Kabupaten Lombok Tengah",
         "region": "LUAR PULAU",
-        "lat": -8.709959,
-        "lng": 116.27436
+        "lat": -8.7056,
+        "lng": 116.2736
     },
     {
         "id": "RO037",
@@ -468,8 +455,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Ampenan",
         "kota": "Kota Mataram",
         "region": "LUAR PULAU",
-        "lat": -8.588218,
-        "lng": 116.118827
+        "lat": -8.5799,
+        "lng": 116.1009
     },
     {
         "id": "RO045",
@@ -481,8 +468,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Denpasar Utara",
         "kota": "Kota Denpasar",
         "region": "LUAR PULAU",
-        "lat": -8.653518,
-        "lng": 115.219775
+        "lat": -8.6705,
+        "lng": 115.2126
     },
     {
         "id": "3.6623",
@@ -494,8 +481,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Tanjung Karang Pusat",
         "kota": "Kota Bandar Lampung",
         "region": "LUAR PULAU",
-        "lat": -5.420181,
-        "lng": 105.266333
+        "lat": -5.3971,
+        "lng": 105.2668
     },
     {
         "id": "3.5533",
@@ -507,47 +494,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Pontianak Timur",
         "kota": "Kota Pontianak",
         "region": "LUAR PULAU",
-        "lat": -0.02633,
-        "lng": 109.342504
-    },
-    {
-        "id": "RO040",
-        "nama": "SYAHRUL RAMADHAN",
-        "jabatan": "",
-        "account": "",
-        "modul": "LP",
-        "alamat": "Perumahan Taman Raya Tahap 4, Blok NK No. 03, RT 04/RW 18, Kel. Belian",
-        "kecamatan": "Batam Kota",
-        "kota": "Kota Batam",
-        "region": "LUAR PULAU",
-        "lat": 1.134207,
-        "lng": 104.050063
-    },
-    {
-        "id": "3.6613",
-        "nama": "ARIFKI",
-        "jabatan": "Merchandiser",
-        "account": "",
-        "modul": "LP4",
-        "alamat": "Jl. Kadir TKR, Lorong Keluarga, RT 035/RW 005, Kel. 36 Ilir",
-        "kecamatan": "Gandus",
-        "kota": "Kota Palembang",
-        "region": "LUAR PULAU",
-        "lat": -2.989583,
-        "lng": 104.753
-    },
-    {
-        "id": "RO039",
-        "nama": "MULWI MAHESA",
-        "jabatan": "Merchandiser",
-        "account": "",
-        "modul": "LP4",
-        "alamat": "Komplek Bintang Pesona, Jalan Perintis Baru, Kampung Lalang",
-        "kecamatan": "Sunggal",
-        "kota": "Kabupaten Deli Serdang / Kota Medan",
-        "region": "LUAR PULAU",
-        "lat": 3.580841,
-        "lng": 98.677776
+        "lat": -0.0263,
+        "lng": 109.3425
     },
     {
         "id": "3.7345",
@@ -559,8 +507,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Puger",
         "kota": "Kabupaten Jember",
         "region": "PULAU JAWA",
-        "lat": -8.174911,
-        "lng": 113.709999
+        "lat": -8.1724,
+        "lng": 113.7007
     },
     {
         "id": "RO002",
@@ -572,8 +520,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Kedawung",
         "kota": "Kabupaten Cirebon",
         "region": "PULAU JAWA",
-        "lat": -6.710745,
-        "lng": 108.537627
+        "lat": -6.732,
+        "lng": 108.5523
     },
     {
         "id": "RO003",
@@ -585,8 +533,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Gajah Mungkur",
         "kota": "Semarang",
         "region": "PULAU JAWA",
-        "lat": -7.010491,
-        "lng": 110.402839
+        "lat": -7.013588,
+        "lng": 110.409618
     },
     {
         "id": "RO004",
@@ -598,8 +546,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Sukun",
         "kota": "Malang",
         "region": "PULAU JAWA",
-        "lat": -7.994382,
-        "lng": 112.610038
+        "lat": -7.9666,
+        "lng": 112.6326
     },
     {
         "id": "RO005",
@@ -611,8 +559,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Polahharjo",
         "kota": "Kab. Klaten",
         "region": "PULAU JAWA",
-        "lat": -7.708841,
-        "lng": 110.601799
+        "lat": -7.7056,
+        "lng": 110.6033
     },
     {
         "id": "3.7148",
@@ -624,8 +572,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Batununggal",
         "kota": "Kota Bandung",
         "region": "PULAU JAWA",
-        "lat": -6.919769,
-        "lng": 107.606503
+        "lat": -6.9175,
+        "lng": 107.6191
     },
     {
         "id": "RO007",
@@ -637,8 +585,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Geger",
         "kota": "Kab. Madiun",
         "region": "PULAU JAWA",
-        "lat": -7.626312,
-        "lng": 111.529825
+        "lat": -7.6298,
+        "lng": 111.5239
     },
     {
         "id": "RO008",
@@ -650,8 +598,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Gunung Puyuh",
         "kota": "Sukabumi",
         "region": "PULAU JAWA",
-        "lat": -6.921649,
-        "lng": 106.938711
+        "lat": -6.9277,
+        "lng": 106.93
     },
     {
         "id": "RO009",
@@ -676,8 +624,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Jalancagak",
         "kota": "Subang",
         "region": "PULAU JAWA",
-        "lat": -6.57158,
-        "lng": 107.75873
+        "lat": -6.5716,
+        "lng": 107.7587
     },
     {
         "id": "RO012",
@@ -689,8 +637,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Krembung",
         "kota": "Sidoarjo",
         "region": "PULAU JAWA",
-        "lat": -7.457794,
-        "lng": 112.710853
+        "lat": -7.4726,
+        "lng": 112.6675
     },
     {
         "id": "3.6997",
@@ -702,8 +650,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Garung",
         "kota": "Kabupaten Wonosobo",
         "region": "PULAU JAWA",
-        "lat": -7.369999,
-        "lng": 109.905111
+        "lat": -7.3639,
+        "lng": 109.9
     },
     {
         "id": "RO014",
@@ -715,8 +663,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Ngamprah",
         "kota": "kab.bandung barat",
         "region": "PULAU JAWA",
-        "lat": -6.917608,
-        "lng": 107.609266
+        "lat": -6.8439,
+        "lng": 107.4921
     },
     {
         "id": "RO015",
@@ -728,8 +676,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Kalasan",
         "kota": "Kab. Sleman",
         "region": "PULAU JAWA",
-        "lat": -7.71556,
-        "lng": 110.35556
+        "lat": -7.7156,
+        "lng": 110.3556
     },
     {
         "id": "RO016",
@@ -741,8 +689,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Tanjungsari",
         "kota": "Sumedang",
         "region": "PULAU JAWA",
-        "lat": -6.8586,
-        "lng": 107.9269
+        "lat": -6.8581,
+        "lng": 107.9267
     },
     {
         "id": "RO018",
@@ -754,8 +702,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Cileunyi",
         "kota": "Kab Bandung",
         "region": "PULAU JAWA",
-        "lat": -6.911816,
-        "lng": 107.601145
+        "lat": -7.0252,
+        "lng": 107.5198
     },
     {
         "id": "RO019",
@@ -767,8 +715,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Gayamsari",
         "kota": "Semarang",
         "region": "PULAU JAWA",
-        "lat": -6.996524,
-        "lng": 110.420238
+        "lat": -6.9667,
+        "lng": 110.4167
     },
     {
         "id": "RO020",
@@ -780,8 +728,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "cipunagara",
         "kota": "subang",
         "region": "PULAU JAWA",
-        "lat": -6.568,
-        "lng": 107.76
+        "lat": -6.5716,
+        "lng": 107.7587
     },
     {
         "id": "RO021",
@@ -793,8 +741,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Singosari",
         "kota": "Kab. Malang",
         "region": "PULAU JAWA",
-        "lat": -7.988696,
-        "lng": 112.638368
+        "lat": -8.1667,
+        "lng": 112.6667
     },
     {
         "id": "RO022",
@@ -806,8 +754,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Rambipuji",
         "kota": "Jember",
         "region": "PULAU JAWA",
-        "lat": -8.174163,
-        "lng": 113.709929
+        "lat": -8.1724,
+        "lng": 113.7007
     },
     {
         "id": "RO023",
@@ -819,8 +767,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Gubeng",
         "kota": "Surabaya",
         "region": "PULAU JAWA",
-        "lat": -7.2504,
-        "lng": 112.756959
+        "lat": -7.2575,
+        "lng": 112.7521
     },
     {
         "id": "RO024",
@@ -832,8 +780,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Rungkut",
         "kota": "Surabaya",
         "region": "PULAU JAWA",
-        "lat": -7.250866,
-        "lng": 112.752188
+        "lat": -7.2575,
+        "lng": 112.7521
     },
     {
         "id": "3.6693",
@@ -845,8 +793,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Tulung",
         "kota": "Kabupaten Klaten",
         "region": "PULAU JAWA",
-        "lat": -7.705133,
-        "lng": 110.600002
+        "lat": -7.7056,
+        "lng": 110.6033
     },
     {
         "id": "RO027",
@@ -858,8 +806,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Tumpang",
         "kota": "Kabupaten Malang",
         "region": "PULAU JAWA",
-        "lat": -7.989278,
-        "lng": 112.632411
+        "lat": -8.1667,
+        "lng": 112.6667
     },
     {
         "id": "RO028",
@@ -871,8 +819,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Krian",
         "kota": "Kabupaten Sidoarjo",
         "region": "PULAU JAWA",
-        "lat": -7.45949,
-        "lng": 112.717201
+        "lat": -7.4726,
+        "lng": 112.6675
     },
     {
         "id": "RO034",
@@ -880,12 +828,12 @@ const MDS_PERSONNEL_DATA = [
         "jabatan": "Merchandiser",
         "account": "ALFAMART",
         "modul": "LP3",
-        "alamat": "Jl. Zam Zam Djailani, Guntung Luar, Kel. Kemuning",
+        "alamat": "Jl. Zam Zam Juliani GT Lua",
         "kecamatan": "Banjarbaru Selatan",
-        "kota": "Kota Banjarbaru",
+        "kota": "Kota Banjar Baru",
         "region": "LUAR PULAU",
-        "lat": -3.454122,
-        "lng": 114.832459
+        "lat": -3.4572,
+        "lng": 114.8103
     },
     {
         "id": "3.7149",
@@ -897,8 +845,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Tempuran",
         "kota": "Kabupaten Karawang",
         "region": "PULAU JAWA",
-        "lat": -6.305,
-        "lng": 107.305
+        "lat": -6.3056,
+        "lng": 107.3056
     },
     {
         "id": "RO017",
@@ -910,8 +858,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Cileunyi",
         "kota": "Kab Bandung",
         "region": "PULAU JAWA",
-        "lat": -6.910245,
-        "lng": 107.603455
+        "lat": -7.0252,
+        "lng": 107.5198
     },
     {
         "id": "RO001",
@@ -923,8 +871,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Cilaku",
         "kota": "Kabupaten Cianjur",
         "region": "PULAU JAWA",
-        "lat": -6.863731,
-        "lng": 107.130164
+        "lat": -6.8227,
+        "lng": 107.1396
     },
     {
         "id": "RO006",
@@ -936,8 +884,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Kawunganten",
         "kota": "Kabupaten Cilacap",
         "region": "PULAU JAWA",
-        "lat": -7.588384,
-        "lng": 108.911319
+        "lat": -7.7186,
+        "lng": 109.0159
     },
     {
         "id": "RO010",
@@ -949,8 +897,8 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Kroya",
         "kota": "Kabupaten Cilacap",
         "region": "PULAU JAWA",
-        "lat": -7.729926,
-        "lng": 109.015859
+        "lat": -7.7186,
+        "lng": 109.0159
     },
     {
         "id": "RO025",
@@ -962,11 +910,24 @@ const MDS_PERSONNEL_DATA = [
         "kecamatan": "Lebaksiu",
         "kota": "Kabupaten Tegal",
         "region": "PULAU JAWA",
-        "lat": -7.046939,
-        "lng": 109.149609
+        "lat": -6.9839,
+        "lng": 109.1403
+    },
+    {
+        "id": "3.7964",
+        "nama": "SASKIA PUTRI",
+        "jabatan": "Merchandiser",
+        "account": "INDOMARET",
+        "modul": "DK1",
+        "alamat": "",
+        "kecamatan": "",
+        "kota": "Kota Bekasi",
+        "region": "PULAU JAWA",
+        "lat": -6.2383,
+        "lng": 106.9756
     }
 ];
 
-if (typeof window !== "undefined") {
-    window.MDS_PERSONNEL_DATA = MDS_PERSONNEL_DATA;
+if (typeof window !== 'undefined') {
+  window.MDS_PERSONNEL_DATA = MDS_PERSONNEL_DATA;
 }

@@ -117,12 +117,13 @@
     }
   </script>
 
-  <!-- External Libraries: Lucide, Leaflet, PapaParse, SheetJS (XLSX), Alpine.js -->
+  <!-- External Libraries: Lucide, Leaflet, PapaParse, SheetJS (XLSX), Chart.js, Alpine.js -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
 
   <!-- Custom Stylesheet -->
@@ -885,135 +886,59 @@
     <!-- C. MAIN FULL-WIDTH INTERACTIVE LAYOUT (MAP & DEDICATED ROUTE DETAIL TABLE) -->
     <div class="space-y-4">
 
-      <!-- 1. TOP MDS CONTROL & PROFILE BANNER (FULL WIDTH) -->
-      <div class="glass-card rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
-        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-
-          <!-- Left: Quick MDS Selector & Drawer Toggle -->
-          <div class="flex flex-wrap items-center gap-2.5">
-
-            <!-- Quick Search / Select MDS Dropdown -->
-            <div class="relative min-w-[260px] sm:min-w-[320px]">
-              <select :value="selectedMds ? selectedMds.id : ''"
-                @change="selectMds(simulationResult.assignments.find(m => m.id === $event.target.value))"
-                class="w-full appearance-none pl-9 pr-8 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs focus:ring-2 focus:ring-brand-500 cursor-pointer shadow-sm">
-                <template x-for="m in filteredAssignments" :key="m.id">
-                  <option :value="m.id" :selected="selectedMds && selectedMds.id === m.id"
-                    x-text="`${m.isVirtual ? '⚠️ [REKRUT]' : '👤'} ${m.nama} (${m.kota} • ${m.modul})`">
-                  </option>
-                </template>
-              </select>
-              <div class="absolute left-3 top-1/2 -translate-y-1/2 text-brand-500 pointer-events-none">
-                <i data-lucide="user-check" class="w-4 h-4"></i>
-              </div>
-              <div class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                <i data-lucide="chevron-down" class="w-4 h-4"></i>
+      <!-- 1. TOP ACTIVE MDS PROFILE & METRICS BANNER (CONTROLLED VIA PLACES & LAYERS TREE) -->
+      <template x-if="selectedMds">
+        <div class="glass-card rounded-2xl p-3 sm:p-4 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2.5">
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            
+            <!-- Left: MDS Identity & Location -->
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="w-3.5 h-3.5 rounded-full flex-shrink-0 shadow-xs" :style="`background-color: ${selectedMds.color}`"></div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="font-extrabold text-sm text-slate-900 dark:text-white" x-text="selectedMds.nama"></span>
+                  <span class="px-2 py-0.5 rounded text-[10.5px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                    x-text="selectedMds.modul"></span>
+                  <span class="text-slate-400 font-medium text-xs truncate"
+                    x-text="`Domisili: ${selectedMds.alamat} (${selectedMds.kecamatan}, ${selectedMds.kota})`"></span>
+                </div>
               </div>
             </div>
 
-            <!-- Button to open Full MDS Drawer List -->
-            <button type="button" @click="showMdsDrawer = true"
-              class="px-3 py-2 rounded-xl bg-brand-50 dark:bg-brand-950/50 hover:bg-brand-100 dark:hover:bg-brand-900/60 text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm">
-              <i data-lucide="users" class="w-4 h-4"></i>
-              <span>Daftar Tim MDS (<b x-text="filteredAssignments.length"></b>)</span>
-            </button>
+            <!-- Right: Workload Badges -->
+            <div class="flex flex-wrap items-center gap-2 text-xs font-bold">
+              <span class="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800"
+                x-text="`🚗 ${selectedMds.nonPerdinDays || selectedMds.localDays || 0} Hari Non Perdin`"></span>
 
-            <!-- Status Filter Quick Toggle -->
-            <div
-              class="hidden sm:flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold">
-              <button type="button" @click="selectedStatus = 'ALL'"
-                class="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                :class="selectedStatus === 'ALL' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'">
-                Semua
-              </button>
-              <button type="button" @click="selectedStatus = 'ACTIVE'"
-                class="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                :class="selectedStatus === 'ACTIVE' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 hover:text-slate-700'">
-                Aktif
-              </button>
-              <button type="button" @click="selectedStatus = 'VACANT'"
-                class="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                :class="selectedStatus === 'VACANT' ? 'bg-white dark:bg-slate-700 text-amber-500 shadow-sm' : 'text-slate-500 hover:text-slate-700'">
-                Rekrut
-              </button>
+              <template x-if="(selectedMds.perdinDays || 0) > 0">
+                <span class="px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 flex items-center gap-1"
+                  title="Skema Perjalanan Dinas Luar Kota (Rp 400.000 / hari)">
+                  <span>🏨</span>
+                  <span x-text="`${selectedMds.perdinDays} Hari Perdin (Rp ${(selectedMds.estPerdinBudget || 0).toLocaleString('id-ID')})`"></span>
+                </span>
+              </template>
+
+              <span class="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                🏭 4 Hari DC
+              </span>
+
+              <span class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                x-text="`Total: ${selectedMds.assignedStores.length} Toko`"></span>
             </div>
 
           </div>
 
-          <!-- Right: Active Selected MDS Summary Badges & Exports -->
-          <template x-if="selectedMds">
-            <div class="flex flex-wrap items-center gap-2 text-xs">
-
-              <!-- Workload Distribution Badges -->
-              <div class="flex flex-wrap items-center gap-1.5 font-bold">
-                <span
-                  class="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800"
-                  x-text="`🚗 ${selectedMds.nonPerdinDays || selectedMds.localDays || 0} Hari Non Perdin`"></span>
-
-                <template x-if="(selectedMds.perdinDays || 0) > 0">
-                  <span
-                    class="px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 flex items-center gap-1"
-                    title="Skema Perjalanan Dinas Luar Kota (Rp 400.000 / hari)">
-                    <span>🏨</span>
-                    <span
-                      x-text="`${selectedMds.perdinDays} Hari Perdin (Rp ${(selectedMds.estPerdinBudget || 0).toLocaleString('id-ID')})`"></span>
-                  </span>
-                </template>
-
-                <span
-                  class="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                  🏭 4 Hari DC
-                </span>
-
-                <span
-                  class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-                  x-text="`Total: ${selectedMds.assignedStores.length} Toko`"></span>
-              </div>
-
-              <!-- Export Buttons -->
-              <div class="flex items-center gap-1.5 ml-auto">
-                <button type="button" @click="exportSimulationExcel()" title="Export Seluruh Simulasi ke Excel (.xlsx)"
-                  class="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer shadow-sm">
-                  <i data-lucide="download" class="w-3.5 h-3.5"></i>
-                  <span>Excel</span>
-                </button>
-                <button type="button" @click="exportGoogleEarthKml(false)"
-                  title="Export Rute Personil Ini Saja ke Google Earth (.kml)"
-                  class="px-2.5 py-1 rounded-xl bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer">
-                  <i data-lucide="globe" class="w-3.5 h-3.5"></i>
-                  <span>Earth</span>
-                </button>
-              </div>
-
-            </div>
-          </template>
-
-        </div>
-
-        <!-- Selected MDS Info Details Strip -->
-        <template x-if="selectedMds">
-          <div
-            class="pt-2 border-t border-slate-200/60 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-            <div class="flex items-center gap-2 min-w-0">
-              <div class="w-3 h-3 rounded-full flex-shrink-0" :style="`background-color: ${selectedMds.color}`"></div>
-              <span class="font-extrabold text-slate-900 dark:text-white truncate" x-text="selectedMds.nama"></span>
-              <span
-                class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
-                x-text="selectedMds.modul"></span>
-              <span class="text-slate-400">&bull;</span>
-              <span class="text-slate-500 truncate"
-                x-text="`Domisili: ${selectedMds.alamat} (${selectedMds.kecamatan}, ${selectedMds.kota})`"></span>
-            </div>
-            <div class="text-[11px] text-slate-500 flex-shrink-0">
-              Rata-rata: <b class="text-slate-700 dark:text-slate-300" x-text="`~${selectedMds.avgDistanceKm} km`"></b>
-              (<span x-text="`~${selectedMds.avgTravelMins} Menit`"></span>) &bull; Jarak Maks: <b
-                class="text-indigo-600 dark:text-indigo-400" x-text="`${selectedMds.maxDistanceKm} km`"></b>
+          <!-- Distance & Travel Stats / Vacant Justification -->
+          <div class="pt-2 border-t border-slate-200/60 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+            <div class="text-[11px] text-slate-500">
+              Rata-rata Jarak Toko: <b class="text-slate-700 dark:text-slate-300" x-text="`~${selectedMds.avgDistanceKm} km`"></b>
+              (<span x-text="`~${selectedMds.avgTravelMins} Menit`"></span>) &bull; Jarak Maksimum: <b class="text-indigo-600 dark:text-indigo-400" x-text="`${selectedMds.maxDistanceKm} km`"></b>
             </div>
           </div>
 
           <!-- Data Justification for Vacant / Proposed New Hires -->
           <template x-if="selectedMds.isVirtual && selectedMds.vacantReason">
-            <div class="mt-2 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-200 text-[11px] flex items-start gap-2">
+            <div class="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-200 text-[11px] flex items-start gap-2">
               <i data-lucide="info" class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5"></i>
               <div>
                 <span class="font-extrabold uppercase tracking-wide text-[9.5px] block text-amber-600 dark:text-amber-400">Justifikasi Data Usulan Rekrut (Vacant):</span>
@@ -1021,8 +946,9 @@
               </div>
             </div>
           </template>
-        </template>
-      </div>
+
+        </div>
+      </template>
 
       <!-- 2. GOOGLE EARTH STYLE MAP & PLACES TREE CONTROLLER -->
       <div class="glass-card rounded-2xl p-3 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3">
@@ -1168,77 +1094,109 @@
               </button>
             </div>
 
-            <!-- MDS Personil Tree Nodes -->
-            <template x-for="m in filteredAssignments" :key="m.id">
-              <div class="rounded-xl transition-colors border"
-                :class="isMdsSelected(m.id) ? 'bg-slate-50/90 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/80' : 'border-transparent hover:bg-slate-100/60 dark:hover:bg-slate-800/30'">
+            <!-- MDS Module Groups (MODUL DK, MODUL LK, MODUL LP) -->
+            <template x-for="grp in groupedAssignments" :key="grp.key">
+              <div class="mb-2 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/50 dark:bg-slate-900/50 overflow-hidden shadow-xs">
                 
-                <!-- Personil Header Row -->
-                <div class="flex items-center gap-2 px-2 py-1.5">
-                  
-                  <!-- Multi-Select Checkbox -->
-                  <input type="checkbox" :checked="isMdsSelected(m.id)" @change="toggleMdsSelection(m.id)"
-                    class="w-3.5 h-3.5 rounded text-brand-600 focus:ring-brand-500 border-slate-300 dark:border-slate-600 cursor-pointer">
-
-                  <!-- Tree Expand / Collapse Arrow -->
-                  <button type="button" @click="toggleMdsTreeExpand(m.id)"
-                    class="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer">
-                    <i data-lucide="chevron-right" class="w-3.5 h-3.5 transition-transform"
-                      :class="isMdsTreeExpanded(m.id) ? 'rotate-90' : ''"></i>
-                  </button>
-
-                  <!-- Color Bullet -->
-                  <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="`background-color: ${m.color}`"></span>
-
-                  <!-- Name & City (Click to focus MDS) -->
-                  <div class="flex-1 min-w-0 cursor-pointer" @click="selectMds(m)">
-                    <div class="font-extrabold text-[11.5px] truncate"
-                      :class="selectedMds && selectedMds.id === m.id ? 'text-brand-600 dark:text-brand-400' : 'text-slate-800 dark:text-slate-200'"
-                      x-text="m.nama"></div>
-                    <div class="text-[10px] text-slate-400 truncate" x-text="`${m.kota} • ${m.modul}`"></div>
+                <!-- Module Group Header Row -->
+                <div class="flex items-center justify-between px-2.5 py-1.5 bg-slate-100/90 dark:bg-slate-800/80 border-b border-slate-200/60 dark:border-slate-700/60">
+                  <div class="flex items-center gap-1.5 min-w-0">
+                    <!-- Module Select Checkbox (Master Toggle for Group) -->
+                    <input type="checkbox" :checked="isModuleAllSelected(grp)" @change="toggleModuleSelection(grp)"
+                      class="w-3.5 h-3.5 rounded text-brand-600 focus:ring-brand-500 border-slate-300 dark:border-slate-600 cursor-pointer">
+                    
+                    <!-- Module Expand/Collapse Button -->
+                    <button type="button" @click="toggleModuleTreeExpand(grp.key)"
+                      class="flex items-center gap-1 text-left font-black text-[11px] text-slate-800 dark:text-slate-200 cursor-pointer hover:text-brand-600 dark:hover:text-brand-400">
+                      <i data-lucide="chevron-right" class="w-3.5 h-3.5 transition-transform text-slate-400"
+                        :class="isModuleTreeExpanded(grp.key) ? 'rotate-90' : ''"></i>
+                      <i data-lucide="folder" class="w-3.5 h-3.5 text-amber-500 flex-shrink-0"></i>
+                      <span class="truncate" x-text="grp.name"></span>
+                    </button>
                   </div>
-
-                  <!-- Store Count Badge -->
-                  <span class="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-slate-200/70 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
-                    x-text="`${m.assignedStores.length} Toko`"></span>
-
+                  
+                  <!-- Personil Count in Module -->
+                  <span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                    x-text="`${grp.items.length} Tim`"></span>
                 </div>
 
-                <!-- Expanded Sub-tree (Base Domisili & 25 Days List) -->
-                <div x-show="isMdsTreeExpanded(m.id)" x-transition class="pl-7 pr-2 pb-2 space-y-1 text-[11px] border-t border-slate-100 dark:border-slate-800/60 pt-1.5 mt-0.5">
-
-                  <!-- 1. Base / Home Marker Toggle -->
-                  <div class="flex items-center justify-between py-0.5 hover:bg-slate-200/50 dark:hover:bg-slate-700/50 rounded px-1.5">
-                    <label class="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
-                      <input type="checkbox" :checked="isHomeVisible(m.id)" @change="toggleHomeVisibility(m.id)"
-                        class="w-3 h-3 rounded text-brand-600 border-slate-300 cursor-pointer">
-                      <span class="truncate">🏠 Domisili: <b class="text-slate-600 dark:text-slate-300" x-text="m.alamat"></b></span>
-                    </label>
-                  </div>
-
-                  <!-- 2. Daily Routes List (Hari 1 s/d 25) -->
-                  <template x-for="day in m.dailySchedule" :key="day.dayNumber">
-                    <div class="flex items-center justify-between py-0.5 hover:bg-slate-200/50 dark:hover:bg-slate-700/50 rounded px-1.5 group">
+                <!-- MDS Personil List in this Module -->
+                <div x-show="isModuleTreeExpanded(grp.key)" x-transition class="p-1.5 space-y-1">
+                  <template x-for="m in grp.items" :key="m.id">
+                    <div class="rounded-xl transition-colors border"
+                      :class="isMdsSelected(m.id) ? 'bg-slate-50/90 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/80' : 'border-transparent hover:bg-slate-100/60 dark:hover:bg-slate-800/30'">
                       
-                      <!-- Day Checkbox & Title -->
-                      <label class="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
-                        <input type="checkbox" :checked="isDayVisible(m.id, day.dayNumber)" @change="toggleDayVisibility(m.id, day.dayNumber)"
-                          class="w-3 h-3 rounded text-brand-600 border-slate-300 cursor-pointer">
-                        <span class="truncate" :class="selectedDayIndex === day.dayNumber && selectedMds?.id === m.id ? 'font-black text-brand-600 dark:text-brand-400' : ''">
-                          <span x-text="day.isPerdin ? '🏨' : (day.type === 'DC' ? '🏭' : '🚗')"></span>
-                          <span x-text="`Hari #${day.dayNumber} (${day.stores ? day.stores.length : 0} Stop)`"></span>
-                        </span>
-                      </label>
+                      <!-- Personil Header Row -->
+                      <div class="flex items-center gap-2 px-2 py-1.5">
+                        
+                        <!-- Multi-Select Checkbox -->
+                        <input type="checkbox" :checked="isMdsSelected(m.id)" @change="toggleMdsSelection(m.id)"
+                          class="w-3.5 h-3.5 rounded text-brand-600 focus:ring-brand-500 border-slate-300 dark:border-slate-600 cursor-pointer">
 
-                      <!-- Quick Swap Day Route Button -->
-                      <button type="button" @click.stop="openSwapDayModal(m.id, day.dayNumber)" title="Pindahkan Rute Hari Ini ke Personil Lain"
-                        class="hidden group-hover:inline-flex p-1 rounded hover:bg-brand-500 hover:text-white text-slate-400 transition-colors cursor-pointer">
-                        <i data-lucide="arrow-left-right" class="w-3 h-3"></i>
-                      </button>
+                        <!-- Tree Expand / Collapse Arrow -->
+                        <button type="button" @click="toggleMdsTreeExpand(m.id)"
+                          class="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer">
+                          <i data-lucide="chevron-right" class="w-3.5 h-3.5 transition-transform"
+                            :class="isMdsTreeExpanded(m.id) ? 'rotate-90' : ''"></i>
+                        </button>
+
+                        <!-- Color Bullet -->
+                        <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="`background-color: ${m.color}`"></span>
+
+                        <!-- Name & City (Click to focus MDS) -->
+                        <div class="flex-1 min-w-0 cursor-pointer" @click="selectMds(m)">
+                          <div class="font-extrabold text-[11.5px] truncate"
+                            :class="selectedMds && selectedMds.id === m.id ? 'text-brand-600 dark:text-brand-400' : 'text-slate-800 dark:text-slate-200'"
+                            x-text="m.nama"></div>
+                          <div class="text-[10px] text-slate-400 truncate" x-text="`${m.kota} • ${m.modul}`"></div>
+                        </div>
+
+                        <!-- Store Count Badge -->
+                        <span class="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-slate-200/70 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                          x-text="`${m.assignedStores.length} Toko`"></span>
+
+                      </div>
+
+                      <!-- Expanded Sub-tree (Base Domisili & 25 Days List) -->
+                      <div x-show="isMdsTreeExpanded(m.id)" x-transition class="pl-7 pr-2 pb-2 space-y-1 text-[11px] border-t border-slate-100 dark:border-slate-800/60 pt-1.5 mt-0.5">
+
+                        <!-- 1. Base / Home Marker Toggle -->
+                        <div class="flex items-center justify-between py-0.5 hover:bg-slate-200/50 dark:hover:bg-slate-700/50 rounded px-1.5">
+                          <label class="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
+                            <input type="checkbox" :checked="isHomeVisible(m.id)" @change="toggleHomeVisibility(m.id)"
+                              class="w-3 h-3 rounded text-brand-600 border-slate-300 cursor-pointer">
+                            <span class="truncate">🏠 Domisili: <b class="text-slate-600 dark:text-slate-300" x-text="m.alamat"></b></span>
+                          </label>
+                        </div>
+
+                        <!-- 2. Daily Routes List (Hari 1 s/d 25) -->
+                        <template x-for="day in m.dailySchedule" :key="day.dayNumber">
+                          <div class="flex items-center justify-between py-0.5 hover:bg-slate-200/50 dark:hover:bg-slate-700/50 rounded px-1.5 group">
+                            
+                            <!-- Day Checkbox & Title -->
+                            <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                              <input type="checkbox" :checked="isDayVisible(m.id, day.dayNumber)" @change="toggleDayVisibility(m.id, day.dayNumber)"
+                                class="w-3.5 h-3.5 rounded text-brand-600 border-slate-300 cursor-pointer">
+                              <span class="truncate cursor-pointer hover:underline" @click="selectedMds = m; selectedDayIndex = day.dayNumber;"
+                                :class="selectedDayIndex === day.dayNumber && selectedMds?.id === m.id ? 'font-black text-brand-600 dark:text-brand-400' : ''">
+                                <span x-text="day.isPerdin ? '🏨' : (day.type === 'DC' ? '🏭' : '🚗')"></span>
+                                <span x-text="`Hari #${day.dayNumber} (${day.stores ? day.stores.length : 0} Stop)`"></span>
+                              </span>
+                            </div>
+
+                            <!-- Quick Swap Day Route Button -->
+                            <button type="button" @click.stop="openSwapDayModal(m.id, day.dayNumber)" title="Pindahkan Rute Hari Ini ke Personil Lain"
+                              class="hidden group-hover:inline-flex p-1 rounded hover:bg-brand-500 hover:text-white text-slate-400 transition-colors cursor-pointer">
+                              <i data-lucide="arrow-left-right" class="w-3 h-3"></i>
+                            </button>
+
+                          </div>
+                        </template>
+
+                      </div>
 
                     </div>
                   </template>
-
                 </div>
 
               </div>
@@ -1255,9 +1213,9 @@
         </div>
 
         <!-- RIGHT COLUMN: LEAFLET MAP CONTAINER -->
-        <div class="flex-1 glass-card rounded-2xl p-2 border border-slate-200 dark:border-slate-800 shadow-sm relative min-w-0">
+        <div class="flex-1 bg-white dark:bg-slate-900 rounded-2xl p-2 border border-slate-200 dark:border-slate-800 shadow-sm relative min-w-0">
           
-          <div id="route-map" x-ignore class="w-full h-[600px] rounded-2xl"></div>
+          <div id="route-map" x-ignore class="w-full h-[600px] rounded-2xl" style="min-height: 600px; z-index: 1;"></div>
 
           <!-- Map Active Personnel Floating Legend -->
           <div class="absolute top-4 right-4 z-20 max-w-[260px] glass-card p-2.5 rounded-xl text-[11px] border border-slate-200 dark:border-slate-800 shadow-xl space-y-1.5 backdrop-blur-md">
@@ -1294,7 +1252,73 @@
 
       </div>
 
-      <!-- 4. DEDICATED FULL-WIDTH ROUTE DETAIL TABLE -->
+      <!-- 4. ACCOUNT DISTRIBUTION & RETAIL COMPOSITION DOUGHNUT CHART WIDGET -->
+      <div class="glass-card rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3"
+        x-show="currentAccountStats && currentAccountStats.total > 0">
+        
+        <!-- Header Ringkasan & Pill Tag -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/70 dark:border-slate-800">
+          <div class="flex items-center gap-2 font-display font-extrabold text-sm text-slate-900 dark:text-white">
+            <span class="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+              <i data-lucide="pie-chart" class="w-4 h-4"></i>
+            </span>
+            <span>Komposisi Ritel & Account Terpilih</span>
+            <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-sm">
+              <b class="text-brand-600 dark:text-brand-400" x-text="currentAccountStats.total"></b> Toko Terfilter
+            </span>
+          </div>
+
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-slate-400 text-[11px]">Dominasi Account Terbanyak:</span>
+            <span class="px-2.5 py-1 rounded-lg font-black text-[11px] bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20 shadow-sm"
+              x-text="`${currentAccountStats.topAccount} (${currentAccountStats.topAccountCount} Toko • ${currentAccountStats.topAccountPct}%)`"></span>
+          </div>
+        </div>
+
+        <!-- Grid 2 Kolom: Kiri Doughnut Chart Canvas, Kanan Detail Breakdown Bars -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center pt-1">
+          
+          <!-- Kolom Kiri: Doughnut Chart (Canvas) -->
+          <div class="md:col-span-4 flex items-center justify-center relative min-h-[160px]">
+            <div class="w-36 h-36 relative">
+              <canvas id="accountDoughnutChart"></canvas>
+              <!-- Center Total Inside Doughnut -->
+              <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
+                <span class="text-xl font-black font-display text-slate-900 dark:text-white" x-text="currentAccountStats.total"></span>
+                <span class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Total Toko</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Kolom Kanan: Account Breakdown Pills & Percentages -->
+          <div class="md:col-span-8 space-y-2">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[160px] overflow-y-auto pr-1">
+              <template x-for="item in currentAccountStats.breakdown" :key="item.account">
+                <div class="p-2.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/60 space-y-1.5 shadow-sm">
+                  <div class="flex items-center justify-between text-xs">
+                    <span class="flex items-center gap-1.5 font-extrabold truncate">
+                      <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="`background-color: ${item.color}`"></span>
+                      <span class="text-slate-800 dark:text-slate-200 truncate" x-text="item.account"></span>
+                    </span>
+                    <span class="font-black text-[11px] text-slate-700 dark:text-slate-300 ml-2 whitespace-nowrap">
+                      <span x-text="`${item.count} Toko`"></span>
+                      <span class="text-[10px] text-slate-400 font-bold" x-text="`(${item.percentage}%)`"></span>
+                    </span>
+                  </div>
+                  <!-- Mini Progress Bar -->
+                  <div class="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full transition-all duration-300" :style="`width: ${item.percentage}%; background-color: ${item.color}`"></div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- 5. DEDICATED FULL-WIDTH ROUTE DETAIL TABLE -->
       <div class="glass-card rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
 
         <!-- Table Header Toolbar (Scope Tabs, Filters, & Search) -->
@@ -1316,14 +1340,14 @@
                 :class="tableScope === 'DAY' ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'">
                 <span>🗓️ Hari ke-<b x-text="selectedDayIndex"></b></span>
                 <span class="text-[10px] opacity-80"
-                  x-text="`(${(selectedMds?.dailySchedule?.find(d => d.dayNumber === selectedDayIndex)?.stores?.length || 0)})`"></span>
+                  x-text="`(${getTableCount('DAY')})`"></span>
               </button>
               <button type="button" @click="tableScope = 'MONTH'"
                 class="px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
                 :class="tableScope === 'MONTH' ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'">
-                <span>📊 Semua Rute (25 Hari)</span>
+                <span>📊 Semua Rute Terpilih</span>
                 <span class="text-[10px] opacity-80"
-                  x-text="`(${selectedMds ? (selectedMds.assignedStores.length + selectedMds.assignedDc.length) : 0})`"></span>
+                  x-text="`(${getTableCount('MONTH')})`"></span>
               </button>
             </div>
           </div>
@@ -1357,7 +1381,7 @@
 
             <!-- Table Search Input -->
             <div class="relative min-w-[180px] sm:min-w-[220px]">
-              <input type="text" x-model="tableSearchQuery" placeholder="Cari Toko / Kode / Wilayah..."
+              <input type="text" x-model="tableSearchQuery" placeholder="Cari Toko / Kode / Wilayah / MDS..."
                 class="w-full h-8 text-xs pl-7 pr-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:ring-2 focus:ring-brand-500">
               <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
                 <i data-lucide="search" class="w-3.5 h-3.5"></i>
@@ -1375,6 +1399,9 @@
               class="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-extrabold border-b border-slate-200 dark:border-slate-700 shadow-sm">
               <tr>
                 <th class="py-2.5 px-3">Stop #</th>
+                <template x-if="selectedMdsIds && selectedMdsIds.length > 1">
+                  <th class="py-2.5 px-3">MDS Personel</th>
+                </template>
                 <template x-if="tableScope === 'MONTH'">
                   <th class="py-2.5 px-3">Hari</th>
                 </template>
@@ -1391,7 +1418,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-200 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
-              <template x-for="(st, idx) in currentTableStores" :key="st.id || idx">
+              <template x-for="(st, idx) in currentTableStores" :key="st.id || `${st.mdsId}_${st.storeCode}_${idx}`">
                 <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
                   :class="st.isPerdin ? 'bg-amber-500/5' : ((st.isDc || st.type === 'DC') ? 'bg-emerald-500/5' : '')">
 
@@ -1401,6 +1428,16 @@
                       :class="st.isPerdin ? 'bg-amber-500 text-white' : ((st.isDc || st.type === 'DC') ? 'bg-emerald-600 text-white' : 'bg-brand-600 text-white')"
                       x-text="st.stopIndex || (idx + 1)"></span>
                   </td>
+
+                  <!-- MDS Personel (if multi MDS checked) -->
+                  <template x-if="selectedMdsIds && selectedMdsIds.length > 1">
+                    <td class="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                      <span class="px-2 py-0.5 rounded text-[10.5px] font-bold inline-flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <span class="w-2 h-2 rounded-full" :style="`background-color: ${st.mdsColor || '#3b82f6'}`"></span>
+                        <span x-text="st.mdsName || '-'"></span>
+                      </span>
+                    </td>
+                  </template>
 
                   <!-- Hari Ke- (if Month Scope) -->
                   <template x-if="tableScope === 'MONTH'">
@@ -1436,7 +1473,7 @@
 
                   <!-- Wilayah / Kab-Kota -->
                   <td class="py-2.5 px-3 font-semibold text-slate-700 dark:text-slate-300"
-                    x-text="st.kabKota || selectedMds?.kota || '-'"></td>
+                    x-text="st.kabKota || st.mdsKota || selectedMds?.kota || '-'"></td>
 
                   <!-- Jarak dari Titik Acuan -->
                   <td class="py-2.5 px-3">
@@ -1515,119 +1552,6 @@
         </div>
 
       </div>
-
-    </div>
-
-    <!-- ============================================================================== -->
-    <!-- SLIDE-OVER DRAWER: LIST LENGKAP 56 TIM MDS -->
-    <!-- ============================================================================== -->
-    <div x-show="showMdsDrawer" x-cloak class="fixed inset-0 z-50 overflow-hidden"
-      @keydown.escape.window="showMdsDrawer = false">
-
-      <!-- Backdrop -->
-      <div x-show="showMdsDrawer" x-transition:enter="transition-opacity ease-linear duration-300"
-        x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
-        x-transition:leave="transition-opacity ease-linear duration-300" x-transition:leave-start="opacity-100"
-        x-transition:leave-end="opacity-0" @click="showMdsDrawer = false"
-        class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"></div>
-
-      <!-- Slide-Over Panel -->
-      <div class="fixed inset-y-0 left-0 max-w-full flex">
-        <div x-show="showMdsDrawer" x-transition:enter="transform transition ease-in-out duration-300"
-          x-transition:enter-start="-translate-x-full" x-transition:enter-end="translate-x-0"
-          x-transition:leave="transform transition ease-in-out duration-300" x-transition:leave-start="translate-x-0"
-          x-transition:leave-end="-translate-x-full"
-          class="w-screen max-w-md bg-white dark:bg-slate-900 shadow-2xl border-r border-slate-200 dark:border-slate-800 flex flex-col">
-
-          <!-- Drawer Header -->
-          <div
-            class="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
-            <div class="flex items-center space-x-2.5">
-              <div
-                class="w-8 h-8 rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center font-bold">
-                👥
-              </div>
-              <div>
-                <h3 class="font-display font-extrabold text-sm text-slate-900 dark:text-white">Daftar Tim MDS</h3>
-                <p class="text-[11px] text-slate-500" x-text="`${filteredAssignments.length} Personil Tersedia`"></p>
-              </div>
-            </div>
-            <button type="button" @click="showMdsDrawer = false"
-              class="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 flex items-center justify-center transition-colors cursor-pointer">
-              <i data-lucide="x" class="w-4 h-4"></i>
-            </button>
-          </div>
-
-          <!-- Drawer Filters & Search -->
-          <div class="p-4 border-b border-slate-200/60 dark:border-slate-800 space-y-3">
-
-            <!-- Search -->
-            <div class="relative">
-              <input type="text" x-model="searchQuery" placeholder="Cari Nama MDS / Kecamatan / Kota..."
-                class="w-full h-9 text-xs pl-8 pr-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:ring-2 focus:ring-brand-500">
-              <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                <i data-lucide="search" class="w-3.5 h-3.5"></i>
-              </div>
-            </div>
-
-            <!-- Status Tabs -->
-            <div class="grid grid-cols-3 gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold">
-              <button type="button" @click="selectedStatus = 'ALL'"
-                class="py-1 rounded-lg transition-all cursor-pointer text-center"
-                :class="selectedStatus === 'ALL' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'">
-                Semua
-              </button>
-              <button type="button" @click="selectedStatus = 'ACTIVE'"
-                class="py-1 rounded-lg transition-all cursor-pointer text-center"
-                :class="selectedStatus === 'ACTIVE' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 hover:text-slate-800'">
-                Aktif
-              </button>
-              <button type="button" @click="selectedStatus = 'VACANT'"
-                class="py-1 rounded-lg transition-all cursor-pointer text-center"
-                :class="selectedStatus === 'VACANT' ? 'bg-white dark:bg-slate-700 text-amber-500 shadow-sm' : 'text-slate-500 hover:text-slate-800'">
-                Rekrut
-              </button>
-            </div>
-
-          </div>
-
-          <!-- Scrollable MDS Cards List -->
-          <div class="flex-1 overflow-y-auto p-4 space-y-2">
-            <template x-for="mds in filteredAssignments" :key="mds.id">
-              <div @click="selectMds(mds)"
-                class="p-3 rounded-xl border transition-all cursor-pointer space-y-1.5 select-none"
-                :class="selectedMds && selectedMds.id === mds.id ? 'bg-brand-500/10 border-brand-500 ring-2 ring-brand-400' : 'bg-white/60 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200/80 dark:border-slate-700/80'">
-
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center space-x-2 min-w-0">
-                    <div class="w-3 h-3 rounded-full flex-shrink-0" :style="`background-color: ${mds.color}`"></div>
-                    <h4 class="font-bold text-xs text-slate-900 dark:text-white truncate" x-text="mds.nama"></h4>
-                  </div>
-                  <span class="px-2 py-0.5 rounded text-[10px] font-extrabold flex-shrink-0"
-                    :class="mds.isVirtual ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20'"
-                    x-text="mds.isVirtual ? 'REKRUT' : (mds.displayId || mds.id)"></span>
-                </div>
-
-                <div class="text-[11px] text-slate-500 dark:text-slate-400 truncate flex items-center gap-1">
-                  <span>📍</span>
-                  <span x-text="`${mds.kecamatan}, ${mds.kota}`"></span>
-                </div>
-
-                <!-- Metrics Mini Bar -->
-                <div
-                  class="flex items-center justify-between text-[10.5px] pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-                  <span class="font-bold text-slate-700 dark:text-slate-300"
-                    x-text="`${mds.assignedStores.length} Toko • 4 Hari DC`"></span>
-                  <span class="text-slate-500" x-text="`~${mds.avgDistanceKm} km (${mds.avgTravelMins} mnt)`"></span>
-                </div>
-
-              </div>
-            </template>
-          </div>
-        </div>
-      </div>
-    </div>
-    <!-- END SLIDE-OVER DRAWER -->
 
     </div>
     <!-- END VIEW 1: AUTO SIMULATION -->

@@ -505,13 +505,32 @@ const RouteEngine = {
         const vCode = `REKRUT_${String(virtualCounter).padStart(2, '0')}`;
         const uniqueId = `VAC_${rKey}_${vCode}_${virtualCounter}`;
 
+        const isJava = (!islandGroup || islandGroup === 'JAWA' || islandGroup === 'ISLAND_JAVA');
+        const regText = `${regionName} ${rKey} ${areaCorridor}`.toUpperCase();
+        let inferredModul = isJava ? 'DK' : 'LP';
+
+        if (!isJava) {
+          inferredModul = 'LP';
+        } else if (regText.includes('JABODETABEK') || regText.includes('JAKARTA') || regText.includes('BOGOR') || regText.includes('DEPOK') || regText.includes('TANGERANG') || regText.includes('BEKASI') || regText.includes('BANDUNG') || regText.includes('SURABAYA') || regText.includes('SEMARANG')) {
+          inferredModul = 'DK';
+        } else if (nearestActiveMds?.modul) {
+          const nearMod = nearestActiveMds.modul.toUpperCase().trim();
+          if (nearMod.startsWith('DK')) inferredModul = 'DK';
+          else if (nearMod.startsWith('LK')) inferredModul = 'LK';
+          else if (nearMod.startsWith('LP')) inferredModul = 'LP';
+          else inferredModul = 'LK';
+        } else {
+          inferredModul = 'LK';
+        }
+
         const virtualMds = {
           id: uniqueId,
           displayId: vCode,
           nama: `[USULAN REKRUT] ${regionName} (${areaCorridor}) #${virtualCounter} (${cluster.length} Toko)`,
           jabatan: 'Merchandiser (Usulan Baru)',
           account: cluster[0]?.account || 'ALL',
-          modul: 'VACANT',
+          modul: `${inferredModul} (VACANT)`,
+          nearestActiveMdsModul: nearestActiveMds?.modul || '',
           alamat: `Sentra Operasional ${areaCorridor}, ${regionName}`,
           kecamatan: cluster[0]?.kecamatan || topCities[0] || areaCorridor,
           kota: topCities[0] || areaCorridor,
@@ -722,33 +741,46 @@ const RouteEngine = {
       const cosLat = Math.cos((mLat * Math.PI) / 180);
 
       // Separate regular pool from DC pool
-      const regularPool = mds.assignedStores.filter(s => !s.isDcDayStore);
+      let unassignedRegular = [...mds.assignedStores.filter(s => !s.isDcDayStore)];
 
-      // Polar Angular Sectoring & Distance Corridor Clustering (Tight daily corridors from home base)
-      regularPool.forEach(s => {
+      // Calculate distance squared to home for all regular stores
+      unassignedRegular.forEach(s => {
         const dLat = (s.lat || 0) - mLat;
         const dLng = ((s.lng || 0) - mLng) * cosLat;
         s._dsqHome = dLat * dLat + dLng * dLng;
-        let angle = Math.atan2(dLat, dLng) * (180 / Math.PI);
-        if (angle < 0) angle += 360;
-        s._angle = angle;
-        // Segment into 20-degree angular corridor wedges
-        s._corridorBin = Math.floor(angle / 20);
       });
 
-      // Sort regular pool by corridor sector first, then by distance from home within that sector
-      regularPool.sort((a, b) => {
-        if (a._corridorBin !== b._corridorBin) {
-          return a._corridorBin - b._corridorBin;
-        }
-        return a._dsqHome - b._dsqHome;
-      });
-
-      // Days 1 to 21: Regular Stores
+      // Days 1 to 21: Spatially Compact Nearest-Neighbor Daily Clusters
       for (let day = 1; day <= config.regularDays; day++) {
-        const startIdx = (day - 1) * storesPerDay;
-        let dayStores = regularPool.slice(startIdx, startIdx + storesPerDay);
+        if (unassignedRegular.length === 0) break;
 
+        const remainingDays = (config.regularDays - day + 1);
+        const takeCount = Math.min(
+          unassignedRegular.length,
+          Math.max(1, Math.round(unassignedRegular.length / remainingDays))
+        );
+
+        // Anchor cluster from the farthest unvisited store to cleanly group distant pockets (e.g. outer districts) first
+        unassignedRegular.sort((a, b) => b._dsqHome - a._dsqHome);
+        const seed = unassignedRegular[0];
+
+        const seedLat = seed.lat;
+        const seedLng = seed.lng;
+        const seedCosLat = Math.cos((seedLat * Math.PI) / 180);
+
+        // Find the closest neighbors in unassigned pool to this seed
+        for (let i = 0; i < unassignedRegular.length; i++) {
+          const s = unassignedRegular[i];
+          const dLat = s.lat - seedLat;
+          const dLng = (s.lng - seedLng) * seedCosLat;
+          s._dsqSeed = dLat * dLat + dLng * dLng;
+        }
+
+        unassignedRegular.sort((a, b) => a._dsqSeed - b._dsqSeed);
+        let dayStores = unassignedRegular.slice(0, takeCount);
+        unassignedRegular = unassignedRegular.slice(takeCount);
+
+        // Sort sequence of stops within the day (TSP Nearest Neighbor from Home)
         if (dayStores.length > 1) {
           dayStores = this.sortRouteChain(mds.lat, mds.lng, dayStores);
         }

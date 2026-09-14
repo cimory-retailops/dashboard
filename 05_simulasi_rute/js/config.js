@@ -64,9 +64,10 @@ const SIMULATION_CONFIG = {
 
   // Google Sheets Master Database & Live Sync Configuration
   DATA_SOURCE: {
-    // Spreadsheet ID 16cokFfnQFIajmTd553TKy-CfkNFc1Gg7ElkhAer81QA - tab master_toko (GID: 1970488135)
-    GOOGLE_SHEET_CSV_URL: 'https://docs.google.com/spreadsheets/d/16cokFfnQFIajmTd553TKy-CfkNFc1Gg7ElkhAer81QA/export?format=csv&gid=1970488135',
+    // Spreadsheet ID 16cokFfnQFIajmTd553TKy-CfkNFc1Gg7ElkhAer81QA - tab master_toko (GID: 387699773)
+    GOOGLE_SHEET_CSV_URL: 'https://docs.google.com/spreadsheets/d/16cokFfnQFIajmTd553TKy-CfkNFc1Gg7ElkhAer81QA/export?format=csv&gid=387699773',
     GOOGLE_SHEET_GVIZ_URL: 'https://docs.google.com/spreadsheets/d/16cokFfnQFIajmTd553TKy-CfkNFc1Gg7ElkhAer81QA/gviz/tq?tqx=out:csv&sheet=master_toko',
+    GOOGLE_SHEET_MDS_URL: 'https://docs.google.com/spreadsheets/d/1XqZgR70C1eqfkkKbM9jO2FhSi6-g3I9AskuhsSh7Mzs/export?format=csv&gid=107513943',
     FALLBACK_LOCAL_CSV: './data/master_toko_nasional.csv'
   }
 };

@@ -29,7 +29,7 @@ document.addEventListener('alpine:init', () => {
     rawStores: [],
 
     // Scope Selection ('JAWA' | 'LUAR_PULAU' | 'NASIONAL')
-    selectedScope: 'JAWA',
+    selectedScope: 'NASIONAL',
 
     // Simulation Results
     simulationResult: null,
@@ -52,6 +52,7 @@ document.addEventListener('alpine:init', () => {
     // Google Earth Multi-Select & Places Tree State
     selectedMdsIds: [], // Multi-selected MDS IDs rendered simultaneously on map
     expandedMdsIds: [], // Expanded tree node IDs in Places panel
+    expandedModuleKeys: [], // Default collapsed all Module groups in Places panel
     hiddenDaysMap: {},  // Map of 'mdsId_dayNum' -> true if hidden
     hiddenHomeMap: {},  // Map of 'mdsId' -> true if hidden
     placesTreeSearch: '',
@@ -78,6 +79,7 @@ document.addEventListener('alpine:init', () => {
     map: null,
     mapMarkersLayer: null,
     mapRoutesLayer: null,
+    accountChart: null,
 
     // =========================================================================
     // DUAL-PANE MANUAL ROUTE EDITOR (MT MANAGER STYLE) & DRAFT PERSISTENCE
@@ -153,8 +155,16 @@ document.addEventListener('alpine:init', () => {
           this.$nextTick(() => {
             this.initMap();
             if (window.lucide) lucide.createIcons();
+            this.renderAccountChart();
           });
         }
+
+        // Auto re-render account chart on filter change
+        this.$watch('currentTableStores', () => {
+          this.$nextTick(() => {
+            this.renderAccountChart();
+          });
+        });
 
       } catch (err) {
         console.error('[App] Init Error:', err);
@@ -268,20 +278,19 @@ document.addEventListener('alpine:init', () => {
             } else {
               this.selectedMds = this.simulationResult.assignments.find(m => m.id === this.selectedMds.id) || this.simulationResult.assignments[0];
             }
-            if (!this.selectedMdsIds || this.selectedMdsIds.length === 0) {
-              this.selectedMdsIds = [this.selectedMds.id];
-              this.selectedHomeKeys = { [this.selectedMds.id]: true };
-              this.selectedDayKeys = {};
-              for (let d = 1; d <= 25; d++) {
-                this.selectedDayKeys[`${this.selectedMds.id}_${d}`] = true;
-              }
-              this.expandedMdsIds = [this.selectedMds.id];
-            }
+            // Nonaktifkan auto-check dan auto-expand di awal agar load halaman ringan
+            this.selectedMdsIds = [];
+            this.selectedHomeKeys = {};
+            this.selectedDayKeys = {};
+            this.expandedMdsIds = [];
+            this.expandedModuleKeys = [];
           } else {
             this.selectedMds = null;
             this.selectedMdsIds = [];
             this.selectedHomeKeys = {};
             this.selectedDayKeys = {};
+            this.expandedMdsIds = [];
+            this.expandedModuleKeys = [];
           }
 
           this.renderMap();
@@ -343,29 +352,109 @@ document.addEventListener('alpine:init', () => {
     },
 
     /**
+     * Grouped filtered assignments by module prefix (DK, LK, LP, etc.)
+     */
+    get groupedAssignments() {
+      const list = this.filteredAssignments;
+      const groups = [
+        { key: 'DK', name: 'MODUL DK', items: [] },
+        { key: 'LK', name: 'MODUL LK', items: [] },
+        { key: 'LP', name: 'MODUL LP', items: [] },
+        { key: 'OTHER', name: 'MODUL LAINNYA', items: [] }
+      ];
+
+      const getModuleKey = (m) => {
+        const mod = (m.modul || '').toUpperCase().trim();
+        if (mod.startsWith('DK')) return 'DK';
+        if (mod.startsWith('LK')) return 'LK';
+        if (mod.startsWith('LP')) return 'LP';
+
+        if (m.isVirtual) {
+          const text = `${m.nama} ${m.regionName || ''} ${m.regionKey || ''} ${m.kota || ''} ${m.alamat || ''} ${m.kecamatan || ''}`.toUpperCase();
+          if (text.includes('JABODETABEK') || text.includes('JAKARTA') || text.includes('BOGOR') || text.includes('DEPOK') || text.includes('TANGERANG') || text.includes('BEKASI') || text.includes('BANDUNG') || text.includes('SURABAYA') || text.includes('SEMARANG')) {
+            return 'DK';
+          }
+
+          if (m.nearestActiveMdsModul) {
+            const nearMod = m.nearestActiveMdsModul.toUpperCase().trim();
+            if (nearMod.startsWith('DK')) return 'DK';
+            if (nearMod.startsWith('LK')) return 'LK';
+            if (nearMod.startsWith('LP')) return 'LP';
+          }
+
+          const isJava = (!m.islandGroup || m.islandGroup === 'JAWA' || m.islandGroup === 'ISLAND_JAVA');
+          if (!isJava) return 'LP';
+          return 'LK';
+        }
+        return 'OTHER';
+      };
+
+      list.forEach(m => {
+        const k = getModuleKey(m);
+        if (k === 'DK') groups[0].items.push(m);
+        else if (k === 'LK') groups[1].items.push(m);
+        else if (k === 'LP') groups[2].items.push(m);
+        else groups[3].items.push(m);
+      });
+
+      return groups.filter(g => g.items.length > 0);
+    },
+
+    /**
      * Filtered Current Table Stores (Daily or Full Monthly Itinerary)
+     * Responds dynamically to left panel selections (selectedMdsIds, selectedDayKeys)
      */
     get currentTableStores() {
-      if (!this.selectedMds) return [];
+      let activeMdsList = [];
+      if (this.selectedMdsIds && this.selectedMdsIds.length > 0) {
+        activeMdsList = (this.simulationResult?.assignments || []).filter(a => this.selectedMdsIds.includes(a.id));
+      } else if (this.selectedMds) {
+        activeMdsList = [this.selectedMds];
+      }
+      
+      if (activeMdsList.length === 0) return [];
+
       let list = [];
+
       if (this.tableScope === 'DAY') {
-        const daySchedule = (this.selectedMds.dailySchedule || []).find(d => d.dayNumber === this.selectedDayIndex);
-        list = (daySchedule ? (daySchedule.stores || daySchedule.items || []) : []).map((st, idx) => ({
-          ...st,
-          stopIndex: idx + 1,
-          dayNumber: this.selectedDayIndex
-        }));
-      } else {
-        // Full Month (all 25 days)
-        (this.selectedMds.dailySchedule || []).forEach(day => {
-          (day.stores || day.items || []).forEach((st, idx) => {
-            list.push({
-              ...st,
-              stopIndex: idx + 1,
-              dayNumber: day.dayNumber,
-              dayType: day.type,
-              dayTitle: day.title
+        activeMdsList.forEach(m => {
+          const isDayActive = this.selectedDayKeys ? Boolean(this.selectedDayKeys[`${m.id}_${this.selectedDayIndex}`]) : true;
+          if (isDayActive) {
+            const daySchedule = (m.dailySchedule || []).find(d => d.dayNumber === this.selectedDayIndex);
+            const stores = (daySchedule ? (daySchedule.stores || daySchedule.items || []) : []);
+            stores.forEach((st, idx) => {
+              list.push({
+                ...st,
+                mdsId: m.id,
+                mdsName: m.nama || m.name,
+                mdsKota: m.kota,
+                mdsColor: m.colorHex || '#3b82f6',
+                stopIndex: idx + 1,
+                dayNumber: this.selectedDayIndex
+              });
             });
+          }
+        });
+      } else {
+        // Full Month or Checked Days
+        activeMdsList.forEach(m => {
+          (m.dailySchedule || []).forEach(day => {
+            const isDayActive = this.selectedDayKeys ? Boolean(this.selectedDayKeys[`${m.id}_${day.dayNumber}`]) : true;
+            if (isDayActive) {
+              (day.stores || day.items || []).forEach((st, idx) => {
+                list.push({
+                  ...st,
+                  mdsId: m.id,
+                  mdsName: m.nama || m.name,
+                  mdsKota: m.kota,
+                  mdsColor: m.colorHex || '#3b82f6',
+                  stopIndex: idx + 1,
+                  dayNumber: day.dayNumber,
+                  dayType: day.type,
+                  dayTitle: day.title
+                });
+              });
+            }
           });
         });
       }
@@ -383,12 +472,151 @@ document.addEventListener('alpine:init', () => {
       if (this.tableSearchQuery) {
         const q = this.tableSearchQuery.toUpperCase();
         list = list.filter(st => {
-          const match = `${st.storeName || ''} ${st.storeCode || ''} ${st.account || ''} ${st.kabKota || ''} ${st.kecamatan || ''}`.toUpperCase();
+          const match = `${st.storeName || ''} ${st.storeCode || ''} ${st.account || ''} ${st.kabKota || ''} ${st.kecamatan || ''} ${st.mdsName || ''}`.toUpperCase();
           return match.includes(q);
         });
       }
 
       return list;
+    },
+
+    getTableCount(scope = 'DAY') {
+      let activeMdsList = [];
+      if (this.selectedMdsIds && this.selectedMdsIds.length > 0) {
+        activeMdsList = (this.simulationResult?.assignments || []).filter(a => this.selectedMdsIds.includes(a.id));
+      } else if (this.selectedMds) {
+        activeMdsList = [this.selectedMds];
+      }
+      if (activeMdsList.length === 0) return 0;
+
+      let count = 0;
+      if (scope === 'DAY') {
+        activeMdsList.forEach(m => {
+          const isDayActive = this.selectedDayKeys ? Boolean(this.selectedDayKeys[`${m.id}_${this.selectedDayIndex}`]) : true;
+          if (isDayActive) {
+            const daySchedule = (m.dailySchedule || []).find(d => d.dayNumber === this.selectedDayIndex);
+            count += (daySchedule ? (daySchedule.stores || daySchedule.items || []).length : 0);
+          }
+        });
+      } else {
+        activeMdsList.forEach(m => {
+          (m.dailySchedule || []).forEach(day => {
+            const isDayActive = this.selectedDayKeys ? Boolean(this.selectedDayKeys[`${m.id}_${day.dayNumber}`]) : true;
+            if (isDayActive) {
+              count += (day.stores || day.items || []).length;
+            }
+          });
+        });
+      }
+      return count;
+    },
+
+    /**
+     * Account Breakdown Statistics for Doughnut Chart & Analytics
+     */
+    get currentAccountStats() {
+      const stores = this.currentTableStores || [];
+      const counts = {};
+      stores.forEach(st => {
+        let acc = (st.account || (st.isDc || st.type === 'DC' ? 'DC' : 'OTHER')).toUpperCase().trim();
+        if (!acc || acc === '-' || acc === 'UNDEFINED') acc = 'OTHER';
+        counts[acc] = (counts[acc] || 0) + 1;
+      });
+      const total = stores.length;
+      const palette = [
+        '#6366f1', // Indigo (Alfamart)
+        '#06b6d4', // Cyan (Indomaret)
+        '#10b981', // Emerald (Family Mart / DC)
+        '#f59e0b', // Amber (Perdin / Wholesale)
+        '#ec4899', // Pink (Supermarket)
+        '#8b5cf6', // Violet
+        '#14b8a6', // Teal
+        '#f43f5e', // Rose
+        '#64748b'  // Slate
+      ];
+      const sorted = Object.entries(counts)
+        .map(([account, count], idx) => ({
+          account,
+          count,
+          percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+          color: palette[idx % palette.length]
+        }))
+        .sort((a, b) => b.count - a.count);
+
+      return {
+        total,
+        breakdown: sorted,
+        topAccount: sorted[0] ? sorted[0].account : '-',
+        topAccountCount: sorted[0] ? sorted[0].count : 0,
+        topAccountPct: sorted[0] ? sorted[0].percentage : 0
+      };
+    },
+
+    /**
+     * Render or Update Account Distribution Doughnut Chart
+     */
+    renderAccountChart() {
+      if (typeof Chart === 'undefined') return;
+      const canvas = document.getElementById('accountDoughnutChart');
+      if (!canvas) return;
+
+      const stats = this.currentAccountStats;
+      if (!stats || stats.total === 0) {
+        if (this.accountChart) {
+          this.accountChart.destroy();
+          this.accountChart = null;
+        }
+        return;
+      }
+
+      const labels = stats.breakdown.map(b => b.account);
+      const data = stats.breakdown.map(b => b.count);
+      const bgColors = stats.breakdown.map(b => b.color);
+
+      if (this.accountChart) {
+        this.accountChart.data.labels = labels;
+        this.accountChart.data.datasets[0].data = data;
+        this.accountChart.data.datasets[0].backgroundColor = bgColors;
+        this.accountChart.update();
+      } else {
+        const ctx = canvas.getContext('2d');
+        this.accountChart = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: labels,
+            datasets: [{
+              data: data,
+              backgroundColor: bgColors,
+              borderWidth: 2,
+              borderColor: this.theme === 'dark' ? '#1e293b' : '#ffffff',
+              hoverOffset: 5
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '72%',
+            plugins: {
+              legend: {
+                display: false
+              },
+              tooltip: {
+                callbacks: {
+                  label: function (context) {
+                    const label = context.label || '';
+                    const val = context.raw || 0;
+                    const pct = Math.round((val / stats.total) * 100);
+                    return ` ${label}: ${val} Toko (${pct}%)`;
+                  }
+                }
+              }
+            },
+            animation: {
+              duration: 300
+            }
+          }
+        });
+      }
     },
 
     /**
@@ -456,6 +684,56 @@ document.addEventListener('alpine:init', () => {
     },
 
     // --- GOOGLE EARTH PLACES TREE CONTROLS ---
+    toggleModuleTreeExpand(key) {
+      if (this.expandedModuleKeys.includes(key)) {
+        this.expandedModuleKeys = this.expandedModuleKeys.filter(k => k !== key);
+      } else {
+        this.expandedModuleKeys.push(key);
+      }
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
+    isModuleTreeExpanded(key) {
+      return this.expandedModuleKeys.includes(key);
+    },
+
+    isModuleAllSelected(group) {
+      if (!group || !group.items || group.items.length === 0) return false;
+      return group.items.every(m => this.selectedMdsIds.includes(m.id));
+    },
+
+    toggleModuleSelection(group) {
+      if (!this.selectedHomeKeys) this.selectedHomeKeys = {};
+      if (!this.selectedDayKeys) this.selectedDayKeys = {};
+      
+      const allSelected = this.isModuleAllSelected(group);
+      
+      if (allSelected) {
+        // Deselect all MDS in this module
+        const groupIds = new Set(group.items.map(m => m.id));
+        this.selectedMdsIds = this.selectedMdsIds.filter(id => !groupIds.has(id));
+        group.items.forEach(m => {
+          delete this.selectedHomeKeys[m.id];
+          for (let d = 1; d <= 25; d++) {
+            delete this.selectedDayKeys[`${m.id}_${d}`];
+          }
+        });
+      } else {
+        // Select all MDS in this module
+        group.items.forEach(m => {
+          if (!this.selectedMdsIds.includes(m.id)) {
+            this.selectedMdsIds.push(m.id);
+          }
+          this.selectedHomeKeys[m.id] = true;
+          for (let d = 1; d <= 25; d++) {
+            this.selectedDayKeys[`${m.id}_${d}`] = true;
+          }
+        });
+      }
+      
+      this.renderMap(true);
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
     toggleMdsSelection(mdsId) {
       if (!this.selectedHomeKeys) this.selectedHomeKeys = {};
       if (!this.selectedDayKeys) this.selectedDayKeys = {};
@@ -503,13 +781,6 @@ document.addEventListener('alpine:init', () => {
       this.selectedMdsIds = [];
       this.selectedHomeKeys = {};
       this.selectedDayKeys = {};
-      if (this.selectedMds) {
-        this.selectedMdsIds = [this.selectedMds.id];
-        this.selectedHomeKeys[this.selectedMds.id] = true;
-        for (let d = 1; d <= 25; d++) {
-          this.selectedDayKeys[`${this.selectedMds.id}_${d}`] = true;
-        }
-      }
       this.renderMap(true);
       this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
@@ -532,12 +803,22 @@ document.addEventListener('alpine:init', () => {
       if (!this.selectedDayKeys) this.selectedDayKeys = {};
       const key = `${mdsId}_${dayNum}`;
 
+      const m = (this.simulationResult?.assignments || []).find(a => a.id === mdsId);
+      if (m) this.selectedMds = m;
+
       if (this.selectedDayKeys[key]) {
         // Uncheck single day
         delete this.selectedDayKeys[key];
         const hasAnyDay = Array.from({length: 25}, (_, i) => i + 1).some(d => this.selectedDayKeys[`${mdsId}_${d}`]);
         if (!hasAnyDay && !this.selectedHomeKeys[mdsId]) {
           this.selectedMdsIds = this.selectedMdsIds.filter(id => id !== mdsId);
+        }
+        // Jika hari yang di-uncheck adalah hari yang sedang dibuka di tabel, alihkan ke hari lain yang aktif
+        if (this.selectedDayIndex === dayNum) {
+          const firstActiveDay = Array.from({length: 25}, (_, i) => i + 1).find(d => this.selectedDayKeys[`${mdsId}_${d}`]);
+          if (firstActiveDay) {
+            this.selectedDayIndex = firstActiveDay;
+          }
         }
       } else {
         // Check single day
@@ -546,6 +827,8 @@ document.addEventListener('alpine:init', () => {
           this.selectedHomeKeys[mdsId] = true;
         }
         this.selectedDayKeys[key] = true;
+        // Otomatis sinkronkan hari tabel ke hari yang baru dicentang
+        this.selectedDayIndex = dayNum;
       }
       this.renderMap(true);
     },
@@ -887,14 +1170,11 @@ document.addEventListener('alpine:init', () => {
         center: [-6.2088, 106.8456],
         zoom: 11,
         zoomControl: true,
-        fadeAnimation: true,
-        markerZoomAnimation: true,
-        zoomAnimation: true,
-        wheelDebounceTime: 40
+        preferCanvas: false
       });
 
-      // OpenStreetMap Clean Tiles (100% Free, Zero Watermark, No API Key Required)
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      // OpenStreetMap Official Tiles (100% Free, No API Key, No Watermark)
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19
       }).addTo(this.map);
@@ -902,12 +1182,76 @@ document.addEventListener('alpine:init', () => {
       this.mapMarkersLayer = L.layerGroup().addTo(this.map);
       this.mapRoutesLayer = L.layerGroup().addTo(this.map);
 
+      // Auto Invalidate Size on Container Resize
+      if (window.ResizeObserver) {
+        const ro = new ResizeObserver(() => {
+          if (this.map) this.map.invalidateSize();
+        });
+        ro.observe(mapEl);
+      }
+
       // Expose global callback for Leaflet popup buttons
       window.__openRouteSwapModal = (sourceMdsId, dayNum, storeCode) => {
         this.openSwapStoreModal(sourceMdsId, dayNum, storeCode);
       };
 
-      this.renderMap();
+      // Delayed Invalidate Size & Render Retries
+      setTimeout(() => {
+        if (this.map) {
+          this.map.invalidateSize();
+          this.renderMap(true);
+        }
+      }, 100);
+
+      setTimeout(() => {
+        if (this.map) {
+          this.map.invalidateSize();
+          this.renderMap(true);
+        }
+      }, 400);
+    },
+
+    getStoreAccountColor(account, isPerdin = false, isDc = false) {
+      if (isDc) return '#059669'; // Emerald
+      const acc = (account || '').toUpperCase().trim();
+      if (acc.includes('ALFAMART') || acc.includes('ALFA ') || acc === 'ALFA') return '#dc2626'; // Merah Alfamart
+      if (acc.includes('INDOMARET') || acc.includes('IDM')) return '#0284c7'; // Biru Indomaret
+      if (acc.includes('MIDI') || acc.includes('ALFAMIDI')) return '#ea580c'; // Oranye Alfamidi
+      if (acc.includes('FAMILY') || acc.includes('FM') || acc.includes('FAMILYMART')) return '#16a34a'; // Hijau Family Mart
+      if (acc.includes('SUPERINDO') || acc.includes('HYPERMART') || acc.includes('YOGYA') || acc.includes('GRIYA') || acc.includes('HERO') || acc.includes('SUPERMARKET')) return '#7c3aed'; // Ungu Supermarket
+      if (acc.includes('DC') || acc.includes('HUB') || acc.includes('WAREHOUSE')) return '#0d9488'; // Teal
+      return isPerdin ? '#d97706' : '#475569';
+    },
+
+    getAccountIconBadge(account, isDc = false) {
+      if (isDc) return '🏭';
+      const acc = (account || '').toUpperCase().trim();
+      if (acc.includes('ALFAMART') || acc.includes('ALFA ') || acc === 'ALFA') return 'A';
+      if (acc.includes('INDOMARET') || acc.includes('IDM')) return 'I';
+      if (acc.includes('MIDI') || acc.includes('ALFAMIDI')) return 'M';
+      if (acc.includes('FAMILY') || acc.includes('FM') || acc.includes('FAMILYMART')) return 'FM';
+      return 'T';
+    },
+
+    computeConvexHull(points) {
+      if (!points || points.length < 3) return points || [];
+      const pts = points.slice().sort((a, b) => a[0] === b[0] ? a[1] - b[1] : a[0] - b[0]);
+      const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+      
+      const lower = [];
+      for (let p of pts) {
+        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+        lower.push(p);
+      }
+      const upper = [];
+      for (let i = pts.length - 1; i >= 0; i--) {
+        const p = pts[i];
+        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+        upper.push(p);
+      }
+      upper.pop();
+      lower.pop();
+      return lower.concat(upper);
     },
 
     /**
@@ -916,6 +1260,7 @@ document.addEventListener('alpine:init', () => {
     renderMap(forceFit = false) {
       if (!this.map || !this.mapMarkersLayer || !this.simulationResult) return;
 
+      this.map.closePopup();
       this.mapMarkersLayer.clearLayers();
       this.mapRoutesLayer.clearLayers();
 
@@ -940,12 +1285,12 @@ document.addEventListener('alpine:init', () => {
           const homeIcon = L.divIcon({
             className: 'custom-home-pin',
             html: `
-              <div style="background-color: ${mds.color}; width: 34px; height: 34px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; transform: translate(-50%, -50%); cursor: pointer;">
+              <div style="background-color: ${mds.color}; width: 34px; height: 34px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; cursor: pointer;">
                 🏠
               </div>
             `,
-            iconSize: [0, 0],
-            iconAnchor: [0, 0]
+            iconSize: [34, 34],
+            iconAnchor: [17, 17]
           });
 
           const homeMarker = L.marker([mds.lat, mds.lng], { icon: homeIcon })
@@ -968,7 +1313,31 @@ document.addEventListener('alpine:init', () => {
         // 2. Determine which days to plot for this MDS
         const daysToPlot = (mds.dailySchedule || []).filter(day => this.isDayVisible(mds.id, day.dayNumber));
 
-        // 3. Plot Stores & Route Lines per Day
+        // 3. Collect all active coordinates for MDS Territory Polygon (Convex Hull)
+        const allMdsPoints = [];
+        if (this.isHomeVisible(mds.id)) allMdsPoints.push([mds.lat, mds.lng]);
+
+        daysToPlot.forEach(day => {
+          (day.stores || []).forEach(st => allMdsPoints.push([st.lat, st.lng]));
+        });
+
+        // Draw Smooth Transparent Territory Polygon per MDS (Non-interactive background overlay)
+        if (allMdsPoints.length >= 3) {
+          const hull = this.computeConvexHull(allMdsPoints);
+          if (hull.length >= 3) {
+            const territoryPolygon = L.polygon(hull, {
+              color: mds.color,
+              fillColor: mds.color,
+              fillOpacity: 0.12,
+              weight: 2,
+              dashArray: '5, 5',
+              interactive: false
+            });
+            this.mapRoutesLayer.addLayer(territoryPolygon);
+          }
+        }
+
+        // 4. Plot Stores & Route Lines per Day
         daysToPlot.forEach(day => {
           const stores = day.stores || [];
           if (stores.length === 0) return;
@@ -980,19 +1349,23 @@ document.addEventListener('alpine:init', () => {
           stores.forEach((st, idx) => {
             const isPerdin = isDayPerdin || st.isPerdin;
             const isThisStoreDc = Boolean(st.isDc || st.type === 'DC' || (st.tipeKunjungan && st.tipeKunjungan.includes('DC')));
-            const pinBg = isPerdin ? '#f59e0b' : (isThisStoreDc ? '#059669' : mds.color);
-            const pinBorder = isPerdin ? '#b45309' : (isThisStoreDc ? '#047857' : 'white');
+            
+            // Brand-based pin color with MDS Personel border ring
+            const pinBg = this.getStoreAccountColor(st.account, isPerdin, isThisStoreDc);
+            const pinBorder = mds.color || '#3b82f6';
+            const badgeIcon = this.getAccountIconBadge(st.account, isThisStoreDc);
             const pinText = isMultiMds ? `D${day.dayNumber} #${idx + 1}` : `${idx + 1}`;
 
             const storeIcon = L.divIcon({
               className: 'custom-store-pin',
               html: `
-                <div style="background-color: ${pinBg}; min-width: 26px; height: 24px; padding: 0 6px; border-radius: 12px; border: 2px solid ${pinBorder}; box-shadow: 0 2px 6px rgba(0,0,0,0.35); display: inline-flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: 800; white-space: nowrap; transform: translate(-50%, -50%); cursor: pointer;">
-                  ${pinText}
+                <div style="background-color: ${pinBg}; min-width: 34px; height: 24px; padding: 0 6px; border-radius: 12px; border: 2.5px solid ${pinBorder}; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: inline-flex; align-items: center; justify-content: center; gap: 3px; color: white; font-size: 10px; font-weight: 800; white-space: nowrap; cursor: pointer;">
+                  <span style="font-size: 9px; opacity: 0.95; font-weight: 900;">${badgeIcon}</span>
+                  <span>${pinText}</span>
                 </div>
               `,
-              iconSize: [0, 0],
-              iconAnchor: [0, 0]
+              iconSize: [36, 24],
+              iconAnchor: [18, 12]
             });
 
             const safeStoreCode = (st.storeCode || st.id || '').replace(/'/g, "\\'");
@@ -1015,7 +1388,7 @@ document.addEventListener('alpine:init', () => {
                     </span>
                   </div>
                   <b>${st.storeName || st.name}</b><br>
-                  <span style="display:inline-block; padding: 2px 6px; border-radius: 4px; background: #f1f5f9; color: #475569; font-size: 10px; font-weight: bold; margin-top:2px;">
+                  <span style="display:inline-block; padding: 2px 6px; border-radius: 4px; background: ${pinBg}; color: white; font-size: 10px; font-weight: bold; margin-top:2px;">
                     ${st.account || 'Toko'} ${st.storeCode ? `[${st.storeCode}]` : ''}
                   </span><br>
                   <hr style="margin: 6px 0; border: none; border-top: 1px solid #e2e8f0;">
@@ -1186,6 +1559,19 @@ document.addEventListener('alpine:init', () => {
           .replace(/'/g, '&apos;');
       };
 
+      // Helper hex color #RRGGBB to KML format AABBGGRR
+      const hexToKmlColor = (hex, alphaHex = '40') => {
+        if (!hex || typeof hex !== 'string') return `${alphaHex}ffffff`;
+        const clean = hex.replace('#', '');
+        if (clean.length === 6) {
+          const r = clean.substring(0, 2);
+          const g = clean.substring(2, 4);
+          const b = clean.substring(4, 6);
+          return `${alphaHex}${b}${g}${r}`;
+        }
+        return `${alphaHex}ff8800`;
+      };
+
       const targetList = exportAll
         ? this.simulationResult.assignments
         : (this.selectedMds ? [this.selectedMds] : this.simulationResult.assignments);
@@ -1197,8 +1583,9 @@ document.addEventListener('alpine:init', () => {
 <Document>
   <name>Cimory MDS Route Simulation - ${scopeTitle}</name>
   <description><![CDATA[Plotting Rute Harian & Wilayah MDS Berdasarkan Domisili Asli (Skema 25 Hari Kerja - ${scopeTitle})]]></description>
+  <visibility>0</visibility>
   
-  <!-- KML Styles (High Contrast & Visible in Google Earth 3D) -->
+  <!-- KML Styles (Brand-Coded Pins & High Visibility) -->
   <Style id="homePinActive">
     <IconStyle>
       <color>ff0000ff</color>
@@ -1215,7 +1602,7 @@ document.addEventListener('alpine:init', () => {
     </IconStyle>
     <LabelStyle><scale>0.9</scale></LabelStyle>
   </Style>
-  <Style id="dcPin">
+  <Style id="pinDC">
     <IconStyle>
       <color>ff00aa00</color>
       <scale>1.2</scale>
@@ -1223,26 +1610,50 @@ document.addEventListener('alpine:init', () => {
     </IconStyle>
     <LabelStyle><scale>0</scale></LabelStyle>
   </Style>
-  <Style id="storePinRegular">
+  <Style id="pinAlfamart">
     <IconStyle>
-      <color>ffffaa00</color>
+      <color>ff2222ee</color>
+      <scale>1.0</scale>
+      <Icon><href>https://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
+    </IconStyle>
+    <LabelStyle><scale>0</scale></LabelStyle>
+  </Style>
+  <Style id="pinIndomaret">
+    <IconStyle>
+      <color>ffee8800</color>
       <scale>1.0</scale>
       <Icon><href>https://maps.google.com/mapfiles/kml/paddle/blu-circle.png</href></Icon>
     </IconStyle>
     <LabelStyle><scale>0</scale></LabelStyle>
   </Style>
-  <Style id="storePinPerdin">
+  <Style id="pinAlfamidi">
     <IconStyle>
-      <color>ff0080ff</color>
-      <scale>1.1</scale>
+      <color>ff0088ee</color>
+      <scale>1.0</scale>
       <Icon><href>https://maps.google.com/mapfiles/kml/paddle/orange-circle.png</href></Icon>
     </IconStyle>
     <LabelStyle><scale>0</scale></LabelStyle>
   </Style>
-  <Style id="storePinVacant">
+  <Style id="pinFamilyMart">
     <IconStyle>
-      <color>ff00ffff</color>
+      <color>ff33bb33</color>
       <scale>1.0</scale>
+      <Icon><href>https://maps.google.com/mapfiles/kml/paddle/grn-circle.png</href></Icon>
+    </IconStyle>
+    <LabelStyle><scale>0</scale></LabelStyle>
+  </Style>
+  <Style id="pinSupermarket">
+    <IconStyle>
+      <color>ffee33aa</color>
+      <scale>1.0</scale>
+      <Icon><href>https://maps.google.com/mapfiles/kml/paddle/purple-circle.png</href></Icon>
+    </IconStyle>
+    <LabelStyle><scale>0</scale></LabelStyle>
+  </Style>
+  <Style id="pinPerdin">
+    <IconStyle>
+      <color>ff00bbff</color>
+      <scale>1.1</scale>
       <Icon><href>https://maps.google.com/mapfiles/kml/paddle/ylw-circle.png</href></Icon>
     </IconStyle>
     <LabelStyle><scale>0</scale></LabelStyle>
@@ -1250,136 +1661,242 @@ document.addEventListener('alpine:init', () => {
   <Style id="routeLine">
     <LineStyle>
       <color>cc00ffff</color>
-      <width>4</width>
+      <width>3</width>
     </LineStyle>
   </Style>
 `;
 
+      // Group targetList by module prefix (DK, LK, LP, etc.)
+      const moduleGroups = [
+        { key: 'DK', name: '📁 MODUL DK', items: [] },
+        { key: 'LK', name: '📁 MODUL LK', items: [] },
+        { key: 'LP', name: '📁 MODUL LP', items: [] },
+        { key: 'OTHER', name: '📁 MODUL LAINNYA', items: [] }
+      ];
+
+      const getModuleKey = (m) => {
+        const mod = (m.modul || '').toUpperCase().trim();
+        if (mod.startsWith('DK')) return 'DK';
+        if (mod.startsWith('LK')) return 'LK';
+        if (mod.startsWith('LP')) return 'LP';
+
+        if (m.isVirtual) {
+          const text = `${m.nama} ${m.regionName || ''} ${m.regionKey || ''} ${m.kota || ''} ${m.alamat || ''} ${m.kecamatan || ''}`.toUpperCase();
+          if (text.includes('JABODETABEK') || text.includes('JAKARTA') || text.includes('BOGOR') || text.includes('DEPOK') || text.includes('TANGERANG') || text.includes('BEKASI') || text.includes('BANDUNG') || text.includes('SURABAYA') || text.includes('SEMARANG')) {
+            return 'DK';
+          }
+
+          if (m.nearestActiveMdsModul) {
+            const nearMod = m.nearestActiveMdsModul.toUpperCase().trim();
+            if (nearMod.startsWith('DK')) return 'DK';
+            if (nearMod.startsWith('LK')) return 'LK';
+            if (nearMod.startsWith('LP')) return 'LP';
+          }
+
+          const isJava = (!m.islandGroup || m.islandGroup === 'JAWA' || m.islandGroup === 'ISLAND_JAVA');
+          if (!isJava) return 'LP';
+          return 'LK';
+        }
+        return 'OTHER';
+      };
+
       targetList.forEach(m => {
-        const isVacant = m.isVirtual;
-        const mdsFolderTitle = escXml(`${isVacant ? '⚠️ ' : '👤 '}${m.nama} (${m.kota})`);
-        const basePinTitle = escXml(isVacant ? `🏢 Sentra: ${m.nama}` : `🏠 Base: ${m.nama}`);
+        const k = getModuleKey(m);
+        if (k === 'DK') moduleGroups[0].items.push(m);
+        else if (k === 'LK') moduleGroups[1].items.push(m);
+        else if (k === 'LP') moduleGroups[2].items.push(m);
+        else moduleGroups[3].items.push(m);
+      });
 
+      const activeModuleGroups = moduleGroups.filter(g => g.items.length > 0);
+
+      activeModuleGroups.forEach(grp => {
         kml += `
+  <!-- ================= ${grp.name} ================= -->
   <Folder>
-    <name>${mdsFolderTitle}</name>
+    <name>${escXml(grp.name)} (${grp.items.length} Tim)</name>
     <visibility>0</visibility>
-    <description><![CDATA[
-      <div style="font-family: Arial, sans-serif; font-size: 12px; line-height: 1.45;">
-        <b>Status:</b> ${isVacant ? '<span style="color: #d97706; font-weight: bold;">🟡 USULAN REKRUT (VACANT)</span>' : '<span style="color: #16a34a; font-weight: bold;">🟢 MDS AKTIF (EXISTING)</span>'}<br>
-        <b>${isVacant ? 'Sentra Operasional' : 'Alamat Rumah'}:</b> ${escXml(m.alamat)}<br>
-        <b>Kecamatan/Kota:</b> ${escXml(m.kecamatan)}, ${escXml(m.kota)} (${escXml(m.region)})<br>
-        <b>Total Beban Toko:</b> ${m.assignedStores.length} Toko + ${m.assignedDc.length} DC<br>
-        <b>Rata-rata Jarak:</b> ${m.avgDistanceKm} km (~${m.avgTravelMins} menit)
-        ${isVacant && m.vacantReason ? `<br><div style="margin-top: 4px; padding: 4px; background: #fffbeb; border: 1px solid #fde68a; font-size: 10.5px; color: #78350f;"><b>Alasan Usul Rekrut:</b> ${escXml(m.vacantReason)}</div>` : ''}
-      </div>
-    ]]></description>
-
-    <!-- 1. Home Base / Sentra Placemark -->
-    <Placemark>
-      <name>${basePinTitle}</name>
-      <styleUrl>${isVacant ? '#homePinVacant' : '#homePinActive'}</styleUrl>
-      <description><![CDATA[
-        <div style="font-family: Arial, sans-serif; font-size: 12px; line-height: 1.45;">
-          <b>${isVacant ? 'Sentra Operasional Usulan' : 'Domisili MDS'}:</b> ${escXml(m.nama)}<br>
-          <b>Alamat:</b> ${escXml(m.alamat)}<br>
-          <b>Kecamatan:</b> ${escXml(m.kecamatan)}<br>
-          <b>Kota:</b> ${escXml(m.kota)}
-        </div>
-      ]]></description>
-      <Point>
-        <coordinates>${m.lng},${m.lat},0</coordinates>
-      </Point>
-    </Placemark>
 `;
 
-        // 2. Daily Schedules and Route Lines
-        (m.dailySchedule || []).forEach(day => {
-          const stores = day.stores || day.items || [];
-          if (stores.length === 0) return;
+        grp.items.forEach(m => {
+          const isVacant = m.isVirtual;
+          const mdsFolderTitle = escXml(`${isVacant ? '⚠️ ' : '👤 '}${m.nama} (${m.kota})`);
+          const basePinTitle = escXml(isVacant ? `🏢 Sentra: ${m.nama}` : `🏠 Base: ${m.nama}`);
 
-          const dayFolderTitle = escXml(`Hari ke-${day.dayNumber} (${day.type === 'STORE' ? 'Toko Reguler' : 'Kunjungan DC'}) - ${stores.length} Stop`);
+          // Collect all coordinates for MDS territory convex hull
+          const allMdsPoints = [[m.lat, m.lng]];
+          (m.dailySchedule || []).forEach(day => {
+            (day.stores || []).forEach(st => allMdsPoints.push([st.lat, st.lng]));
+          });
+
+          const mdsKmlPolyColor = hexToKmlColor(m.colorHex || m.color, '35');
+          const mdsKmlLineColor = hexToKmlColor(m.colorHex || m.color, 'cc');
 
           kml += `
     <Folder>
-      <name>${dayFolderTitle}</name>
+      <name>${mdsFolderTitle}</name>
       <visibility>0</visibility>
-`;
+      <description><![CDATA[
+        <div style="font-family: Arial, sans-serif; font-size: 12px; line-height: 1.45;">
+          <b>Status:</b> ${isVacant ? '<span style="color: #d97706; font-weight: bold;">🟡 USULAN REKRUT (VACANT)</span>' : '<span style="color: #16a34a; font-weight: bold;">🟢 MDS AKTIF (EXISTING)</span>'}<br>
+          <b>${isVacant ? 'Sentra Operasional' : 'Alamat Rumah'}:</b> ${escXml(m.alamat)}<br>
+          <b>Kecamatan/Kota:</b> ${escXml(m.kecamatan)}, ${escXml(m.kota)} (${escXml(m.region)})<br>
+          <b>Total Beban Toko:</b> ${m.assignedStores.length} Toko + ${m.assignedDc.length} DC<br>
+          <b>Rata-rata Jarak:</b> ${m.avgDistanceKm} km (~${m.avgTravelMins} menit)
+          ${isVacant && m.vacantReason ? `<br><div style="margin-top: 4px; padding: 4px; background: #fffbeb; border: 1px solid #fde68a; font-size: 10.5px; color: #78350f;"><b>Alasan Usul Rekrut:</b> ${escXml(m.vacantReason)}</div>` : ''}
+        </div>
+      ]]></description>
 
-          // Track path coordinates
-          const pathCoords = [`${m.lng},${m.lat},0`];
-
-          stores.forEach((st, sIdx) => {
-            pathCoords.push(`${st.lng},${st.lat},0`);
-            const storeTitle = escXml(`#${sIdx + 1}: ${st.storeName || st.name}`);
-            const isPerdin = Boolean(st.isPerdin);
-            const isDcStop = Boolean(st.isDc || st.type === 'DC' || st.tipeKunjungan === 'KUNJUNGAN DC');
-            const isVirtualStore = Boolean(isVacant || st.isVirtual || st.isVirtualCover);
-
-            let styleUrl = '#storePinRegular';
-            if (isDcStop) styleUrl = '#dcPin';
-            else if (isVirtualStore) styleUrl = '#storePinVacant';
-            else if (isPerdin) styleUrl = '#storePinPerdin';
-
-            const nearestMdsName = st.nearestActiveMdsName || m.nearestActiveMdsName || '-';
-            const nearestMdsKota = st.nearestActiveMdsKota || m.nearestActiveMdsKota || '';
-            const nearestMdsDist = st.distToNearestActiveMdsKm ?? (m.nearestActiveMdsDistanceKm || '-');
-            const reasonText = st.vacantReason || m.vacantReason || '';
-            const visitTypeStr = isDcStop ? 'KUNJUNGAN DC' : (st.tipeKunjungan === 'TOKO SEKITAR DC' ? 'TOKO SEKITAR DC' : (isPerdin ? 'PERDIN (LUAR KOTA)' : 'NON PERDIN (LOKAL)'));
-
-            kml += `
+      <!-- 1. Home Base / Sentra Placemark -->
       <Placemark>
-        <name>${storeTitle}</name>
-        <styleUrl>${styleUrl}</styleUrl>
+        <name>${basePinTitle}</name>
+        <visibility>0</visibility>
+        <styleUrl>${isVacant ? '#homePinVacant' : '#homePinActive'}</styleUrl>
         <description><![CDATA[
-          <div style="font-family: Arial, sans-serif; font-size: 12px; line-height: 1.45; min-width: 270px;">
-            <div style="margin-bottom: 6px; border-bottom: 2px solid ${isVirtualStore ? '#f59e0b' : '#3b82f6'}; padding-bottom: 4px;">
-              <span style="font-size: 13px; font-weight: bold; color: #1e293b;">Stop #${sIdx + 1}: ${escXml(st.storeName || st.name)}</span><br>
-              <span style="font-size: 11px; color: #64748b;">${escXml(st.account || 'Toko')} ${st.storeCode ? `[${escXml(st.storeCode)}]` : ''}</span>
-            </div>
-            
-            <table style="width: 100%; font-size: 11px; border-collapse: collapse;">
-              <tr><td style="padding: 2px 0; color: #475569; width: 130px;"><b>Personil MDS:</b></td><td>${escXml(m.nama)}</td></tr>
-              <tr><td style="padding: 2px 0; color: #475569;"><b>Status Alokasi:</b></td><td>${isVirtualStore ? '<b style="color: #d97706;">🟡 USULAN REKRUT (VACANT)</b>' : '<b style="color: #16a34a;">🟢 AKTIF (EXISTING)</b>'}</td></tr>
-              <tr><td style="padding: 2px 0; color: #475569;"><b>Jadwal Kunjungan:</b></td><td>Hari #${day.dayNumber} (${visitTypeStr})</td></tr>
-              <tr><td style="padding: 2px 0; color: #475569;"><b>Wilayah / Kota:</b></td><td>${escXml(st.kabKota || m.kota)} (${escXml(st.kecamatan || '-')})</td></tr>
-              <tr><td style="padding: 2px 0; color: #475569;"><b>Titik Acuan:</b></td><td>${isVirtualStore ? 'Sentra Operasional Usulan' : 'Domisili MDS'} (${escXml(m.alamat || m.kota)})</td></tr>
-              <tr><td style="padding: 2px 0; color: #475569;"><b>Jarak ke Titik Acuan:</b></td><td><b style="color: ${isPerdin ? '#b45309' : '#4338ca'};">${st.distanceFromHomeKm} km</b> (~${st.travelTimeMins} mnt)</td></tr>
-              ${isVirtualStore ? `
-              <tr><td colspan="2" style="padding-top: 6px;">
-                <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 5px; font-size: 10.5px;">
-                  <div style="color: #b45309; font-weight: bold; margin-bottom: 2px;">📌 Evaluasi Usulan Rekrut:</div>
-                  <div>• <b>MDS Aktif Terdekat:</b> ${escXml(nearestMdsName)} ${nearestMdsKota ? `(${escXml(nearestMdsKota)})` : ''}</div>
-                  <div>• <b>Jarak Asli ke MDS Terdekat:</b> <b style="color: #dc2626;">${nearestMdsDist} km</b></div>
-                  ${reasonText ? `<div style="margin-top: 3px; color: #78350f; font-size: 10px; line-height: 1.3;"><i>${escXml(reasonText)}</i></div>` : ''}
-                </div>
-              </td></tr>
-              ` : ''}
-            </table>
+          <div style="font-family: Arial, sans-serif; font-size: 12px; line-height: 1.45;">
+            <b>${isVacant ? 'Sentra Operasional Usulan' : 'Domisili MDS'}:</b> ${escXml(m.nama)}<br>
+            <b>Alamat:</b> ${escXml(m.alamat)}<br>
+            <b>Kecamatan:</b> ${escXml(m.kecamatan)}<br>
+            <b>Kota:</b> ${escXml(m.kota)}
           </div>
         ]]></description>
         <Point>
-          <coordinates>${st.lng},${st.lat},0</coordinates>
+          <coordinates>${m.lng},${m.lat},0</coordinates>
         </Point>
       </Placemark>
 `;
+
+          // 2. Transparent Territory Polygon (Convex Hull)
+          if (allMdsPoints.length >= 3) {
+            const hull = this.computeConvexHull(allMdsPoints);
+            if (hull.length >= 3) {
+              const hullCoordsXml = hull.map(p => `${p[1]},${p[0]},0`).join(' ') + ` ${hull[0][1]},${hull[0][0]},0`;
+              kml += `
+      <!-- MDS Transparent Territory Polygon -->
+      <Placemark>
+        <name>${escXml(`🗺️ Zona Teritori MDS - ${m.nama}`)}</name>
+        <visibility>0</visibility>
+        <Style>
+          <LineStyle>
+            <color>${mdsKmlLineColor}</color>
+            <width>2.5</width>
+          </LineStyle>
+          <PolyStyle>
+            <color>${mdsKmlPolyColor}</color>
+            <fill>1</fill>
+            <outline>1</outline>
+          </PolyStyle>
+        </Style>
+        <Polygon>
+          <extrude>0</extrude>
+          <altitudeMode>clampToGround</altitudeMode>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>${hullCoordsXml}</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+`;
+            }
+          }
+
+          // 3. Daily Schedules and Route Lines
+          (m.dailySchedule || []).forEach(day => {
+            const stores = day.stores || day.items || [];
+            if (stores.length === 0) return;
+
+            const dayFolderTitle = escXml(`Hari ke-${day.dayNumber} (${day.type === 'STORE' ? 'Toko Reguler' : 'Kunjungan DC'}) - ${stores.length} Stop`);
+
+            kml += `
+      <Folder>
+        <name>${dayFolderTitle}</name>
+        <visibility>0</visibility>
+`;
+
+            // Track path coordinates
+            const pathCoords = [`${m.lng},${m.lat},0`];
+
+            stores.forEach((st, sIdx) => {
+              pathCoords.push(`${st.lng},${st.lat},0`);
+              const storeTitle = escXml(`#${sIdx + 1}: ${st.storeName || st.name}`);
+              const isPerdin = Boolean(st.isPerdin);
+              const isDcStop = Boolean(st.isDc || st.type === 'DC' || st.tipeKunjungan === 'KUNJUNGAN DC');
+              const isVirtualStore = Boolean(isVacant || st.isVirtual || st.isVirtualCover);
+
+              let styleUrl = '#pinAlfamart';
+              const acc = (st.account || '').toUpperCase();
+              if (isDcStop) styleUrl = '#pinDC';
+              else if (acc.includes('INDOMARET') || acc.includes('IDM')) styleUrl = '#pinIndomaret';
+              else if (acc.includes('MIDI') || acc.includes('ALFAMIDI')) styleUrl = '#pinAlfamidi';
+              else if (acc.includes('FAMILY') || acc.includes('FM') || acc.includes('FAMILYMART')) styleUrl = '#pinFamilyMart';
+              else if (acc.includes('SUPERINDO') || acc.includes('SUPERMARKET') || acc.includes('HYPERMART')) styleUrl = '#pinSupermarket';
+              else if (isPerdin) styleUrl = '#pinPerdin';
+
+              const nearestMdsName = st.nearestActiveMdsName || m.nearestActiveMdsName || '-';
+              const nearestMdsKota = st.nearestActiveMdsKota || m.nearestActiveMdsKota || '';
+              const nearestMdsDist = st.distToNearestActiveMdsKm ?? (m.nearestActiveMdsDistanceKm || '-');
+              const reasonText = st.vacantReason || m.vacantReason || '';
+              const visitTypeStr = isDcStop ? 'KUNJUNGAN DC' : (st.tipeKunjungan === 'TOKO SEKITAR DC' ? 'TOKO SEKITAR DC' : (isPerdin ? 'PERDIN (LUAR KOTA)' : 'NON PERDIN (LOKAL)'));
+
+              kml += `
+        <Placemark>
+          <name>${storeTitle}</name>
+          <visibility>0</visibility>
+          <styleUrl>${styleUrl}</styleUrl>
+          <description><![CDATA[
+            <div style="font-family: Arial, sans-serif; font-size: 12px; line-height: 1.45; min-width: 270px;">
+              <div style="margin-bottom: 6px; border-bottom: 2px solid ${isVirtualStore ? '#f59e0b' : '#3b82f6'}; padding-bottom: 4px;">
+                <span style="font-size: 13px; font-weight: bold; color: #1e293b;">Stop #${sIdx + 1}: ${escXml(st.storeName || st.name)}</span><br>
+                <span style="font-size: 11px; color: #64748b;">${escXml(st.account || 'Toko')} ${st.storeCode ? `[${escXml(st.storeCode)}]` : ''}</span>
+              </div>
+              
+              <table style="width: 100%; font-size: 11px; border-collapse: collapse;">
+                <tr><td style="padding: 2px 0; color: #475569; width: 130px;"><b>Personil MDS:</b></td><td>${escXml(m.nama)}</td></tr>
+                <tr><td style="padding: 2px 0; color: #475569;"><b>Status Alokasi:</b></td><td>${isVirtualStore ? '<b style="color: #d97706;">🟡 USULAN REKRUT (VACANT)</b>' : '<b style="color: #16a34a;">🟢 AKTIF (EXISTING)</b>'}</td></tr>
+                <tr><td style="padding: 2px 0; color: #475569;"><b>Jadwal Kunjungan:</b></td><td>Hari #${day.dayNumber} (${visitTypeStr})</td></tr>
+                <tr><td style="padding: 2px 0; color: #475569;"><b>Wilayah / Kota:</b></td><td>${escXml(st.kabKota || m.kota)} (${escXml(st.kecamatan || '-')})</td></tr>
+                <tr><td style="padding: 2px 0; color: #475569;"><b>Titik Acuan:</b></td><td>${isVirtualStore ? 'Sentra Operasional Usulan' : 'Domisili MDS'} (${escXml(m.alamat || m.kota)})</td></tr>
+                <tr><td style="padding: 2px 0; color: #475569;"><b>Jarak ke Titik Acuan:</b></td><td><b style="color: ${isPerdin ? '#b45309' : '#4338ca'};">${st.distanceFromHomeKm} km</b> (~${st.travelTimeMins} mnt)</td></tr>
+                ${isVirtualStore ? `
+                <tr><td colspan="2" style="padding-top: 6px;">
+                  <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 5px; font-size: 10.5px;">
+                    <div style="color: #b45309; font-weight: bold; margin-bottom: 2px;">📌 Evaluasi Usulan Rekrut:</div>
+                    <div>• <b>MDS Aktif Terdekat:</b> ${escXml(nearestMdsName)} ${nearestMdsKota ? `(${escXml(nearestMdsKota)})` : ''}</div>
+                    <div>• <b>Jarak Asli ke MDS Terdekat:</b> <b style="color: #dc2626;">${nearestMdsDist} km</b></div>
+                    ${reasonText ? `<div style="margin-top: 3px; color: #78350f; font-size: 10px; line-height: 1.3;"><i>${escXml(reasonText)}</i></div>` : ''}
+                  </div>
+                </td></tr>
+                ` : ''}
+              </table>
+            </div>
+          ]]></description>
+          <Point>
+            <coordinates>${st.lng},${st.lat},0</coordinates>
+          </Point>
+        </Placemark>
+`;
+            });
+
+            // LineString route path for this day
+            kml += `
+        <Placemark>
+          <name>${escXml(`Jalur Rute H-${day.dayNumber}`)}</name>
+          <visibility>0</visibility>
+          <styleUrl>#routeLine</styleUrl>
+          <LineString>
+            <extrude>1</extrude>
+            <tessellate>1</tessellate>
+            <coordinates>
+              ${pathCoords.join(' ')}
+            </coordinates>
+          </LineString>
+        </Placemark>
+      </Folder>
+`;
           });
 
-          // LineString route path for this day
-          kml += `
-      <Placemark>
-        <name>${escXml(`Jalur Rute H-${day.dayNumber}`)}</name>
-        <styleUrl>#routeLine</styleUrl>
-        <LineString>
-          <extrude>1</extrude>
-          <tessellate>1</tessellate>
-          <coordinates>
-            ${pathCoords.join(' ')}
-          </coordinates>
-        </LineString>
-      </Placemark>
-    </Folder>
-`;
+          kml += `    </Folder>\n`;
         });
 
         kml += `  </Folder>\n`;
