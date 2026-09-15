@@ -56,9 +56,20 @@ function dashboardApp() {
     activeSpvTeamUser: null,
     spvMdsSearch: '',
     activeCrewDropdownUserId: null,
-    crewDropdownSearch: '',
+    rbacCrewDropdownSearch: '',
     showNewUserCrewDropdown: false,
     newUserCrewSearch: '',
+    expandedRbacCards: {},
+    rbacModulePages: [
+      { id: 'kunjungan', label: 'Kunjungan', icon: '📍' },
+      { id: 'absensi', label: 'Absensi', icon: '⏱️' },
+      { id: 'jadwal', label: 'Jadwal', icon: '📅' },
+      { id: 'tokonasional', label: '49k Toko', icon: '🏬' },
+      { id: 'laporan', label: 'Laporan', icon: '📑' },
+      { id: 'evaluasi', label: 'Evaluasi', icon: '🎖️' },
+      { id: 'galeri', label: 'Galeri', icon: '🖼️' },
+      { id: 'simulasi', label: 'Simulasi', icon: '🗺️' }
+    ],
     // Anomaly Trend & Monthly Leaderboard State
     anomalyViewMode: 'DAILY', // 'DAILY' | 'TREND'
     anomalyTrendCategory: 'ALL', // 'ALL' | 'terlambat' | 'absenNoVisit' | 'visitNoAbsen' | 'lupaPulang' | 'gpsIssue' | 'alpha'
@@ -364,7 +375,14 @@ function dashboardApp() {
           this.dateFilter = state.dateFilter || 'LATEST_DAY';
           this.startDate = state.startDate || '';
           this.endDate = state.endDate || '';
-          this.activeTab = state.activeTab || 'kunjungan';
+        }
+
+        // Prioritas pemulihan tab aktif saat browser di-refresh: URL Param -> URL Hash -> SessionStorage -> LocalStorage -> State
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlTab = urlParams.get('tab') || (window.location.hash ? window.location.hash.replace('#', '') : '');
+        const savedTab = urlTab || sessionStorage.getItem('cimory_active_tab') || localStorage.getItem('cimory_active_tab') || (state ? state.activeTab : null) || 'kunjungan';
+        if (savedTab) {
+          this.activeTab = savedTab;
         }
 
         if (cachedMaster && cachedMaster.length > 0) this.masterToko = cachedMaster;
@@ -467,6 +485,17 @@ function dashboardApp() {
 
       if (typeof this.$watch === 'function') {
         this.$watch('activeTab', (newTab) => {
+          if (newTab) {
+            sessionStorage.setItem('cimory_active_tab', newTab);
+            localStorage.setItem('cimory_active_tab', newTab);
+            try {
+              if (window.history && window.history.replaceState) {
+                window.history.replaceState(null, '', '#' + newTab);
+              }
+            } catch (e) {}
+            this.saveSessionState();
+          }
+
           this.$nextTick(() => {
             if (window.lucide) lucide.createIcons();
             if (newTab === 'evaluasi') {
@@ -608,31 +637,43 @@ function dashboardApp() {
     /**
      * Terapkan Data Baru Saat User Klik "Update Tampilan" di Floating Pill
      */
-    applyNewDataUpdate() {
-      if (this.pendingVisitsData && this.pendingVisitsData.length > 0) {
-        this.visits = this.pendingVisitsData;
-        if (this.pendingAbsensiData) this.absensi = this.pendingAbsensiData;
-        this.pendingVisitsData = null;
-        this.pendingAbsensiData = null;
+    async applyNewDataUpdate() {
+      this.isLoading = true;
+      this.loadingMessage = "Memperbarui Data & Tampilan...";
+      this.hasNewDataAvailable = false;
 
-        this.updateCrewModulMap();
-        this.indexDataStore();
-        this.updateActiveDateLabel(this.visits);
-        this.lastSyncTime = Date.now();
-        this.saveSessionState();
+      // Beri browser jeda untuk me-render animasi spinner overlay
+      await new Promise(r => setTimeout(r, 60));
 
-        requestAnimationFrame(() => {
+      try {
+        if (this.pendingVisitsData && this.pendingVisitsData.length > 0) {
+          this.visits = this.pendingVisitsData;
+          if (this.pendingAbsensiData) this.absensi = this.pendingAbsensiData;
+          this.pendingVisitsData = null;
+          this.pendingAbsensiData = null;
+
+          this.updateCrewModulMap();
+          this.indexDataStore();
+          this.updateActiveDateLabel(this.visits);
+          this.lastSyncTime = Date.now();
+          this.saveSessionState();
+
+          await new Promise(r => requestAnimationFrame(r));
           this.refreshCharts();
           if (window.lucide) lucide.createIcons();
           if (document.getElementById('visits-map')) {
             MapService.renderVisitsOnMap(this.filteredVisits);
           }
-        });
-      } else {
-        this.refreshAllData(true, true);
+        } else {
+          await this.refreshAllData(true, true);
+        }
+      } catch (e) {
+        console.warn("Gagal menerapkan update data:", e);
+      } finally {
+        setTimeout(() => {
+          this.isLoading = false;
+        }, 200);
       }
-
-      this.hasNewDataAvailable = false;
     },
 
     /**
@@ -7995,6 +8036,8 @@ function dashboardApp() {
             u.id = `USER_${idx + 1}_${(u.email || 'usr').replace(/[^a-zA-Z0-9]/g, '_')}`;
           }
           if (!u.role) u.role = 'MDS';
+          if (!u.status) u.status = 'APPROVED';
+          else u.status = String(u.status).toUpperCase();
           if (u.linkedCrew === undefined) u.linkedCrew = '';
           if (!u.permissions) {
             const preset = window.RBAC_ROLE_PRESETS && window.RBAC_ROLE_PRESETS[u.role]
@@ -8070,6 +8113,13 @@ function dashboardApp() {
               this.currentUser.linkedCrew = freshMatrixUser.linkedCrew;
             }
           }
+        }
+
+        // Auto-navigate to tab if passed in URL query param ?tab=rbac or hash
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetTab = urlParams.get('tab') || (window.location.hash ? window.location.hash.replace('#', '') : '');
+        if (targetTab && this.canAccessTab(targetTab)) {
+          this.$nextTick(() => { this.navigateToTab(targetTab); });
         }
       }
     },
@@ -8246,13 +8296,19 @@ function dashboardApp() {
       return 'kunjungan';
     },
 
+    get pendingRbacUsersCount() {
+      return (this.rbacUsers || []).filter(u => u && u.status === 'PENDING').length;
+    },
+
     // RBAC Control Panel Table Management
     get filteredRbacUsers() {
       let list = (this.rbacUsers || []).filter(u => u && typeof u === 'object');
 
       const roleFilter = this.rbacFilterRole || this.rbacRoleFilter || 'ALL';
-      if (roleFilter !== 'ALL') {
-        list = list.filter(u => u && u.role === roleFilter);
+      if (roleFilter === 'PENDING') {
+        list = list.filter(u => u && u.status === 'PENDING');
+      } else if (roleFilter !== 'ALL') {
+        list = list.filter(u => u && u.role === roleFilter && u.status !== 'PENDING');
       }
 
       const modulFilter = this.rbacFilterModul || this.rbacModulFilter || 'ALL';
@@ -8267,14 +8323,19 @@ function dashboardApp() {
             (u.name && String(u.name).toLowerCase().includes(searchQuery)) ||
             (u.email && String(u.email).toLowerCase().includes(searchQuery)) ||
             (u.modul && String(u.modul).toLowerCase().includes(searchQuery)) ||
-            (u.jabatan && String(u.jabatan).toLowerCase().includes(searchQuery))
+            (u.jabatan && String(u.jabatan).toLowerCase().includes(searchQuery)) ||
+            (u.status && String(u.status).toLowerCase().includes(searchQuery))
           )
         );
       }
 
-      // Sort: Superadmin first, then Manager, then SPV, then MDS, alphabetically by name
+      // Sort: Pending users first! then Superadmin, Manager, SPV, MDS, alphabetically by name
       const rolePriority = { SUPERADMIN: 1, MANAGER: 2, SPV: 3, MDS: 4, CUSTOM: 5 };
       const sorted = [...list].sort((a, b) => {
+        const isPendingA = a && a.status === 'PENDING' ? 0 : 1;
+        const isPendingB = b && b.status === 'PENDING' ? 0 : 1;
+        if (isPendingA !== isPendingB) return isPendingA - isPendingB;
+
         const pA = (a && a.role && rolePriority[a.role]) || 99;
         const pB = (b && b.role && rolePriority[b.role]) || 99;
         if (pA !== pB) return pA - pB;
@@ -8286,6 +8347,69 @@ function dashboardApp() {
       });
 
       return sorted;
+    },
+
+    async approveRbacUser(userId) {
+      const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
+      if (!u) return;
+      u.status = 'APPROVED';
+      this.syncRbacMatrixFromUsers();
+      try {
+        if (window.FirebaseAuthService) {
+          await window.FirebaseAuthService.approveUser(u.id || u.email, u.role || 'MDS', u.permissions, u.linkedCrew || '');
+          await window.FirebaseAuthService.savePermissions(this.rbacMatrix);
+        }
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        alert(`✅ User ${u.name || u.email} berhasil disetujui (Approved)! Hak akses aktif.`);
+      } catch (err) {
+        alert('❌ Gagal menyetujui user: ' + (err.message || err));
+      }
+    },
+
+    async rejectRbacUser(userId) {
+      const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
+      if (!u) return;
+      if (!confirm(`Yakin ingin menolak permohonan akses dari ${u.name || u.email}?`)) return;
+      u.status = 'REJECTED';
+      this.rbacUsers = (this.rbacUsers || []).filter(x => x && x.id !== userId && x.email !== userId);
+      this.syncRbacMatrixFromUsers();
+      try {
+        if (window.FirebaseAuthService) {
+          await window.FirebaseAuthService.rejectUser(u.id || u.email);
+          await window.FirebaseAuthService.savePermissions(this.rbacMatrix);
+        }
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        alert(`User ${u.name || u.email} berhasil ditolak.`);
+      } catch (err) {
+        alert('❌ Gagal menolak user: ' + (err.message || err));
+      }
+    },
+
+    toggleRbacCard(u) {
+      const key = (u && (u.id || u.email)) || '';
+      if (!key) return;
+      this.expandedRbacCards[key] = !this.expandedRbacCards[key];
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
+    isRbacCardExpanded(u) {
+      const key = (u && (u.id || u.email)) || '';
+      return !!this.expandedRbacCards[key];
+    },
+
+    expandAllRbacCards() {
+      const map = {};
+      (this.filteredRbacUsers || []).forEach(u => {
+        const key = (u && (u.id || u.email)) || '';
+        if (key) map[key] = true;
+      });
+      this.expandedRbacCards = map;
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
+    collapseAllRbacCards() {
+      this.expandedRbacCards = {};
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     async changeUserRole(userId, newRole) {
@@ -8356,7 +8480,7 @@ function dashboardApp() {
     },
 
     get filteredOfficialCrews() {
-      const q = (this.crewDropdownSearch || '').toLowerCase().trim();
+      const q = (this.rbacCrewDropdownSearch || '').toLowerCase().trim();
       const list = this.availableOfficialCrews || [];
       if (!q) return list;
       const tokens = q.split(/\s+/).filter(Boolean);
@@ -8377,9 +8501,9 @@ function dashboardApp() {
       });
     },
 
-    openCrewDropdown(userId) {
+    openRbacCrewDropdown(userId) {
       this.activeCrewDropdownUserId = userId;
-      this.crewDropdownSearch = '';
+      this.rbacCrewDropdownSearch = '';
       this.$nextTick(() => {
         const input = document.getElementById('crewDropdownSearchInput_' + userId) || document.getElementById('crewDropdownSearchInputGlobal');
         if (input) input.focus();
@@ -8387,9 +8511,9 @@ function dashboardApp() {
       });
     },
 
-    closeCrewDropdown() {
+    closeRbacCrewDropdown() {
       this.activeCrewDropdownUserId = null;
-      this.crewDropdownSearch = '';
+      this.rbacCrewDropdownSearch = '';
     },
 
     computeOfficialCrews() {
@@ -8494,8 +8618,13 @@ function dashboardApp() {
     // SUB-TAB CONFIG MODAL
     // ─────────────────────────────────────────────────────────────────────────
 
-    openSubTabConfig(userId) {
-      const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
+    openSubTabConfig(target) {
+      let u = null;
+      if (target && typeof target === 'object') {
+        u = target;
+      } else if (target) {
+        u = (this.rbacUsers || []).find(x => x && (x.id === target || x.email === target || (x.name && x.name === target)));
+      }
       if (!u) return;
       if (!u.permissions) u.permissions = {};
       const defaults = window.getDefaultSubTabsForRole
@@ -8875,6 +9004,14 @@ function dashboardApp() {
       }
 
       this.activeTab = tabName;
+      sessionStorage.setItem('cimory_active_tab', tabName);
+      localStorage.setItem('cimory_active_tab', tabName);
+      try {
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, '', '#' + tabName);
+        }
+      } catch (e) {}
+
       if (tabName === 'rbac') {
         if (!this.rbacUsers || this.rbacUsers.length === 0) {
           if (this.masterUser && this.masterUser.length > 0 && window.FirebaseAuthService) {

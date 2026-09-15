@@ -12,7 +12,7 @@
   <script>
     (function() {
       const MODULE_KEY = 'absen';
-      const MODULE_TITLE = '01. Web Absen & Jadwal';
+      const MODULE_TITLE = '01. Input RPS';
       try {
         const raw = localStorage.getItem('cimory_portal_active_session');
         if (!raw) {
@@ -149,7 +149,7 @@
         <div class="min-w-0">
           <div class="flex items-center space-x-1.5 sm:space-x-2">
             <h1 class="font-display font-extrabold text-sm sm:text-base text-slate-900 dark:text-white truncate">Cimory Retail Ops</h1>
-            <span class="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex-shrink-0">01. WEB ABSEN</span>
+            <span class="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex-shrink-0">01. INPUT RPS</span>
           </div>
           <p class="hidden sm:block text-[11px] text-slate-500 dark:text-slate-400 truncate">
             Input Absensi GPS & Jadwal Rute Toko Lapangan MDS
@@ -211,13 +211,13 @@
               </div>
             </a>
 
-            <!-- 1. Web Absen (Active) -->
+            <!-- 1. Input RPS (Active) -->
             <div class="menu-fab-item" style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.25);">
               <div class="menu-fab-icon" style="background: #10b981; color: white;">
                 <i data-lucide="map-pin" style="width: 15px; height: 15px;"></i>
               </div>
               <div class="menu-fab-text">
-                <span class="menu-fab-title font-bold text-emerald-600 dark:text-emerald-400">01. Web Absen & Jadwal</span>
+                <span class="menu-fab-title font-bold text-emerald-600 dark:text-emerald-400">01. Input RPS</span>
                 <span class="menu-fab-desc">Input absensi GPS & rute MDS (Aktif)</span>
               </div>
             </div>
@@ -1014,7 +1014,7 @@
       <div class="modal-header">
         <div class="modal-title">
           <i data-lucide="book-open" style="color: var(--primary);"></i>
-          <span>Panduan Penggunaan Web Absen MDS</span>
+          <span>Panduan Penggunaan Input RPS MDS</span>
         </div>
         <button type="button" class="btn-icon-mini" onclick="document.getElementById('helpModal').classList.remove('active')">
           <i data-lucide="x" style="width: 16px; height: 16px;"></i>

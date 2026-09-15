@@ -398,9 +398,10 @@ class FirebaseRbacService {
           const portalList = [];
           snap.forEach(doc => {
             const d = doc.data();
-            if (d && (d.status === 'APPROVED' || d.role === 'SUPERADMIN' || d.isSuperAdmin)) {
+            if (d) {
               const emailKey = (d.email || doc.id).toLowerCase();
-              const role = d.role || 'MDS';
+              const role = (d.role || 'MDS').toUpperCase();
+              const status = (d.status || 'APPROVED').toUpperCase();
               const preset = window.RBAC_ROLE_PRESETS && window.RBAC_ROLE_PRESETS[role]
                 ? window.RBAC_ROLE_PRESETS[role].permissions
                 : { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false };
@@ -410,7 +411,7 @@ class FirebaseRbacService {
                 : { ...preset };
 
               if (!userPerms.subTabs) {
-                userPerms.subTabs = window.getDefaultSubTabsForRole(role);
+                userPerms.subTabs = window.getDefaultSubTabsForRole ? window.getDefaultSubTabsForRole(role) : { laporan: { rute: true, jadwal: true, absen: true, anomali: false }, evaluasi: { TOKO: true, DC: true } };
               }
 
               matrix[emailKey] = {
@@ -420,6 +421,7 @@ class FirebaseRbacService {
                 modul: d.moduleOrArea || d.modul || 'ALL',
                 jabatan: d.jabatan || (role === 'SUPERADMIN' ? 'Super Administrator' : (role === 'SPV' ? 'Supervisor' : 'Merchandiser')),
                 role: role,
+                status: status,
                 linkedCrew: d.linkedCrew || '',
                 managedMds: Array.isArray(d.managedMds) ? d.managedMds : [],
                 permissions: userPerms,
@@ -427,7 +429,7 @@ class FirebaseRbacService {
                 updatedBy: d.updatedBy || d.approvedBy || 'System'
               };
 
-              portalList.push({ id: doc.id, ...d, permissions: userPerms });
+              portalList.push({ id: doc.id, ...d, status: status, permissions: userPerms });
             }
           });
 
@@ -613,6 +615,7 @@ class FirebaseRbacService {
 
           batch.set(docRef, {
             role: data.role || 'MDS',
+            status: data.status || 'APPROVED',
             moduleOrArea: data.modul || 'ALL',
             linkedCrew: data.linkedCrew || '',
             managedMds: Array.isArray(data.managedMds) ? data.managedMds : [],
@@ -629,6 +632,58 @@ class FirebaseRbacService {
       }
     }
 
+    return true;
+  }
+
+  /**
+   * APPROVE SINGLE USER LANGSUNG DI FIRESTORE
+   */
+  async approveUser(userId, role = 'MDS', permissions = null, linkedCrew = '') {
+    if (!this.isUsingMock && this.db) {
+      try {
+        const col = this.db.collection('portal_users');
+        const docRef = col.doc(userId);
+        const preset = window.RBAC_ROLE_PRESETS && window.RBAC_ROLE_PRESETS[role]
+          ? window.RBAC_ROLE_PRESETS[role].permissions
+          : { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false };
+        const finalPerms = permissions || { ...preset };
+
+        await docRef.set({
+          status: 'APPROVED',
+          role: role,
+          permissions: finalPerms,
+          linkedCrew: linkedCrew,
+          approvedAt: firebase.firestore.FieldValue.serverTimestamp ? firebase.firestore.FieldValue.serverTimestamp() : new Date().toISOString(),
+          approvedBy: this.currentUser ? (this.currentUser.displayName || this.currentUser.name || this.currentUser.email) : 'Super Admin'
+        }, { merge: true });
+        return true;
+      } catch (err) {
+        console.error('Gagal approve user:', err);
+        throw err;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * REJECT USER DI FIRESTORE
+   */
+  async rejectUser(userId) {
+    if (!this.isUsingMock && this.db) {
+      try {
+        const col = this.db.collection('portal_users');
+        const docRef = col.doc(userId);
+        await docRef.set({
+          status: 'REJECTED',
+          rejectedAt: firebase.firestore.FieldValue.serverTimestamp ? firebase.firestore.FieldValue.serverTimestamp() : new Date().toISOString(),
+          rejectedBy: this.currentUser ? (this.currentUser.displayName || this.currentUser.name || this.currentUser.email) : 'Super Admin'
+        }, { merge: true });
+        return true;
+      } catch (err) {
+        console.error('Gagal reject user:', err);
+        throw err;
+      }
+    }
     return true;
   }
 

@@ -267,6 +267,13 @@
 
             <!-- Mobile Horizontal Category Pills (< sm) -->
             <div class="flex sm:hidden overflow-x-auto gap-1.5 pb-2.5 mb-2.5 border-b border-slate-100 dark:border-slate-800 touch-scroll custom-scrollbar">
+              <!-- Direct 1-Click PWA Link -->
+              <a href="../01_web_absen/index.html" x-show="canAccessTab('absen')"
+                class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm flex-shrink-0 cursor-pointer no-underline active:scale-95 transition-all">
+                <span>📱</span>
+                <span>01. Input RPS</span>
+              </a>
+
               <button type="button" x-show="canAccessTab('kunjungan') || canAccessTab('absensi') || canAccessTab('jadwal')" @click="activeMegaCategory = 'operasional'"
                 class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex-shrink-0 cursor-pointer"
                 :class="activeMegaCategory === 'operasional' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'">
@@ -295,18 +302,19 @@
                 <span>Laporan</span>
               </button>
 
-              <button type="button" x-show="canAccessTab('absen') || canAccessTab('galeri') || canAccessTab('simulasi')" @click="activeMegaCategory = 'modul'"
+              <button type="button" x-show="canAccessTab('galeri') || canAccessTab('simulasi')" @click="activeMegaCategory = 'modul'"
                 class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex-shrink-0 cursor-pointer"
                 :class="activeMegaCategory === 'modul' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'">
                 <span>🌐</span>
                 <span>Modul Lain</span>
               </button>
 
-              <button type="button" x-show="isSuperAdmin() || (currentUser && currentUser.role === 'MANAGER')" @click="activeMegaCategory = 'rbac'"
-                class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex-shrink-0 cursor-pointer"
-                :class="activeMegaCategory === 'rbac' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'">
+              <!-- Direct 1-Click RBAC Shortcut (Khusus Superadmin) -->
+              <button type="button" x-show="isSuperAdmin()" @click="navigateToTab('rbac')"
+                class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-purple-600 hover:bg-purple-500 text-white shadow-sm flex-shrink-0 cursor-pointer active:scale-95 transition-all">
                 <span>🔐</span>
                 <span>RBAC</span>
+                <span x-show="pendingRbacUsersCount > 0" class="px-1.5 py-0.2 rounded-full text-[8.5px] font-black bg-amber-400 text-amber-950" x-text="pendingRbacUsersCount"></span>
               </button>
             </div>
 
@@ -316,6 +324,44 @@
               <!-- Left Category List (Desktop only >= sm) -->
               <div class="hidden sm:block sm:col-span-4 space-y-1 sm:border-r sm:border-slate-100 dark:sm:border-slate-800 sm:pr-3">
                 
+                <!-- Direct Standout Link: 01. Input RPS -->
+                <a href="../01_web_absen/index.html"
+                  x-show="canAccessTab('absen')"
+                  class="w-full flex items-center justify-between px-3 py-2 rounded-2xl text-xs font-bold transition-all text-left bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 shadow-sm cursor-pointer no-underline group mb-1.5">
+                  <div class="flex items-center space-x-2.5 min-w-0">
+                    <div class="w-6 h-6 rounded-lg bg-emerald-500 text-white flex items-center justify-center text-xs shadow-sm group-hover:scale-110 transition-transform flex-shrink-0">
+                      📱
+                    </div>
+                    <div class="min-w-0">
+                      <span class="block leading-tight font-black text-xs text-emerald-700 dark:text-emerald-300 truncate">01. Input RPS</span>
+                      <span class="text-[9.5px] text-emerald-600/80 dark:text-emerald-400/80 font-normal block truncate">PWA Absensi & Rute</span>
+                    </div>
+                  </div>
+                  <i data-lucide="external-link" class="w-3.5 h-3.5 opacity-70 group-hover:translate-x-0.5 transition-transform flex-shrink-0 text-emerald-500"></i>
+                </a>
+
+                <!-- Direct Standout Link: Hak Akses & RBAC (Khusus Superadmin) -->
+                <button type="button"
+                  x-show="isSuperAdmin()"
+                  @click="navigateToTab('rbac')"
+                  class="w-full flex items-center justify-between px-3 py-2 rounded-2xl text-xs font-bold transition-all text-left bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30 shadow-sm cursor-pointer group mb-2">
+                  <div class="flex items-center space-x-2.5 min-w-0">
+                    <div class="w-6 h-6 rounded-lg bg-purple-600 text-white flex items-center justify-center text-xs shadow-sm group-hover:scale-110 transition-transform flex-shrink-0">
+                      🔐
+                    </div>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-1.5">
+                        <span class="block leading-tight font-black text-xs text-purple-700 dark:text-purple-300 truncate">Hak Akses & RBAC</span>
+                        <template x-if="pendingRbacUsersCount > 0">
+                          <span class="px-1.5 py-0.2 rounded-full text-[8.5px] font-black bg-amber-500 text-amber-950 animate-pulse" x-text="pendingRbacUsersCount + ' Pending'"></span>
+                        </template>
+                      </div>
+                      <span class="text-[9.5px] text-purple-600/80 dark:text-purple-400/80 font-normal block truncate">Approval & Izin Personil</span>
+                    </div>
+                  </div>
+                  <i data-lucide="chevron-right" class="w-3.5 h-3.5 opacity-70 group-hover:translate-x-0.5 transition-transform flex-shrink-0 text-purple-500"></i>
+                </button>
+
                 <!-- Cat 1: Operasional -->
                 <button type="button" x-show="canAccessTab('kunjungan') || canAccessTab('absensi') || canAccessTab('jadwal')" @click="activeMegaCategory = 'operasional'"
                   class="w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-bold transition-all text-left cursor-pointer"
@@ -369,7 +415,7 @@
                 </button>
 
                 <!-- Cat 5: Modul Ekosistem -->
-                <button type="button" x-show="window.canAccessPortalModule ? (window.canAccessPortalModule('absen') || window.canAccessPortalModule('galeri') || window.canAccessPortalModule('simulasi')) : true" @click="activeMegaCategory = 'modul'"
+                <button type="button" x-show="window.canAccessPortalModule ? (window.canAccessPortalModule('galeri') || window.canAccessPortalModule('simulasi')) : true" @click="activeMegaCategory = 'modul'"
                   class="w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-bold transition-all text-left cursor-pointer"
                   :class="activeMegaCategory === 'modul' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'">
                   <div class="flex items-center space-x-2.5">
@@ -381,8 +427,8 @@
                   <i data-lucide="chevron-right" class="w-3.5 h-3.5 opacity-60"></i>
                 </button>
 
-                <!-- Cat 6: Keamanan & RBAC (Hanya Super Admin & Manager) -->
-                <button type="button" x-show="isSuperAdmin() || (currentUser && currentUser.role === 'MANAGER')" @click="activeMegaCategory = 'rbac'"
+                <!-- Cat 6: Keamanan & RBAC (Hanya Super Admin) -->
+                <button type="button" x-show="isSuperAdmin()" @click="activeMegaCategory = 'rbac'"
                   class="w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-bold transition-all text-left cursor-pointer"
                   :class="activeMegaCategory === 'rbac' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'">
                   <div class="flex items-center space-x-2.5">
@@ -406,6 +452,29 @@
                   </div>
 
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <!-- Direct Action: Input RPS -->
+                    <a href="../01_web_absen/index.html" x-show="canAccessTab('absen')"
+                      class="sm:col-span-2 p-3 rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent hover:border-emerald-500 hover:bg-emerald-500/15 transition-all block group no-underline">
+                      <div class="flex items-center justify-between mb-1">
+                        <div class="flex items-center space-x-2">
+                          <div class="w-7 h-7 rounded-xl bg-emerald-500 text-white flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
+                            📱
+                          </div>
+                          <div>
+                            <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-emerald-500 transition-colors">01. Input RPS (PWA Lapangan MDS)</span>
+                            <div class="text-[10px] text-slate-400">Input Absensi GPS & Rute Harian Toko</div>
+                          </div>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-600 text-white flex items-center gap-1 shadow-sm">
+                          <span>Buka Aplikasi</span>
+                          <i data-lucide="external-link" class="w-3 h-3"></i>
+                        </span>
+                      </div>
+                      <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Aplikasi mobile personil MDS untuk input presensi mandiri, check-in radius GPS di toko, dan target jadwal rute.
+                      </p>
+                    </a>
+
                     <!-- Kunjungan -->
                     <div x-show="canAccessTab('kunjungan')" @click="navigateToTab('kunjungan')"
                       class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-500/50 dark:hover:border-brand-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-brand-500/5 dark:hover:bg-brand-500/10 transition-all cursor-pointer group">
@@ -573,16 +642,6 @@
                   </div>
 
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <a href="../01_web_absen/index.html"
-                      x-show="canAccessTab('absen')"
-                      class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-brand-500/5 transition-all block group">
-                      <div class="flex items-center space-x-2 mb-1">
-                        <span class="text-sm">📱</span>
-                        <span class="font-bold text-xs text-slate-900 dark:text-white group-hover:text-brand-500">01. Web Absen & Jadwal</span>
-                      </div>
-                      <p class="text-[10.5px] text-slate-500 dark:text-slate-400 leading-relaxed">Input presensi & GPS check-in mandiri MDS.</p>
-                    </a>
-
                     <a href="../04_galeri_pajangan/index.html"
                       x-show="canAccessTab('galeri')"
                       class="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-brand-500/50 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-brand-500/5 transition-all block group">
@@ -801,6 +860,13 @@
           <span x-show="isSilentSyncing" class="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
         </button>
 
+        <!-- Portal Hub Shortcut -->
+        <a href="../index.html" title="Kembali ke Portal Hub Utama"
+          class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-sm">
+          <i data-lucide="layout-grid" class="w-3.5 h-3.5 text-brand-500"></i>
+          <span class="hidden sm:inline">Portal</span>
+        </a>
+
         <!-- Theme Toggle -->
         <button @click="toggleTheme()" title="Ubah Tema"
           class="p-1.5 sm:p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer">
@@ -840,7 +906,7 @@
         <div class="flex items-center space-x-1.5 flex-shrink-0">
           <button @click="applyNewDataUpdate()" 
             class="px-2.5 py-1 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-[11px] font-bold shadow-sm transition-all cursor-pointer flex items-center space-x-1 active:scale-95">
-            <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+            <i data-lucide="refresh-cw" class="w-3 h-3" :class="isLoading ? 'animate-spin' : ''"></i>
             <span>Update Tampilan</span>
           </button>
           <button @click="dismissNewDataNotification()" 
@@ -1117,7 +1183,7 @@
         <!-- Card 1: Total Kunjungan Selesai -->
         <div class="glass-card rounded-2xl p-3.5 sm:p-4 shadow-sm relative overflow-hidden group border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
           <div class="flex items-center justify-between">
-            <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Realisasi Kunjungan</span>
+            <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Toko Selesai Dikunjungi</span>
             <div class="w-7 h-7 rounded-xl bg-brand-500/10 text-brand-500 flex items-center justify-center">
               <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
             </div>
@@ -1127,15 +1193,15 @@
               <div class="h-7 w-20 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse"></div>
             </template>
             <template x-if="!isLoading">
-              <span class="text-xl sm:text-2xl font-display font-extrabold text-slate-900 dark:text-white" x-text="kpiSummary.totalVisits.toLocaleString()">0</span>
+              <span class="text-xl sm:text-2xl font-display font-extrabold text-slate-900 dark:text-white" x-text="kpiSummary.uniqueStores.toLocaleString()">0</span>
             </template>
-            <span class="text-[11px] text-slate-500 font-medium" x-show="!isLoading">kunjungan</span>
+            <span class="text-[11px] text-slate-500 font-medium" x-show="!isLoading">toko</span>
           </div>
           <div class="mt-1 text-[10.5px] text-slate-400 flex items-center justify-between">
             <template x-if="!isLoading">
               <div>
-                <span class="text-emerald-500 font-bold" x-text="`${kpiSummary.uniqueStores} Toko Unik`"></span>
-                <span>selesai</span>
+                <span class="text-emerald-500 font-bold" x-text="`${kpiSummary.totalVisits.toLocaleString()} log kunjungan`"></span>
+                <span>tercatat</span>
               </div>
             </template>
             <template x-if="isLoading">
@@ -1159,7 +1225,7 @@
             <template x-if="!isLoading">
               <span class="text-xl sm:text-2xl font-display font-extrabold text-sky-600 dark:text-sky-400" x-text="`${kpiSummary.achievementRate}%`">0%</span>
             </template>
-            <span class="text-[11px] text-slate-500 font-medium" x-show="!isLoading" x-text="`/ ${kpiSummary.totalTarget} Target`"></span>
+            <span class="text-[11px] text-slate-500 font-medium" x-show="!isLoading" x-text="`(${kpiSummary.uniqueStores} / ${kpiSummary.totalTarget} Toko)`"></span>
           </div>
           <div class="mt-1.5 w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
             <div class="bg-sky-500 h-full rounded-full transition-all duration-500" :style="`width: ${isLoading ? '30%' : kpiSummary.achievementRate + '%'}`" :class="isLoading ? 'animate-pulse' : ''"></div>
@@ -5103,10 +5169,18 @@
         </div>
 
         <!-- Metric Cards -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-5">
           <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
             <span class="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block">Total Terdaftar</span>
             <div class="text-lg font-black text-slate-900 dark:text-white mt-0.5" x-text="(rbacUsers || []).length + ' User'"></div>
+          </div>
+          <div class="p-3 rounded-xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-300/80 dark:border-amber-700/60 cursor-pointer hover:bg-amber-100/60 transition-colors"
+            @click="rbacFilterRole = (rbacFilterRole === 'PENDING' ? 'ALL' : 'PENDING')">
+            <span class="text-[10.5px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center justify-between">
+              <span>⏳ Approval</span>
+              <span x-show="pendingRbacUsersCount > 0" class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+            </span>
+            <div class="text-lg font-black text-amber-600 dark:text-amber-400 mt-0.5" x-text="pendingRbacUsersCount + ' Pending'"></div>
           </div>
           <div class="p-3 rounded-xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200/60 dark:border-purple-900/40">
             <span class="text-[10.5px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider block">Super Admin</span>
@@ -5118,7 +5192,7 @@
           </div>
           <div class="p-3 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-900/40">
             <span class="text-[10.5px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Field MDS</span>
-            <div class="text-lg font-black text-emerald-700 dark:text-emerald-300 mt-0.5" x-text="(rbacUsers || []).filter(u => u && u.role === 'MDS').length + ' Personil'"></div>
+            <div class="text-lg font-black text-emerald-700 dark:text-emerald-300 mt-0.5" x-text="(rbacUsers || []).filter(u => u && u.role === 'MDS' && u.status !== 'PENDING').length + ' Personil'"></div>
           </div>
         </div>
       </div>
@@ -5137,7 +5211,9 @@
           <select x-model="rbacFilterRole"
             class="h-9 px-3 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-purple-500 focus:outline-none">
             <option value="ALL">Semua Role</option>
+            <option value="PENDING">⏳ Menunggu Approval</option>
             <option value="SUPERADMIN">👑 SUPERADMIN</option>
+            <option value="MANAGER">💼 MANAGER</option>
             <option value="SPV">🛡️ Supervisor (SPV)</option>
             <option value="MDS">👤 Field MDS</option>
           </select>
@@ -5170,78 +5246,306 @@
         </div>
       </div>
 
-      <!-- Granular Matrix Table Card -->
-      <div class="glass-card rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-800/80 overflow-hidden">
-        <div class="overflow-x-auto touch-scroll">
-          <table class="w-full text-xs text-left">
-            <thead class="bg-slate-100/90 dark:bg-slate-800/90 text-[10.5px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700/80 select-none">
+      <!-- ========================================================================= -->
+      <!-- MOBILE / TABLET INTERACTIVE ACCORDION CARDS (< lg)                        -->
+      <!-- ========================================================================= -->
+      <div class="block lg:hidden space-y-3">
+        <!-- Quick Header Actions for Cards -->
+        <div class="flex items-center justify-between px-1 text-xs">
+          <span class="font-bold text-slate-500 dark:text-slate-400 text-[11px]">
+            Daftar Personil (<span class="text-slate-900 dark:text-white font-extrabold" x-text="(filteredRbacUsers || []).length"></span>)
+          </span>
+          <div class="flex items-center gap-2">
+            <button type="button" @click="expandAllRbacCards()" class="text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer">
+              Buka Semua
+            </button>
+            <span class="text-slate-300 dark:text-slate-700">•</span>
+            <button type="button" @click="collapseAllRbacCards()" class="text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:underline cursor-pointer">
+              Tutup Semua
+            </button>
+          </div>
+        </div>
+
+        <template x-for="(u, idx) in filteredRbacUsers" :key="u.id || u.email">
+          <div class="glass-card rounded-2xl border transition-all duration-200 shadow-sm overflow-hidden"
+            :class="u && u.status === 'PENDING' ? 'border-amber-500/80 bg-amber-500/5 ring-1 ring-amber-500/30' : 'border-slate-200/80 dark:border-slate-800/80'">
+            
+            <!-- Card Header (Tap to Expand / Collapse) -->
+            <div @click="toggleRbacCard(u)" class="p-3.5 flex items-center justify-between gap-2 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/40 select-none">
+              <div class="flex items-center space-x-2.5 min-w-0">
+                <div class="w-9 h-9 rounded-xl font-black text-xs flex items-center justify-center flex-shrink-0 text-white shadow-sm"
+                  :class="u && u.status === 'PENDING' ? 'bg-amber-500' : (u && u.role === 'SUPERADMIN' ? 'bg-purple-600' : (u && u.role === 'SPV' ? 'bg-indigo-600' : (u && u.role === 'MANAGER' ? 'bg-amber-600' : 'bg-emerald-600')))"
+                  x-text="u && u.name ? String(u.name).charAt(0).toUpperCase() : 'U'">
+                </div>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate" x-text="u ? (u.name || u.email || 'User') : 'User'"></span>
+                    <template x-if="u && u.status === 'PENDING'">
+                      <span class="px-1.5 py-0.2 rounded text-[8.5px] font-black bg-amber-500 text-amber-950 animate-pulse">PENDING APPROVAL</span>
+                    </template>
+                    <template x-if="currentUser && u && (currentUser.id === u.id || currentUser.email === u.email)">
+                      <span class="px-1.5 py-0.2 rounded text-[8px] font-black bg-brand-500 text-white">YOU</span>
+                    </template>
+                  </div>
+                  <span class="text-[10.5px] text-slate-400 block truncate" x-text="u ? (u.email || '-') : '-'"></span>
+                </div>
+              </div>
+
+              <!-- Role Badge + Modul Pill + Chevron Icon -->
+              <div class="flex items-center gap-1.5 flex-shrink-0">
+                <div class="flex flex-col items-end gap-0.5">
+                  <span class="px-2 py-0.5 rounded-full text-[9.5px] font-bold"
+                    :class="u && u.role === 'SUPERADMIN' ? 'bg-purple-500/20 text-purple-600 dark:text-purple-300' : (u && u.role === 'SPV' ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-300' : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300')"
+                    x-text="u ? u.role : 'MDS'"></span>
+                  <span class="px-1.5 py-0.2 rounded text-[8.5px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                    x-text="u ? (u.modul || 'ALL') : 'ALL'"></span>
+                </div>
+                <div class="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400">
+                  <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform duration-200" :class="isRbacCardExpanded(u) ? 'rotate-180 text-brand-500' : ''"></i>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card Collapsible Body -->
+            <div x-show="isRbacCardExpanded(u)" class="px-3.5 pb-3.5 pt-2 space-y-3 border-t border-slate-100 dark:border-slate-800/80">
+              
+              <!-- Pending Banner & Approval Action -->
+              <template x-if="u && u.status === 'PENDING'">
+                <div class="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-between gap-2">
+                  <div class="text-[11px] font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                    <span>Menunggu approval pendaftaran</span>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <button type="button" @click="approveRbacUser(u ? u.id : '')"
+                      class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-sm active:scale-95 cursor-pointer flex items-center gap-1">
+                      <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                      <span>Approve</span>
+                    </button>
+                    <button type="button" @click="rejectRbacUser(u ? u.id : '')"
+                      class="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold active:scale-95 cursor-pointer">
+                      <span>Tolak</span>
+                    </button>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Row: Role & Modul Selector -->
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Role Akun</label>
+                  <select :value="u ? u.role : 'MDS'" @change="changeUserRole(u ? (u.id || u.email) : '', $event.target.value)"
+                    class="w-full h-8 px-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer">
+                    <option value="SUPERADMIN">👑 SUPERADMIN</option>
+                    <option value="MANAGER">💼 MANAGER</option>
+                    <option value="SPV">🛡️ SPV</option>
+                    <option value="MDS">👤 MDS</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Wilayah / Modul</label>
+                  <select x-model="u.modul" @change="syncRbacMatrixFromUsers()"
+                    class="w-full h-8 px-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer">
+                    <option value="ALL">Semua (Nasional)</option>
+                    <option value="DK1">DK1</option>
+                    <option value="DK2">DK2</option>
+                    <option value="DK3">DK3</option>
+                    <option value="DK4">DK4</option>
+                    <option value="DK5">DK5</option>
+                    <option value="DK6">DK6</option>
+                    <option value="LK1">LK1</option>
+                    <option value="LK2">LK2</option>
+                    <option value="LK3">LK3</option>
+                    <option value="LK4">LK4</option>
+                    <option value="LK5">LK5</option>
+                    <option value="LP1">LP1</option>
+                    <option value="LP2">LP2</option>
+                    <option value="LP3">LP3</option>
+                    <option value="LP4">LP4</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Linked Crew / Personil Lapangan Mapping -->
+              <div class="relative" @click.away="if (activeCrewDropdownUserId === (u ? u.id : '')) closeRbacCrewDropdown()">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Personil Lapangan Database</label>
+                <template x-if="u && (u.role === 'SUPERADMIN' || u.role === 'MANAGER')">
+                  <span class="text-[10.5px] font-semibold text-slate-400 dark:text-slate-500 italic block py-1">
+                    🌐 Bebas / Mengawasi Nasional
+                  </span>
+                </template>
+                <template x-if="!u || (u.role !== 'SUPERADMIN' && u.role !== 'MANAGER')">
+                  <div class="space-y-1 relative">
+                    <button type="button"
+                      @click="activeCrewDropdownUserId === (u ? u.id : '') ? closeRbacCrewDropdown() : openRbacCrewDropdown(u ? u.id : '')"
+                      class="w-full text-left text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:border-purple-400 flex items-center justify-between gap-1">
+                      <span class="truncate" x-text="u && u.linkedCrew ? u.linkedCrew : '-- Bebas / Belum Terikat --'"></span>
+                      <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 flex-shrink-0" :class="activeCrewDropdownUserId === (u ? u.id : '') ? 'rotate-180' : ''"></i>
+                    </button>
+
+                    <!-- Popover Dropdown Panel -->
+                    <div x-show="activeCrewDropdownUserId === (u ? u.id : '')"
+                      class="absolute left-0 top-full mt-1 w-full bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-2 z-[95] space-y-1.5"
+                      style="display: none;">
+                      <div class="relative">
+                        <input type="text"
+                          x-model="rbacCrewDropdownSearch"
+                          placeholder="Ketik nama personil / modul..."
+                          class="w-full px-2.5 py-1.5 pl-7 text-[11px] rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                        <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2 top-2 text-slate-400 pointer-events-none"></i>
+                      </div>
+                      <div class="max-h-40 overflow-y-auto space-y-0.5 touch-scroll">
+                        <button type="button"
+                          @click="changeUserLinkedCrew(u ? (u.id || u.email) : '', ''); closeRbacCrewDropdown()"
+                          class="w-full text-left px-2 py-1.5 rounded-lg text-[10.5px] hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between"
+                          :class="!u || !u.linkedCrew ? 'font-bold text-purple-600 bg-purple-50/50' : 'text-slate-500'">
+                          <span>-- Bebas / Belum Terikat --</span>
+                          <span x-show="!u || !u.linkedCrew">✓</span>
+                        </button>
+                        <template x-for="c in filteredOfficialCrews" :key="c.name">
+                          <button type="button"
+                            @click="changeUserLinkedCrew(u ? (u.id || u.email) : '', c.name); closeRbacCrewDropdown()"
+                            class="w-full text-left px-2 py-1.5 rounded-lg text-[10.5px] hover:bg-purple-50 dark:hover:bg-purple-950/30 flex items-center justify-between"
+                            :class="u && u.linkedCrew === c.name ? 'font-black text-purple-600 bg-purple-50' : 'text-slate-700 dark:text-slate-200'">
+                            <span class="truncate" x-text="c.name + ' [' + (c.modul || '-') + ']'"></span>
+                            <span x-show="u && u.linkedCrew === c.name" class="font-black text-purple-600">✓</span>
+                          </button>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
+              <!-- 8 Modul Touch-Pills Matrix (Grid 4x2) -->
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hak Akses Modul (Sentuh On/Off)</label>
+                  <div class="flex items-center gap-1.5">
+                    <button type="button" @click="setUserAllPerms(u ? u.id : '', true)" class="text-[9.5px] font-bold text-emerald-600 hover:underline">Semua On</button>
+                    <span class="text-slate-300">•</span>
+                    <button type="button" @click="setUserAllPerms(u ? u.id : '', false)" :disabled="u && u.role === 'SUPERADMIN'" class="text-[9.5px] font-bold text-rose-500 hover:underline disabled:opacity-40">Semua Off</button>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-4 gap-1.5">
+                  <template x-for="p in rbacModulePages" :key="p.id">
+                    <button type="button" @click="toggleUserPerm(u ? u.id : '', p.id)"
+                      :disabled="u && u.role === 'SUPERADMIN'"
+                      class="py-1.5 px-1 rounded-xl text-[10px] font-bold transition-all text-center flex flex-col items-center justify-center gap-0.5 border cursor-pointer active:scale-95 disabled:opacity-50"
+                      :class="(u && u.permissions && u.permissions[p.id])
+                        ? 'bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-500/40 font-extrabold shadow-sm'
+                        : 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700/60'">
+                      <span class="text-xs" x-text="p.icon"></span>
+                      <span class="truncate w-full leading-tight text-[9.5px]" x-text="p.label"></span>
+                    </button>
+                  </template>
+                </div>
+              </div>
+
+              <!-- Card Action Bar: Sub-Tab Config & SPV & Delete -->
+              <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 gap-2">
+                <button type="button" @click="openSubTabConfig(u)"
+                  class="px-2.5 py-1.5 rounded-xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 text-xs font-bold flex items-center gap-1 hover:bg-indigo-500/25 transition-all">
+                  <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+                  <span>Atur Sub-Tab</span>
+                </button>
+
+                <template x-if="u && u.role === 'SPV'">
+                  <button type="button" @click="openSpvTeamConfig(u ? u.id : '')"
+                    class="px-2.5 py-1.5 rounded-xl bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 text-xs font-bold flex items-center gap-1 hover:bg-sky-500/25 transition-all">
+                    <i data-lucide="users" class="w-3.5 h-3.5"></i>
+                    <span>Tim MDS</span>
+                  </button>
+                </template>
+
+                <button type="button" @click="deleteUser(u ? u.id : '')"
+                  :disabled="u && u.role === 'SUPERADMIN'"
+                  class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-bold flex items-center gap-1 transition-all ml-auto disabled:opacity-30">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                  <span>Hapus</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- ========================================================================= -->
+      <!-- DESKTOP GRANULAR MATRIX TABLE (hidden lg:block)                           -->
+      <!-- ========================================================================= -->
+      <div class="hidden lg:block glass-card rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-800/80 overflow-hidden">
+        <div class="overflow-x-auto max-h-[72vh] overflow-y-auto touch-scroll">
+          <table class="w-full text-xs text-left border-separate border-spacing-0">
+            <thead class="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 text-[10.5px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 select-none shadow-sm">
               <tr>
-                <th class="py-3 px-3.5 w-12 text-center">No</th>
-                <th class="py-3 px-4">Nama Personil & Email</th>
-                <th class="py-3 px-3">Modul</th>
-                <th class="py-3 px-3">Role Preset</th>
-                <th class="py-3 px-3 min-w-[210px]" title="Petakan akun portal ini ke nama personil resmi di database operasional lapangan">Personil Lapangan (Database)</th>
-                <th class="py-3 px-3 text-center" title="Tab Kunjungan Lapangan & Live Tracking">
+                <th class="sticky top-0 left-0 z-40 bg-slate-100 dark:bg-slate-800 py-3 px-3 w-12 text-center border-b border-slate-200 dark:border-slate-700">No</th>
+                <th class="sticky top-0 left-12 z-40 bg-slate-100 dark:bg-slate-800 py-3 px-4 min-w-[210px] max-w-[260px] border-b border-r border-slate-200 dark:border-slate-700">Nama Personil & Email</th>
+                <th class="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 py-3 px-3 border-b border-slate-200 dark:border-slate-700">Modul</th>
+                <th class="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 py-3 px-3 border-b border-slate-200 dark:border-slate-700">Role Preset</th>
+                <th class="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 py-3 px-3 min-w-[210px] border-b border-slate-200 dark:border-slate-700" title="Petakan akun portal ini ke nama personil resmi di database operasional lapangan">Personil Lapangan (Database)</th>
+                <th class="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 py-3 px-3 text-center border-b border-slate-200 dark:border-slate-700" title="Tab Kunjungan Lapangan & Live Tracking">
                   <div class="flex flex-col items-center">
                     <span>📍 Kunjungan</span>
                     <span class="text-[9px] font-normal text-slate-400">Live Map</span>
                   </div>
                 </th>
-                <th class="py-3 px-3 text-center" title="Tab Absensi Tim MDS">
+                <th class="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 py-3 px-3 text-center border-b border-slate-200 dark:border-slate-700" title="Tab Absensi Tim MDS">
                   <div class="flex flex-col items-center">
                     <span>⏱️ Absensi</span>
                     <span class="text-[9px] font-normal text-slate-400">Presensi</span>
                   </div>
                 </th>
-                <th class="py-3 px-3 text-center" title="Tab Target Jadwal Rute R1-R31">
+                <th class="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 py-3 px-3 text-center border-b border-slate-200 dark:border-slate-700" title="Tab Target Jadwal Rute R1-R31">
                   <div class="flex flex-col items-center">
                     <span>📅 Jadwal</span>
                     <span class="text-[9px] font-normal text-slate-400">Target Rute</span>
                   </div>
                 </th>
-                <th class="py-3 px-3 text-center" title="Tab Database 49k Toko">
+                <th class="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 py-3 px-3 text-center border-b border-slate-200 dark:border-slate-700" title="Tab Database 49k Toko">
                   <div class="flex flex-col items-center">
                     <span>🏬 49k Toko</span>
                     <span class="text-[9px] font-normal text-slate-400">Master Data</span>
                   </div>
                 </th>
-                <th class="py-3 px-3 text-center" title="Tab Laporan & WA Generator">
+                <th class="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 py-3 px-3 text-center border-b border-slate-200 dark:border-slate-700" title="Tab Laporan & WA Generator">
                   <div class="flex flex-col items-center">
                     <span>📑 Laporan</span>
                     <span class="text-[9px] font-normal text-slate-400">Rekap WA</span>
                   </div>
                 </th>
-                <th class="py-3 px-3 text-center" title="Tab Evaluasi Kinerja SPV">
+                <th class="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 py-3 px-3 text-center border-b border-slate-200 dark:border-slate-700" title="Tab Evaluasi Kinerja SPV">
                   <div class="flex flex-col items-center">
                     <span>🎖️ Evaluasi</span>
                     <span class="text-[9px] font-normal text-slate-400">Scorecard</span>
                   </div>
                 </th>
-                <th class="py-3 px-3 text-center" title="Tab Galeri Foto Pajangan Planogram">
+                <th class="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 py-3 px-3 text-center border-b border-slate-200 dark:border-slate-700" title="Tab Galeri Foto Pajangan Planogram">
                   <div class="flex flex-col items-center">
                     <span>🖼️ Galeri</span>
                     <span class="text-[9px] font-normal text-slate-400">Display</span>
                   </div>
                 </th>
-                <th class="py-3 px-3 text-center" title="Tab Simulasi & Editor Rute Toko MDS">
+                <th class="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 py-3 px-3 text-center border-b border-slate-200 dark:border-slate-700" title="Tab Simulasi & Editor Rute Toko MDS">
                   <div class="flex flex-col items-center">
                     <span>🗺️ Simulasi</span>
                     <span class="text-[9px] font-normal text-slate-400">Rute Editor</span>
                   </div>
                 </th>
-                <th class="py-3 px-3 text-center">Aksi Cepat</th>
+                <th class="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 py-3 px-3 text-center border-b border-slate-200 dark:border-slate-700">Aksi Cepat</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800/80">
               <template x-for="(u, idx) in filteredRbacUsers">
-                <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
-                  :class="currentUser && u && (currentUser.id === u.id || currentUser.email === u.email) ? 'bg-purple-50/30 dark:bg-purple-950/15' : ''">
+                <tr class="group hover:bg-slate-50/90 dark:hover:bg-slate-800/60 transition-colors"
+                  :class="currentUser && u && (currentUser.id === u.id || currentUser.email === u.email) ? 'bg-purple-50/40 dark:bg-purple-950/20' : ''">
                   
-                  <!-- No -->
-                  <td class="py-3 px-3.5 text-center text-slate-400 font-mono text-[11px]" x-text="idx + 1"></td>
+                  <!-- No (Freeze Left Column 1) -->
+                  <td class="sticky left-0 z-20 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/90 transition-colors py-3 px-3 text-center text-slate-400 font-mono text-[11px] border-b border-slate-100 dark:border-slate-800/80" x-text="idx + 1"></td>
 
-                  <!-- Personil -->
-                  <td class="py-3 px-4">
+                  <!-- Personil (Freeze Left Column 2) -->
+                  <td class="sticky left-12 z-20 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/90 transition-colors py-3 px-4 border-b border-r border-slate-200/80 dark:border-slate-800/80 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.06)] min-w-[210px] max-w-[260px]">
                     <div class="flex items-center space-x-2.5">
                       <div class="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs flex-shrink-0"
                         :class="u && u.role === 'SUPERADMIN' ? 'bg-purple-500/20 text-purple-600 dark:text-purple-400' : (u && u.role === 'SPV' ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400')">
@@ -5252,6 +5556,8 @@
                           <span class="font-bold text-slate-900 dark:text-white truncate" x-text="u ? (u.name || u.email || 'User') : 'User'"></span>
                           <span x-show="currentUser && u && (currentUser.id === u.id || currentUser.email === u.email)"
                             class="px-1.5 py-0.2 rounded text-[8.5px] font-black bg-brand-500 text-white">YOU</span>
+                          <span x-show="u && u.status === 'PENDING'"
+                            class="px-1.5 py-0.5 rounded text-[8.5px] font-black bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 animate-pulse">PENDING APPROVAL</span>
                         </div>
                         <span class="text-[10.5px] text-slate-400 truncate block" x-text="u ? (u.email || '-') : '-'"></span>
                       </div>
@@ -5259,13 +5565,13 @@
                   </td>
 
                   <!-- Modul -->
-                  <td class="py-3 px-3">
+                  <td class="py-3 px-3 border-b border-slate-100 dark:border-slate-800/80">
                     <span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
                       x-text="u ? (u.modul || '-') : '-'"></span>
                   </td>
 
                   <!-- Role Preset Dropdown -->
-                  <td class="py-3 px-3">
+                  <td class="py-3 px-3 border-b border-slate-100 dark:border-slate-800/80">
                     <select :value="u ? u.role : 'MDS'" @change="changeUserRole(u ? (u.id || u.email) : '', $event.target.value)"
                       class="text-[10.5px] font-bold px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-purple-500 focus:outline-none cursor-pointer">
                       <option value="SUPERADMIN">👑 SUPERADMIN</option>
@@ -5276,7 +5582,7 @@
                   </td>
 
                   <!-- Personil Lapangan Resmi Binding (Database Operasional Searchable Dropdown) -->
-                  <td class="py-3 px-3 relative" @click.away="if (activeCrewDropdownUserId === (u ? u.id : '')) closeCrewDropdown()">
+                  <td class="py-3 px-3 border-b border-slate-100 dark:border-slate-800/80 relative" @click.away="if (activeCrewDropdownUserId === (u ? u.id : '')) closeRbacCrewDropdown()">
                     <div class="flex flex-col gap-1">
                       <template x-if="u && (u.role === 'SUPERADMIN' || u.role === 'MANAGER')">
                         <span class="text-[10px] font-semibold text-slate-400 dark:text-slate-500 italic">
@@ -5287,7 +5593,7 @@
                         <div class="space-y-1 relative">
                           <!-- Trigger Button -->
                           <button type="button"
-                            @click="activeCrewDropdownUserId === (u ? u.id : '') ? closeCrewDropdown() : openCrewDropdown(u ? u.id : '')"
+                            @click="activeCrewDropdownUserId === (u ? u.id : '') ? closeRbacCrewDropdown() : openRbacCrewDropdown(u ? u.id : '')"
                             class="w-full text-left text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:border-purple-400 dark:hover:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all flex items-center justify-between gap-1 min-w-[210px] max-w-[250px]">
                             <span class="truncate" x-text="u && u.linkedCrew ? u.linkedCrew : '-- Bebas / Belum Terikat --'"></span>
                             <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 transition-transform" :class="activeCrewDropdownUserId === (u ? u.id : '') ? 'rotate-180' : ''"></i>
@@ -5305,11 +5611,11 @@
                             <div class="relative">
                               <input type="text"
                                 :id="'crewDropdownSearchInput_' + (u ? u.id : '')"
-                                x-model="crewDropdownSearch"
+                                x-model="rbacCrewDropdownSearch"
                                 placeholder="Ketik nama personil / modul..."
                                 class="w-full px-2.5 py-1.5 pl-7 text-[11px] rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500">
                               <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2 top-2 text-slate-400 pointer-events-none"></i>
-                              <button type="button" x-show="crewDropdownSearch" @click="crewDropdownSearch = ''" class="absolute right-2 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                              <button type="button" x-show="rbacCrewDropdownSearch" @click="rbacCrewDropdownSearch = ''" class="absolute right-2 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
                                 <i data-lucide="x" class="w-3 h-3"></i>
                               </button>
                             </div>
@@ -5318,7 +5624,7 @@
                             <div class="max-h-48 overflow-y-auto space-y-0.5 divide-y divide-slate-100 dark:divide-slate-800/60 touch-scroll">
                               <!-- Option: None/Unlinked -->
                               <button type="button"
-                                @click="changeUserLinkedCrew(u ? (u.id || u.email) : '', ''); closeCrewDropdown()"
+                                @click="changeUserLinkedCrew(u ? (u.id || u.email) : '', ''); closeRbacCrewDropdown()"
                                 class="w-full text-left px-2 py-1.5 rounded-lg text-[10.5px] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center justify-between"
                                 :class="!u || !u.linkedCrew ? 'font-bold text-purple-600 dark:text-purple-400 bg-purple-50/50 dark:bg-purple-950/20' : 'text-slate-500 dark:text-slate-400'">
                                 <span>-- Bebas / Belum Terikat --</span>
@@ -5328,7 +5634,7 @@
                               <!-- Filtered Crews -->
                               <template x-for="c in filteredOfficialCrews" :key="c.name">
                                 <button type="button"
-                                  @click="changeUserLinkedCrew(u ? (u.id || u.email) : '', c.name); closeCrewDropdown()"
+                                  @click="changeUserLinkedCrew(u ? (u.id || u.email) : '', c.name); closeRbacCrewDropdown()"
                                   class="w-full text-left px-2 py-1.5 rounded-lg text-[10.5px] hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors flex items-center justify-between group"
                                   :class="u && u.linkedCrew === c.name ? 'font-black text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/40' : 'text-slate-700 dark:text-slate-200'">
                                   <div class="min-w-0 pr-2">
@@ -5349,7 +5655,7 @@
 
                             <div class="pt-1 border-t border-slate-100 dark:border-slate-800 text-[9.5px] text-slate-400 flex justify-between items-center px-1">
                               <span x-text="filteredOfficialCrews.length + ' personil'"></span>
-                              <button type="button" @click="closeCrewDropdown()" class="text-purple-600 dark:text-purple-400 font-bold hover:underline">Tutup</button>
+                              <button type="button" @click="closeRbacCrewDropdown()" class="text-purple-600 dark:text-purple-400 font-bold hover:underline">Tutup</button>
                             </div>
                           </div>
 
@@ -5369,92 +5675,128 @@
                   </td>
 
                   <!-- Tab 1: Kunjungan -->
-                  <td class="py-3 px-3 text-center">
+                  <td class="py-3 px-3 border-b border-slate-100 dark:border-slate-800/80 text-center">
                     <input type="checkbox" :checked="u && u.permissions ? u.permissions.kunjungan : false" @change="toggleUserPerm(u ? u.id : '', 'kunjungan')"
                       :disabled="u && u.role === 'SUPERADMIN'"
                       class="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50">
                   </td>
 
                   <!-- Tab 2: Absensi -->
-                  <td class="py-3 px-3 text-center">
+                  <td class="py-3 px-3 border-b border-slate-100 dark:border-slate-800/80 text-center">
                     <input type="checkbox" :checked="u && u.permissions ? u.permissions.absensi : false" @change="toggleUserPerm(u ? u.id : '', 'absensi')"
                       :disabled="u && u.role === 'SUPERADMIN'"
                       class="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50">
                   </td>
 
                   <!-- Tab 3: Jadwal -->
-                  <td class="py-3 px-3 text-center">
+                  <td class="py-3 px-3 border-b border-slate-100 dark:border-slate-800/80 text-center">
                     <input type="checkbox" :checked="u && u.permissions ? u.permissions.jadwal : false" @change="toggleUserPerm(u ? u.id : '', 'jadwal')"
                       :disabled="u && u.role === 'SUPERADMIN'"
                       class="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50">
                   </td>
 
                   <!-- Tab 4: Toko Nasional -->
-                  <td class="py-3 px-3 text-center">
+                  <td class="py-3 px-3 border-b border-slate-100 dark:border-slate-800/80 text-center">
                     <input type="checkbox" :checked="u && u.permissions ? u.permissions.tokonasional : false" @change="toggleUserPerm(u ? u.id : '', 'tokonasional')"
                       :disabled="u && u.role === 'SUPERADMIN'"
                       class="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50">
                   </td>
 
                   <!-- Tab 5: Laporan -->
-                  <td class="py-3 px-3 text-center">
+                  <td class="py-3 px-3 border-b border-slate-100 dark:border-slate-800/80 text-center">
                     <input type="checkbox" :checked="u && u.permissions ? u.permissions.laporan : false" @change="toggleUserPerm(u ? u.id : '', 'laporan')"
                       :disabled="u && u.role === 'SUPERADMIN'"
                       class="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50">
+                    <button type="button" @click="openSubTabConfig(u)" title="Atur Sub-Tab Laporan"
+                      class="text-[9px] font-bold text-indigo-500 hover:text-indigo-700 hover:underline block mt-0.5 mx-auto">
+                      ⚙️ Sub-tab
+                    </button>
                   </td>
 
                   <!-- Tab 6: Evaluasi -->
-                  <td class="py-3 px-3 text-center">
+                  <td class="py-3 px-3 border-b border-slate-100 dark:border-slate-800/80 text-center">
                     <input type="checkbox" :checked="u && u.permissions ? u.permissions.evaluasi : false" @change="toggleUserPerm(u ? u.id : '', 'evaluasi')"
                       :disabled="u && u.role === 'SUPERADMIN'"
                       class="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50">
+                    <button type="button" @click="openSubTabConfig(u)" title="Atur Sub-Tab Evaluasi"
+                      class="text-[9px] font-bold text-sky-500 hover:text-sky-700 hover:underline block mt-0.5 mx-auto">
+                      ⚙️ Sub-tab
+                    </button>
                   </td>
 
                   <!-- Tab 7: Galeri Foto Pajangan -->
-                  <td class="py-3 px-3 text-center">
+                  <td class="py-3 px-3 border-b border-slate-100 dark:border-slate-800/80 text-center">
                     <input type="checkbox" :checked="u && u.permissions ? u.permissions.galeri : false" @change="toggleUserPerm(u ? u.id : '', 'galeri')"
                       :disabled="u && u.role === 'SUPERADMIN'"
                       class="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50">
+                    <button type="button" @click="openSubTabConfig(u)" title="Atur Sub-Tab Galeri"
+                      class="text-[9px] font-bold text-teal-500 hover:text-teal-700 hover:underline block mt-0.5 mx-auto">
+                      ⚙️ Sub-tab
+                    </button>
                   </td>
 
                   <!-- Tab 8: Simulasi & Editor Rute -->
-                  <td class="py-3 px-3 text-center">
+                  <td class="py-3 px-3 border-b border-slate-100 dark:border-slate-800/80 text-center">
                     <input type="checkbox" :checked="u && u.permissions ? u.permissions.simulasi : false" @change="toggleUserPerm(u ? u.id : '', 'simulasi')"
                       :disabled="u && u.role === 'SUPERADMIN'"
                       class="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50">
+                    <button type="button" @click="openSubTabConfig(u)" title="Atur Sub-Tab Simulasi"
+                      class="text-[9px] font-bold text-purple-500 hover:text-purple-700 hover:underline block mt-0.5 mx-auto">
+                      ⚙️ Sub-tab
+                    </button>
                   </td>
 
                   <!-- Aksi Cepat -->
-                  <td class="py-3 px-3 text-center">
-                    <div class="flex items-center justify-center space-x-1.5">
-                      <button type="button" @click="setUserAllPerms(u ? u.id : '', true)" title="Izinkan Semua Tab"
-                        class="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors cursor-pointer">
-                        <i data-lucide="check-check" class="w-3.5 h-3.5"></i>
-                      </button>
-                      <button type="button" @click="setUserAllPerms(u ? u.id : '', false)" title="Kunci Semua Tab"
-                        class="p-1.5 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 hover:bg-rose-500/25 transition-colors cursor-pointer"
-                        :disabled="u && u.role === 'SUPERADMIN'">
-                        <i data-lucide="ban" class="w-3.5 h-3.5"></i>
-                      </button>
-                      <!-- Sub-Tab Config Button -->
-                      <button type="button" @click="openSubTabConfig(u ? u.id : '')" title="Konfigurasi Sub-Tab Laporan & Evaluasi"
-                        class="p-1.5 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/25 transition-colors cursor-pointer"
-                        :disabled="u && u.role === 'SUPERADMIN'">
-                        <i data-lucide="layers" class="w-3.5 h-3.5"></i>
-                      </button>
-                      <!-- Tim MDS Button (SPV only) -->
-                      <button type="button" x-show="u && u.role === 'SPV'"
-                        @click="openSpvTeamConfig(u ? u.id : '')"
-                        title="Kelola Tim MDS yang diawasi SPV ini"
-                        class="p-1.5 rounded-lg bg-sky-500/15 text-sky-600 dark:text-sky-400 hover:bg-sky-500/25 transition-colors cursor-pointer">
-                        <i data-lucide="users" class="w-3.5 h-3.5"></i>
-                      </button>
-                      <button type="button" @click="deleteUser(u ? u.id : '')" title="Hapus User dari Matriks"
-                        class="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
-                        :disabled="u && u.role === 'SUPERADMIN'">
-                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                      </button>
-                    </div>
+                  <td class="py-3 px-3 border-b border-slate-100 dark:border-slate-800/80 text-center">
+                    <template x-if="u && u.status === 'PENDING'">
+                      <div class="flex items-center justify-center space-x-1.5">
+                        <button type="button" @click="approveRbacUser(u ? u.id : '')" title="Setujui pendaftaran user ini"
+                          class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10.5px] shadow-sm flex items-center space-x-1 cursor-pointer transition-all">
+                          <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                          <span>Approve</span>
+                        </button>
+                        <button type="button" @click="openSubTabConfig(u)" title="Konfigurasi Sub-Tab Sebelum Approve"
+                          class="p-1.5 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/25 transition-colors cursor-pointer">
+                          <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <button type="button" @click="rejectRbacUser(u ? u.id : '')" title="Tolak pendaftaran user ini"
+                          class="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 font-bold text-[10.5px] border border-rose-500/30 flex items-center space-x-1 cursor-pointer transition-all">
+                          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                          <span>Tolak</span>
+                        </button>
+                      </div>
+                    </template>
+                    <template x-if="!u || u.status !== 'PENDING'">
+                      <div class="flex items-center justify-center space-x-1.5">
+                        <button type="button" @click="setUserAllPerms(u ? u.id : '', true)" title="Izinkan Semua Tab"
+                          class="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors cursor-pointer">
+                          <i data-lucide="check-check" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <button type="button" @click="setUserAllPerms(u ? u.id : '', false)" title="Kunci Semua Tab"
+                          class="p-1.5 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 hover:bg-rose-500/25 transition-colors cursor-pointer"
+                          :disabled="u && u.role === 'SUPERADMIN'">
+                          <i data-lucide="ban" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <!-- Sub-Tab Config Button -->
+                        <button type="button" @click="openSubTabConfig(u)" title="Konfigurasi Sub-Tab Laporan, Evaluasi, Galeri, Simulasi"
+                          class="p-1.5 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/25 transition-colors cursor-pointer"
+                          :disabled="u && u.role === 'SUPERADMIN'">
+                          <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <!-- Tim MDS Button (SPV only) -->
+                        <button type="button" x-show="u && u.role === 'SPV'"
+                          @click="openSpvTeamConfig(u ? u.id : '')"
+                          title="Kelola Tim MDS yang diawasi SPV ini"
+                          class="p-1.5 rounded-lg bg-sky-500/15 text-sky-600 dark:text-sky-400 hover:bg-sky-500/25 transition-colors cursor-pointer">
+                          <i data-lucide="users" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <button type="button" @click="deleteUser(u ? u.id : '')" title="Hapus User dari Matriks"
+                          class="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+                          :disabled="u && u.role === 'SUPERADMIN'">
+                          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                      </div>
+                    </template>
                   </td>
 
                 </tr>
