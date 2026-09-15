@@ -177,10 +177,37 @@ const ApiService = {
     }
   },
 
+  masterTokoTypeMap: new Map(),
+
+  async loadMasterTokoTypes() {
+    if (this.masterTokoTypeMap.size > 0) return this.masterTokoTypeMap;
+    try {
+      const resp = await fetch('../01_web_absen/list_toko.csv');
+      if (resp.ok) {
+        const text = await resp.text();
+        const rows = this.parseCsv(text);
+        if (rows.length > 1) {
+          rows.slice(1).forEach(r => {
+            const storeCode = String(r[0] || '').trim().toUpperCase();
+            const storeType = String(r[9] || '').trim();
+            if (storeCode && storeType) {
+              this.masterTokoTypeMap.set(storeCode, storeType);
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Fallback load list_toko.csv notice:', e);
+    }
+    return this.masterTokoTypeMap;
+  },
+
   /**
    * 1. Get All Store Photos across 15 Modules (Direct Parallel Fetch ~1.5s)
    */
   async getVisitsWithPhotos(params = {}) {
+    await this.loadMasterTokoTypes();
+
     const targetModules = [];
     for (const [modKey, sheetId] of Object.entries(CONFIG.MODUL_IDS)) {
       if (!params.modul || params.modul === 'ALL') {
@@ -238,7 +265,7 @@ const ApiService = {
     const idxAccount = findIdx(['ACCOUNT', 'AKUN'], 10);
     const idxKodeToko = findIdx(['KODE_TOKO', 'KODE TOKO'], 11);
     const idxNamaToko = findIdx(['NAMA_TOKO', 'NAMA TOKO'], 12);
-    const idxTipeToko = findIdx(['TIPE_TOKO', 'TIPE TOKO'], 13);
+    const idxTipeToko = findIdx(['TIPE_TOKO', 'TIPE TOKO', 'TIPE', 'TIPE_CHILLER', 'CHILLER', 'TIPE_DISPLAY'], 13);
     const idxFotoSelfie = findIdx(['FOTO_SELFIE', 'FOTO SELFIE'], 14);
 
     // Dynamic Photo columns lookup
@@ -251,6 +278,7 @@ const ApiService = {
     const idxAfter3 = findIdx(['FOTO_AFTER_3', 'FOTO AFTER 3', 'AFTER 3'], 201);
     const idxAfter4 = findIdx(['FOTO_AFTER_4', 'FOTO AFTER 4', 'AFTER 4'], 202);
 
+    const masterMap = this.masterTokoTypeMap || new Map();
     const visits = [];
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
@@ -264,6 +292,12 @@ const ApiService = {
       // Skip visits with zero photos
       if (beforeList.length === 0 && afterList.length === 0 && !selfie) continue;
 
+      const kodeToko = (r[idxKodeToko] || '').toUpperCase().trim();
+      let tipeToko = r[idxTipeToko] || '';
+      if (!tipeToko && kodeToko && masterMap.has(kodeToko)) {
+        tipeToko = masterMap.get(kodeToko);
+      }
+
       visits.push({
         idVisit: idVisit,
         time: r[idxTime] || '',
@@ -272,9 +306,9 @@ const ApiService = {
         kodeCrew: r[idxKodeCrew] || '',
         namaCrew: r[idxNamaCrew] || '',
         account: (r[idxAccount] || '').toUpperCase().trim(),
-        kodeToko: r[idxKodeToko] || '',
+        kodeToko: kodeToko,
         namaToko: r[idxNamaToko] || '',
-        tipeToko: r[idxTipeToko] || '',
+        tipeToko: tipeToko,
         fotoSelfie: selfie,
         fotoBefore: beforeList,
         fotoAfter: afterList,

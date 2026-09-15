@@ -19,6 +19,7 @@ function galleryApp() {
     selectedModul: 'ALL',
     selectedMds: 'ALL', // 'ALL' | specific MDS name
     selectedAccount: 'ALL',
+    selectedDoorType: 'ALL', // 'ALL' | '12_DOOR' | '10_DOOR' | '8_DOOR' | '6_DOOR' | '4_DOOR' | 'REGULAR' | 'SPECIAL'
     selectedPhotoType: 'ALL', // 'ALL' | 'BEFORE' | 'AFTER' | 'RAK_SEWA'
     selectedReviewStatus: 'ALL', // 'ALL' | 'UNREVIEWED' | 'REVIEWED' | 'COMPLIANT' | 'NON_COMPLIANT'
     groupBy: localStorage.getItem('gallery_group_by') || 'TYPE', // 'TYPE' | 'ACCOUNT' | 'CREW' | 'MODUL' | 'FLAT'
@@ -304,6 +305,159 @@ function galleryApp() {
     },
 
     /**
+     * Smart Normalizer for Store Chiller / Planogram Types
+     * Resolves 84+ variations into structured categories (12P, 10P, 8P, 6P, 4P, Reguler, etc.)
+     */
+    normalizeStoreType(raw) {
+      if (!raw || typeof raw !== 'string') {
+        return {
+          raw: '',
+          doorCategory: 'OTHER',
+          doorLabel: 'Lainnya / Tidak Tercatat',
+          cleanCode: '',
+          shortBadge: '',
+          doors: 0
+        };
+      }
+
+      const original = raw.trim();
+      if (!original) {
+        return { raw: '', doorCategory: 'OTHER', doorLabel: 'Lainnya', cleanCode: '', shortBadge: '', doors: 0 };
+      }
+
+      const s = original.toUpperCase().replace(/\s+/g, ' ');
+
+      // 1. Regular / Standard Formats
+      if (/^(REGULAR|REGULER|STANDAR|STANDAR NEW|DC|DC DRY|DC JEMBER|CLUSTER \d+|SDN|WL|OD1A01|B)$/i.test(s)) {
+        return {
+          raw: original,
+          doorCategory: 'REGULAR',
+          doorLabel: 'Reguler / Standar',
+          cleanCode: s.includes('REG') ? 'Reguler' : original,
+          shortBadge: 'Reguler',
+          doors: 0
+        };
+      }
+
+      // 2. Retail Brand Specials (Lawson, Point, Yomart, FamiSuper)
+      if (s.includes('LAWSON')) {
+        return { raw: original, doorCategory: 'SPECIAL', doorLabel: 'Lawson', cleanCode: 'Lawson', shortBadge: 'Lawson', doors: 0 };
+      }
+      if (s.includes('POINT')) {
+        return { raw: original, doorCategory: 'SPECIAL', doorLabel: 'Point Coffee / IDM Point', cleanCode: 'Point', shortBadge: 'Point', doors: 0 };
+      }
+      if (s.includes('FAMI') || s.includes('FAMILY')) {
+        return { raw: original, doorCategory: 'SPECIAL', doorLabel: 'FamilyMart', cleanCode: 'FAMISuper', shortBadge: 'FamilyMart', doors: 0 };
+      }
+
+      // 3. Detect Doors Count via Number or Words or Codes
+      let doors = 0;
+      const isNonCoke = s.includes('NON') || s.includes('NON COKE') || s.includes('NON-COKE') || s.includes('NONCOKE');
+      const isCoke = !isNonCoke && (s.includes('COKE') || s.includes('PLUS COKE') || s.includes('+ COKE'));
+
+      // Check Indomaret CLP patterns: ClP03 -> 12P, ClP02 -> 10P
+      if (/CLP\s*0?3/i.test(s)) {
+        doors = 12;
+      } else if (/CLP\s*0?2/i.test(s)) {
+        doors = 10;
+      }
+      // Check Indomaret Store size type: Tipe 120 -> 12P, Tipe 100 / 100 -> 10P, Tipe 80 / 80 -> 8P, Tipe 30 -> 4P
+      else if (/TIPE\s*120\b/i.test(s)) {
+        doors = 12;
+      } else if (/\b(TIPE\s*100|100)\b/i.test(s)) {
+        doors = 10;
+      } else if (/\b(TIPE\s*80|80)\b/i.test(s)) {
+        doors = 8;
+      } else if (/TIPE\s*30\b/i.test(s)) {
+        doors = 4;
+      }
+
+      // Check generic number before 'P' or 'PINTU': e.g. "12 Pintu", "10P", "8 Pintu", "Pintu 10", "Pintu 6", "7 pintu"
+      if (!doors) {
+        const doorMatch = s.match(/(\d+)\s*(P|PINTU)\b/i) || s.match(/PINTU\s*(\d+)\b/i);
+        if (doorMatch) {
+          doors = parseInt(doorMatch[1], 10);
+        }
+      }
+
+      // Check Mini Chiller
+      if (!doors && s.includes('MINI CHILLER')) {
+        doors = 4;
+      }
+
+      // Detect Chiller Model Code (AC, AU, AH, AE, AA, AB, AY, CO, IDM, YOMART)
+      let modelPrefix = '';
+      const prefixMatch = s.match(/\b(AC|AU|AH|AE|AA|AB|AY|CO|IDM|YOMART)\b/i) || s.match(/\d*\s*(AC|AU|AH|AE|AA|AB|AY|CO)\b/i);
+      if (prefixMatch) {
+        modelPrefix = prefixMatch[1].toUpperCase();
+      } else if (/CLP/i.test(s)) {
+        modelPrefix = 'CLP';
+      }
+
+      // Assign Door Category
+      let doorCategory = 'OTHER';
+      let doorLabel = 'Lainnya';
+
+      if (doors >= 12) {
+        doorCategory = '12_DOOR';
+        doorLabel = '12 Pintu';
+      } else if (doors === 10) {
+        doorCategory = '10_DOOR';
+        doorLabel = '10 Pintu';
+      } else if (doors === 8 || doors === 7) {
+        doorCategory = '8_DOOR';
+        doorLabel = doors === 7 ? '7-8 Pintu' : '8 Pintu';
+      } else if (doors === 6) {
+        doorCategory = '6_DOOR';
+        doorLabel = '6 Pintu';
+      } else if (doors > 0 && doors <= 4) {
+        doorCategory = '4_DOOR';
+        doorLabel = '4 Pintu / Mini';
+      } else {
+        doorCategory = 'OTHER';
+        doorLabel = original;
+      }
+
+      // Build Clean Display Code
+      let cleanCode = '';
+      if (modelPrefix && doors) {
+        const variantSuffix = isNonCoke ? ' Non Coke' : (isCoke ? ' Coke' : '');
+        cleanCode = `${modelPrefix} ${doors}P${variantSuffix}`;
+      } else if (doors) {
+        const variantSuffix = isNonCoke ? ' Non Coke' : (isCoke ? ' Coke' : '');
+        cleanCode = `${doors} Pintu${variantSuffix}`;
+      } else {
+        cleanCode = original;
+      }
+
+      return {
+        raw: original,
+        doorCategory: doorCategory,
+        doorLabel: doorLabel,
+        cleanCode: cleanCode,
+        shortBadge: doors ? `${doors}P` : (modelPrefix || 'Chiller'),
+        doors: doors
+      };
+    },
+
+    /**
+     * List of Available Door / Chiller Types for Filter Dropdown
+     */
+    get availableDoorTypes() {
+      return [
+        { code: 'ALL', label: 'Semua Tipe Toko (Pintu)' },
+        { code: '12_DOOR', label: '🚪 12 Pintu (AC/AU 12P, CLP 03, Tipe 120)' },
+        { code: '10_DOOR', label: '🚪 10 Pintu (AC/AU 10P, IDM 10P, CLP 02, Tipe 100)' },
+        { code: '8_DOOR', label: '🚪 8 Pintu (AC/AU 8P, IDM 8P, Tipe 80)' },
+        { code: '6_DOOR', label: '🚪 6 Pintu (AC/AU 6P)' },
+        { code: '4_DOOR', label: '🚪 4 Pintu / Mini Chiller' },
+        { code: 'REGULAR', label: '🏪 Toko Reguler / Standar' },
+        { code: 'SPECIAL', label: '☕ Convenience (Lawson / Point / Fami)' },
+        { code: 'OTHER', label: '📦 Tipe Lainnya / Non-Chiller' }
+      ];
+    },
+
+    /**
      * Flatten Visits into Individual Photo Units for the Gallery Grid
      */
     get allPhotoItems() {
@@ -342,10 +496,16 @@ function galleryApp() {
           if (!v.account.includes(this.selectedAccount)) return;
         }
 
+        // Store / Chiller Door Type Filter
+        const normType = this.normalizeStoreType(v.tipeToko);
+        if (this.selectedDoorType !== 'ALL') {
+          if (normType.doorCategory !== this.selectedDoorType) return;
+        }
+
         // Search query
         if (this.searchQuery) {
           const q = this.searchQuery.toUpperCase();
-          const match = `${v.namaToko} ${v.kodeToko} ${v.namaCrew} ${v.account}`.toUpperCase();
+          const match = `${v.namaToko} ${v.kodeToko} ${v.namaCrew} ${v.account} ${v.tipeToko || ''} ${normType.cleanCode || ''}`.toUpperCase();
           if (!match.includes(q)) return;
         }
 
@@ -369,6 +529,8 @@ function galleryApp() {
             account: v.account,
             kodeToko: v.kodeToko,
             namaToko: v.namaToko,
+            tipeToko: v.tipeToko || '',
+            normType: normType,
             namaCrew: v.namaCrew,
             review: review || null
           });
@@ -394,6 +556,8 @@ function galleryApp() {
             account: v.account,
             kodeToko: v.kodeToko,
             namaToko: v.namaToko,
+            tipeToko: v.tipeToko || '',
+            normType: normType,
             namaCrew: v.namaCrew,
             review: review || null
           });
@@ -569,6 +733,13 @@ function galleryApp() {
           title = `Akun ${p.account || 'Lokal / Lainnya'}`;
           subtitle = `Jaringan Toko Retail • ${p.date}`;
           badge = p.account || 'ACCOUNT';
+        } else if (this.groupBy === 'CHILLER' || this.groupBy === 'DOOR_TYPE') {
+          const cat = p.normType?.doorCategory || 'OTHER';
+          const label = p.normType?.doorLabel || 'Lainnya';
+          groupKey = cat;
+          title = `🚪 Grup ${label}`;
+          subtitle = `Dokumentasi Visual Rak ${label} • ${p.date}`;
+          badge = label;
         } else if (this.groupBy === 'CREW') {
           groupKey = `${p.modul}_${p.namaCrew}`.toUpperCase();
           title = p.namaCrew || 'MDS Tanpa Nama';
@@ -614,6 +785,8 @@ function galleryApp() {
             namaToko: p.namaToko || 'Toko Tanpa Nama',
             kodeToko: p.kodeToko || '',
             account: p.account || 'LOKAL',
+            tipeToko: p.tipeToko || '',
+            normType: p.normType || null,
             modul: p.modul || '',
             time: p.time || '',
             date: p.date || '',
@@ -773,9 +946,10 @@ function galleryApp() {
       if (!url.startsWith('http')) {
         url = this.resolvedImagesMap[item.photoUrl] || await ApiService.resolveImage(item.photoUrl);
       }
+      const typeBadgeStr = item.normType && item.normType.cleanCode ? ` • 🧊 ${item.normType.cleanCode}` : '';
       this.previewModal = {
         isOpen: true,
-        title: `${item.namaToko} (${item.account || 'Toko'})`,
+        title: `${item.namaToko} (${item.account || 'Toko'})${typeBadgeStr}`,
         subtitle: `${item.typeLabel} • ${item.date} ${item.time} • MDS: ${item.namaCrew}`,
         photoUrl: url,
         photoType: item.type,

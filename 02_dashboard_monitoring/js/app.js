@@ -68,7 +68,8 @@ function dashboardApp() {
       { id: 'laporan', label: 'Laporan', icon: '📑' },
       { id: 'evaluasi', label: 'Evaluasi', icon: '🎖️' },
       { id: 'galeri', label: 'Galeri', icon: '🖼️' },
-      { id: 'simulasi', label: 'Simulasi', icon: '🗺️' }
+      { id: 'simulasi', label: 'Simulasi', icon: '🗺️' },
+      { id: 'audit_sku', label: 'Audit SKU', icon: '📦' }
     ],
     // Anomaly Trend & Monthly Leaderboard State
     anomalyViewMode: 'DAILY', // 'DAILY' | 'TREND'
@@ -78,12 +79,12 @@ function dashboardApp() {
     anomalyLeaderboardPage: 1,
     anomalyLeaderboardPageSize: 10,
     newUserForm: {
-      name: '',
       email: '',
-      modul: 'ALL',
+      password: '',
+      displayName: '',
       role: 'MDS',
+      modul: 'DK1',
       linkedCrew: '',
-      jabatan: 'Merchandiser',
       permissions: {
         kunjungan: true,
         absensi: true,
@@ -92,7 +93,8 @@ function dashboardApp() {
         laporan: false,
         evaluasi: false,
         galeri: false,
-        simulasi: false
+        simulasi: false,
+        audit_sku: false
       }
     },
     
@@ -8289,7 +8291,7 @@ function dashboardApp() {
     },
 
     getFirstAllowedTab() {
-      const tabs = ['kunjungan', 'absensi', 'jadwal', 'tokonasional', 'laporan', 'evaluasi', 'galeri', 'simulasi'];
+      const tabs = ['kunjungan', 'absensi', 'jadwal', 'tokonasional', 'laporan', 'evaluasi', 'galeri', 'simulasi', 'audit_sku'];
       for (const t of tabs) {
         if (this.canAccessTab(t)) return t;
       }
@@ -8608,7 +8610,7 @@ function dashboardApp() {
       const u = (this.rbacUsers || []).find(x => x && (x.id === userId || x.email === userId));
       if (!u) return;
       if (!u.permissions) u.permissions = {};
-      ['kunjungan', 'absensi', 'jadwal', 'tokonasional', 'laporan', 'evaluasi', 'galeri', 'simulasi'].forEach(tab => {
+      ['kunjungan', 'absensi', 'jadwal', 'tokonasional', 'laporan', 'evaluasi', 'galeri', 'simulasi', 'audit_sku'].forEach(tab => {
         u.permissions[tab] = Boolean(state);
       });
       this.syncRbacMatrixFromUsers();
@@ -8629,12 +8631,12 @@ function dashboardApp() {
       if (!u.permissions) u.permissions = {};
       const defaults = window.getDefaultSubTabsForRole
         ? window.getDefaultSubTabsForRole(u.role)
-        : { laporan: { rute: true, jadwal: true, absen: true, anomali: false }, evaluasi: { TOKO: true, DC: true }, galeri: { katalog: true, filter: true, download: true }, simulasi: { optimasi: true, editor: true, export: true } };
+        : { laporan: { rute: true, jadwal: true, absen: true, anomali: false }, evaluasi: { TOKO: true, DC: true }, galeri: { katalog: true, filter: true, download: true }, simulasi: { optimasi: true, editor: true, export: true }, audit_sku: { komparasi: true, stok_expiry: true, export: true } };
       
       if (!u.permissions.subTabs) {
         u.permissions.subTabs = JSON.parse(JSON.stringify(defaults));
       } else {
-        ['laporan', 'evaluasi', 'galeri', 'simulasi'].forEach(cat => {
+        ['laporan', 'evaluasi', 'galeri', 'simulasi', 'audit_sku'].forEach(cat => {
           if (!u.permissions.subTabs[cat]) {
             u.permissions.subTabs[cat] = { ...(defaults[cat] || {}) };
           }

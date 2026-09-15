@@ -29,7 +29,8 @@ window.RBAC_PAGES = [
   { id: 'laporan', label: 'Pusat Laporan WA', icon: 'share-2', desc: 'Broadcast WhatsApp, infografis KPI, & radar anomali' },
   { id: 'evaluasi', label: 'Evaluasi Kinerja SPV', icon: 'award', desc: 'Scorecard, target visit, kepatuhan rute, & ranking tim' },
   { id: 'galeri', label: 'Galeri Foto Pajangan', icon: 'image', desc: 'Audit foto Before/After & kepatuhan planogram per account' },
-  { id: 'simulasi', label: 'Simulasi & Editor Rute', icon: 'map', desc: 'Alokasi rute 25 hari kerja, editor MT Manager, & perizinan routing' }
+  { id: 'simulasi', label: 'Simulasi & Editor Rute', icon: 'map', desc: 'Alokasi rute 25 hari kerja, editor MT Manager, & perizinan routing' },
+  { id: 'audit_sku', label: 'Audit Produk & Harga', icon: 'package', desc: 'Komparasi harga antar account, stok OSA/SOH, & monitoring expiry' }
 ];
 
 // 4. PRESET DEFAULT BERDASARKAN ROLE
@@ -37,27 +38,27 @@ window.RBAC_ROLE_PRESETS = {
   SUPERADMIN: {
     label: 'Super Admin (Bu Oci & Anda)',
     color: 'indigo',
-    permissions: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true, galeri: true, simulasi: true }
+    permissions: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true, galeri: true, simulasi: true, audit_sku: true }
   },
   MANAGER: {
     label: 'Manager (Operasional / Regional)',
     color: 'blue',
-    permissions: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true, galeri: true, simulasi: true }
+    permissions: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true, galeri: true, simulasi: true, audit_sku: true }
   },
   SPV: {
     label: 'Supervisor (SPV Wilayah)',
     color: 'sky',
-    permissions: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true, galeri: true, simulasi: true }
+    permissions: { kunjungan: true, absensi: true, jadwal: true, tokonasional: true, laporan: true, evaluasi: true, galeri: true, simulasi: true, audit_sku: true }
   },
   MDS: {
     label: 'Field User (MDS Lapangan)',
     color: 'emerald',
-    permissions: { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false, galeri: false, simulasi: false }
+    permissions: { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false, galeri: false, simulasi: false, audit_sku: false }
   },
   CUSTOM: {
     label: 'Custom Access',
     color: 'amber',
-    permissions: { kunjungan: false, absensi: false, jadwal: false, tokonasional: false, laporan: false, evaluasi: false, galeri: false, simulasi: false }
+    permissions: { kunjungan: false, absensi: false, jadwal: false, tokonasional: false, laporan: false, evaluasi: false, galeri: false, simulasi: false, audit_sku: false }
   }
 };
 
@@ -107,6 +108,11 @@ window.getDefaultSubTabsForRole = function(role) {
       optimasi: isSuper || isSpv,
       editor: isSuper || isSpv,
       export: true
+    },
+    audit_sku: {
+      komparasi: true,
+      stok_expiry: true,
+      export: isSuper || isSpv
     }
   };
 };

@@ -274,6 +274,19 @@
               </div>
             </a>
 
+            <!-- 6. Audit Produk & Harga -->
+            <a href="../06_audit_sku/index.html"
+              x-show="window.canAccessPortalModule ? window.canAccessPortalModule('audit_sku') : true"
+              class="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
+              <div class="w-7 h-7 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                📦
+              </div>
+              <div class="min-w-0">
+                <div class="font-bold text-slate-900 dark:text-white">06. Audit Produk & Harga</div>
+                <div class="text-[10px] text-slate-400 truncate">Komparasi harga & stok OSA/SOH</div>
+              </div>
+            </a>
+
           </div>
         </div>
 
@@ -423,7 +436,7 @@
     <div class="glass-card rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3.5">
       
       <!-- Top Filters Row -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         
         <!-- 1. Modul Filter -->
         <div>
@@ -454,7 +467,7 @@
         <!-- 3. Account Filter -->
         <div>
           <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Account Ritel</label>
-          <select x-model="selectedAccount"
+          <select x-model="selectedAccount" @change="currentPage = 1"
             class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
             <template x-for="acc in CONFIG.ACCOUNTS" :key="acc">
               <option :value="acc" x-text="acc === 'ALL' ? 'Semua Account' : acc"></option>
@@ -462,10 +475,24 @@
           </select>
         </div>
 
-        <!-- 4. Tipe Foto Filter -->
+        <!-- 4. Tipe Toko / Chiller Filter -->
+        <div>
+          <label class="block text-[11px] font-bold text-sky-600 dark:text-sky-400 mb-1.5 uppercase tracking-wider flex items-center justify-between">
+            <span>Tipe Toko / Chiller</span>
+            <span class="text-[10px] text-slate-400 font-normal">Pintu</span>
+          </label>
+          <select x-model="selectedDoorType" @change="currentPage = 1"
+            class="w-full h-10 text-xs font-bold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-sky-500 cursor-pointer">
+            <template x-for="d in availableDoorTypes" :key="d.code">
+              <option :value="d.code" x-text="d.label"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- 5. Tipe Foto Filter -->
         <div>
           <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Tipe Foto</label>
-          <select x-model="selectedPhotoType"
+          <select x-model="selectedPhotoType" @change="currentPage = 1"
             class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
             <option value="ALL">Semua Foto (Before & After)</option>
             <option value="BEFORE">📸 Foto Before Saja</option>
@@ -473,7 +500,7 @@
           </select>
         </div>
 
-        <!-- 5. Periode Waktu -->
+        <!-- 6. Periode Waktu -->
         <div>
           <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Periode Waktu</label>
           <select x-model="dateFilter" @change="onDateFilterChange()"
@@ -575,6 +602,13 @@
             <span>🏢 Grup Account (Alfamart / Indomaret)</span>
           </button>
 
+          <button type="button" @click="setGroupBy('CHILLER')"
+            class="px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+            :class="groupBy === 'CHILLER' ? 'bg-brand-600 text-white shadow-brand-600/30 ring-2 ring-brand-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'">
+            <i data-lucide="snowflake" class="w-3.5 h-3.5"></i>
+            <span>🧊 Per Tipe Chiller</span>
+          </button>
+
           <button type="button" @click="setGroupBy('CREW')"
             class="px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
             :class="groupBy === 'CREW' ? 'bg-brand-600 text-white shadow-brand-600/30 ring-2 ring-brand-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'">
@@ -610,7 +644,7 @@
         <div class="flex items-center gap-2 flex-wrap">
           <div>
             Menampilkan <span class="font-bold text-slate-800 dark:text-slate-200" x-text="filteredPhotos.length"></span> foto pajangan
-            <span class="text-slate-400" x-show="groupBy !== 'FLAT'" x-text="`(${groupedPhotoSections.length} ${groupBy === 'TYPE' ? 'Grup Foto' : (groupBy === 'ACCOUNT' ? 'Grup Account' : (groupBy === 'CREW' ? 'MDS' : 'Modul'))})`"></span>
+            <span class="text-slate-400" x-show="groupBy !== 'FLAT'" x-text="`(${groupedPhotoSections.length} ${groupBy === 'TYPE' ? 'Grup Foto' : (groupBy === 'ACCOUNT' ? 'Grup Account' : (groupBy === 'CHILLER' ? 'Grup Chiller' : (groupBy === 'CREW' ? 'MDS' : 'Modul')))})`"></span>
           </div>
 
           <!-- Active MDS Pill with Clear Button -->
@@ -709,6 +743,13 @@
                           <template x-if="store.kodeToko">
                             <span class="text-[10.5px] text-slate-400 font-mono" x-text="`[${store.kodeToko}]`"></span>
                           </template>
+                          <!-- Badge Tipe Toko / Chiller (Pintu) -->
+                          <template x-if="store.normType && store.normType.cleanCode">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 flex items-center gap-1 flex-shrink-0" :title="`Tipe Database: ${store.tipeToko || '-'}`">
+                              <span>🧊</span>
+                              <span x-text="store.normType.cleanCode"></span>
+                            </span>
+                          </template>
                         </div>
                         <p class="text-[10.5px] text-slate-500 dark:text-slate-400" x-text="`🕒 Kunjungan Jam ${store.time || '-'} • ${store.date || ''}`"></p>
                       </div>
@@ -764,12 +805,25 @@
                           <div>
                             <!-- Store Name & Account -->
                             <div class="font-bold text-xs text-slate-900 dark:text-white truncate" :title="item.namaToko" x-text="item.namaToko"></div>
-                            <div class="flex items-center gap-1.5 text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5">
-                              <span class="font-extrabold text-brand-600 dark:text-brand-400" x-text="item.account"></span>
-                              <span>•</span>
-                              <span x-text="item.modul"></span>
+                            
+                            <!-- Badges row: Account + Tipe Toko / Chiller -->
+                            <div class="flex items-center gap-1.5 flex-wrap mt-1">
+                              <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20" x-text="item.account"></span>
+                              <template x-if="item.normType && item.normType.cleanCode">
+                                <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 flex items-center gap-1" :title="`Tipe Database: ${item.tipeToko || '-'}`">
+                                  <span>🧊</span>
+                                  <span x-text="item.normType.cleanCode"></span>
+                                </span>
+                              </template>
+                            </div>
+
+                            <div class="flex items-center gap-1.5 text-[10.5px] text-slate-500 dark:text-slate-400 mt-1">
+                              <span class="font-semibold text-indigo-500" x-text="item.modul"></span>
                               <span>•</span>
                               <span x-text="item.date"></span>
+                              <template x-if="item.time">
+                                <span x-text="`• ${item.time}`"></span>
+                              </template>
                             </div>
                             <div class="text-[10px] text-slate-400 truncate mt-0.5">MDS: <span class="font-semibold text-slate-700 dark:text-slate-300" x-text="item.namaCrew"></span></div>
                           </div>
