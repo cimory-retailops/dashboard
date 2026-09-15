@@ -241,81 +241,38 @@ function renderMapMarkers(stores, autoFit = false) {
 
     // Popup Detail Toko — gunakan getStoreVisitStatus untuk info lengkap
     const visitStatus = getStoreVisitStatus(store.kodeToko, store.account);
-    const { isLockedByOther, lockedBy, isRevisitTooSoon, isRevisitAllowed, lastSelfVisit, daysSinceLastVisit } = visitStatus;
+    const revisitBadgeHtml = visitStatus.isRevisit
+      ? `<span style="font-size:9px; background: rgba(59, 130, 246, 0.15); color: #2563eb; border: 1px solid rgba(59, 130, 246, 0.3); padding: 1px 6px; border-radius: 99px; font-weight: 600;">🔄 Re-Visit (Rute ${escapeHtml(visitStatus.lastVisit.rute)})</span>`
+      : "";
+    const revisitInfoHtml = visitStatus.isRevisit
+      ? `<div style="font-size:10px; color: var(--text-muted); margin-bottom: 4px;">ℹ️ Pernah dikunjungi pada Rute ${escapeHtml(visitStatus.lastVisit.rute)}${visitStatus.daysSinceLastVisit !== null ? ` (${visitStatus.daysSinceLastVisit} hari lalu)` : ''}</div>`
+      : "";
 
-    let popupContent;
-    if (isLockedByOther) {
-      popupContent = `
-        <div class="popup-container">
-          <div class="store-badges">
-            <span class="badge-code">${escapeHtml(store.kodeToko)}</span>
-            <span class="badge-brand ${brandClass}">${escapeHtml(store.account || 'TOKO')}</span>
-            <span style="font-size:9px; background: var(--danger); color:white; padding: 1px 5px; border-radius: 99px; font-weight:700;">🔒 TERKUNCI</span>
-          </div>
-          <div class="popup-title">${escapeHtml(store.namaToko)}</div>
-          <div class="popup-meta" style="color: var(--danger); font-weight: 600;">
-            Dikover oleh: ${escapeHtml(lockedBy.namaCrew)}<br>
-            Modul: ${escapeHtml(lockedBy.modul)} – Rute ${escapeHtml(lockedBy.rute)}
-          </div>
-          <button type="button" class="btn-popup-toggle" style="opacity:0.5; cursor:not-allowed;" onclick="event.preventDefault()">
-            <i data-lucide="lock"></i>
-            <span>Toko Sudah Dikunci</span>
+    const popupContent = `
+      <div class="popup-container">
+        <div class="store-badges">
+          <span class="badge-code">${escapeHtml(store.kodeToko)}</span>
+          <span class="badge-brand ${brandClass}">${escapeHtml(store.account || 'TOKO')}</span>
+          ${revisitBadgeHtml}
+        </div>
+        <div class="popup-title">${escapeHtml(store.namaToko)}</div>
+        <div class="popup-meta">
+          <i data-lucide="map-pin" style="width: 11px; height: 11px; display: inline;"></i>
+          ${escapeHtml(store.kecamatan || store.kota || 'Area Toko')}${store.provinsi ? ' • ' + escapeHtml(store.provinsi) : ''}
+          ${store.crew ? `<div style="font-size:10px; color: var(--text-muted); margin-top:2px;"><i data-lucide="user" style="width: 11px; height: 11px; display: inline;"></i> Crew: ${escapeHtml(store.crew)}</div>` : ''}
+        </div>
+        ${revisitInfoHtml}
+        <div style="display: flex; gap: 4px; margin-top: 2px;">
+          <button type="button" class="btn-popup-toggle" style="flex: 1;" onclick="toggleStoreSelection('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')">
+            <i data-lucide="plus"></i>
+            <span>Tambah Rute</span>
+          </button>
+          <button type="button" class="btn-popup-toggle" style="width: 34px; background: var(--bg-main); color: var(--text-main); border: 1px solid var(--border);" onclick="event.stopPropagation(); editStoreByCode('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')" title="Edit Data Toko">
+            <i data-lucide="edit-3"></i>
           </button>
         </div>
-      `;
-    } else if (isRevisitTooSoon) {
-      popupContent = `
-        <div class="popup-container">
-          <div class="store-badges">
-            <span class="badge-code">${escapeHtml(store.kodeToko)}</span>
-            <span class="badge-brand ${brandClass}">${escapeHtml(store.account || 'TOKO')}</span>
-            <span style="font-size:9px; background: var(--warning); color:white; padding: 1px 5px; border-radius: 99px; font-weight:700;">⚠️ RE-VISIT</span>
-          </div>
-          <div class="popup-title">${escapeHtml(store.namaToko)}</div>
-          <div class="popup-meta" style="color: var(--warning); font-weight: 600;">
-            Kunjungan terakhir: Rute ${escapeHtml(lastSelfVisit.rute)} (${daysSinceLastVisit} hari lalu)<br>
-            Re-visit minimal 14 hari. Tetap bisa dipilih dengan konfirmasi.
-          </div>
-          <div style="display: flex; gap: 4px; margin-top: 4px;">
-            <button type="button" class="btn-popup-toggle" style="flex:1; background: #f59e0b; color: #ffffff; font-weight: 700; border-color: #f59e0b; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.4);" onclick="toggleStoreSelection('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')">
-              <i data-lucide="plus-circle"></i>
-              <span>+ Pilih Re-Visit Toko</span>
-            </button>
-            <button type="button" class="btn-popup-toggle" style="width: 34px; background: var(--bg-main); color: var(--text-main); border: 1px solid var(--border);" onclick="event.stopPropagation(); editStoreByCode('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')" title="Edit Data Toko">
-              <i data-lucide="edit-3"></i>
-            </button>
-          </div>
-        </div>
-      `;
-    } else {
-      const revisitInfoHtml = isRevisitAllowed
-        ? `<div style="font-size:10px; color: var(--text-muted); margin-bottom: 4px;">✅ Re-visit OK (${daysSinceLastVisit} hari sejak Rute ${escapeHtml(lastSelfVisit.rute)})</div>`
-        : "";
-      popupContent = `
-        <div class="popup-container">
-          <div class="store-badges">
-            <span class="badge-code">${escapeHtml(store.kodeToko)}</span>
-            <span class="badge-brand ${brandClass}">${escapeHtml(store.account || 'TOKO')}</span>
-          </div>
-          <div class="popup-title">${escapeHtml(store.namaToko)}</div>
-          <div class="popup-meta">
-            <i data-lucide="map-pin" style="width: 11px; height: 11px; display: inline;"></i>
-            ${escapeHtml(store.kecamatan || store.kota || 'Area Toko')}${store.provinsi ? ' • ' + escapeHtml(store.provinsi) : ''}
-            ${store.crew ? `<div style="font-size:10px; color: var(--text-muted); margin-top:2px;"><i data-lucide="user" style="width: 11px; height: 11px; display: inline;"></i> Crew: ${escapeHtml(store.crew)}</div>` : ''}
-          </div>
-          ${revisitInfoHtml}
-          <div style="display: flex; gap: 4px; margin-top: 2px;">
-            <button type="button" class="btn-popup-toggle" style="flex: 1;" onclick="toggleStoreSelection('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')">
-              <i data-lucide="plus"></i>
-              <span>Tambah Rute</span>
-            </button>
-            <button type="button" class="btn-popup-toggle" style="width: 34px; background: var(--bg-main); color: var(--text-main); border: 1px solid var(--border);" onclick="event.stopPropagation(); editStoreByCode('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')" title="Edit Data Toko">
-              <i data-lucide="edit-3"></i>
-            </button>
-          </div>
-        </div>
-      `;
-    }
+      </div>
+    `;
 
     marker.bindPopup(popupContent);
     marker.on("popupopen", () => {
@@ -1328,78 +1285,31 @@ function renderFloatingSearchResults(stores, showContainer = true) {
     const isSelected = isStoreSelected(store.kodeToko, store.account);
     const brandClass = getBrandClass(store.account);
 
-    // Pakai getStoreVisitStatus untuk validasi lengkap dengan account
+    // Pakai getStoreVisitStatus untuk validasi info kunjungan
     const visitStatus = getStoreVisitStatus(store.kodeToko, store.account);
-    const { isLockedByOther, lockedBy, isRevisitTooSoon, isRevisitAllowed, lastSelfVisit, daysSinceLastVisit } = visitStatus;
 
-    // Badge status
+    // Badge status info revisit (jika pernah dikunjungi sebelumnya)
     let statusBadgeHtml = "";
-    let actionButtonHtml = "";
-    let extraCardClass = "";
-
-    if (isLockedByOther) {
-      extraCardClass = "locked";
+    if (visitStatus.isRevisit) {
       statusBadgeHtml = `
-        <span style="font-size:9px; background: var(--danger); color:white; padding: 1px 5px; border-radius: 99px; font-weight:700;">🔒 TERKUNCI</span>
-      `;
-      statusBadgeHtml += `
-        <div style="font-size: 10px; color: var(--danger); font-weight: 700; display: flex; align-items: center; gap: 3px; margin-top: 2px;">
-          <i data-lucide="lock" style="width: 11px; height: 11px;"></i>
-          Dikover: ${escapeHtml(lockedBy.namaCrew)} (${escapeHtml(lockedBy.modul)})
-        </div>
-      `;
-      actionButtonHtml = `
-        <button type="button" class="btn-icon-mini" disabled title="Toko dikunci" style="opacity:0.4; cursor:not-allowed;">
-          <i data-lucide="lock" style="width: 14px; height: 14px; color: var(--danger);"></i>
-        </button>
-      `;
-    } else if (isRevisitTooSoon) {
-      extraCardClass = "revisit-soon";
-      statusBadgeHtml = `
-        <span style="font-size:9px; background: var(--warning); color:white; padding: 1px 5px; border-radius: 99px; font-weight:700;">⚠️ RE-VISIT</span>
-      `;
-      statusBadgeHtml += `
-        <div style="font-size: 10px; color: var(--warning); font-weight: 700; margin-top: 2px;">
-          Kunjungan: Rute ${escapeHtml(lastSelfVisit.rute)} (${daysSinceLastVisit} hari lalu). Klik (+) untuk pilih.
-        </div>
-      `;
-      if (isSelected) {
-        actionButtonHtml = `
-          <button type="button" class="btn-icon-mini" onclick="event.stopPropagation(); toggleStoreSelection('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')" title="Hapus dari rute" style="background: rgba(16, 185, 129, 0.18); color: #059669; border: 1.5px solid #10b981;">
-            <i data-lucide="check" style="width: 14px; height: 14px; stroke-width: 2.5;"></i>
-          </button>
-        `;
-      } else {
-        actionButtonHtml = `
-          <button type="button" class="btn-icon-mini" onclick="event.stopPropagation(); toggleStoreSelection('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')" title="Pilih Re-visit (Bisa ditambahkan ke rute)" style="background: rgba(245, 158, 11, 0.18); color: #d97706; border: 1.5px solid #f59e0b;">
-            <i data-lucide="plus" style="width: 14px; height: 14px; stroke-width: 2.5;"></i>
-          </button>
-        `;
-      }
-    } else if (isRevisitAllowed) {
-      statusBadgeHtml = `
+        <span style="font-size:9px; background: rgba(59, 130, 246, 0.15); color: #2563eb; border: 1px solid rgba(59, 130, 246, 0.3); padding: 1px 5px; border-radius: 99px; font-weight:600;">🔄 RE-VISIT</span>
         <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
-          ✅ Re-visit OK (${daysSinceLastVisit} hari sejak Rute ${escapeHtml(lastSelfVisit.rute)})
+          Pernah di Rute ${escapeHtml(visitStatus.lastVisit.rute)}${visitStatus.daysSinceLastVisit !== null ? ` (${visitStatus.daysSinceLastVisit} hari lalu)` : ''}
         </div>
-      `;
-      actionButtonHtml = `
-        <button type="button" class="btn-icon-mini" onclick="event.stopPropagation(); toggleStoreSelection('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')" title="${isSelected ? 'Hapus dari rute' : 'Tambah ke rute'}">
-          <i data-lucide="${isSelected ? 'check' : 'plus'}" style="width: 14px; height: 14px; color: var(--${isSelected ? 'success' : 'primary'});"></i>
-        </button>
-      `;
-    } else {
-      actionButtonHtml = `
-        <button type="button" class="btn-icon-mini" onclick="event.stopPropagation(); toggleStoreSelection('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')" title="${isSelected ? 'Hapus dari rute' : 'Tambah ke rute'}">
-          <i data-lucide="${isSelected ? 'check' : 'plus'}" style="width: 14px; height: 14px; color: var(--${isSelected ? 'success' : 'primary'});"></i>
-        </button>
       `;
     }
+
+    const actionButtonHtml = `
+      <button type="button" class="btn-icon-mini" onclick="event.stopPropagation(); toggleStoreSelection('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')" title="${isSelected ? 'Hapus dari rute' : 'Tambah ke rute'}">
+        <i data-lucide="${isSelected ? 'check' : 'plus'}" style="width: 14px; height: 14px; color: var(--${isSelected ? 'success' : 'primary'});"></i>
+      </button>
+    `;
 
     const hasGps = store.lat !== null && store.lat !== undefined && store.lon !== null && store.lon !== undefined && !isNaN(Number(store.lat)) && !isNaN(Number(store.lon)) && (Number(store.lat) !== 0 || Number(store.lon) !== 0);
     const noGpsBadgeHtml = !hasGps ? `<span style="font-size:9px; background: rgba(148, 163, 184, 0.2); color: var(--text-muted); padding: 1px 5px; border-radius: 99px; font-weight: 600;">📍 No GPS</span>` : '';
 
     html += `
-      <div class="store-card-compact ${isSelected ? 'selected' : ''} ${extraCardClass}" onclick="flyToStoreOnMap('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}', '${escapeHtml(store.namaToko || '')}')">
+      <div class="store-card-compact ${isSelected ? 'selected' : ''}" onclick="flyToStoreOnMap('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}', '${escapeHtml(store.namaToko || '')}')">
         <div style="flex: 1; min-width: 0;">
           <div class="store-badges">
             <span class="badge-code">${escapeHtml(store.kodeToko)}</span>
@@ -1518,48 +1428,11 @@ window.toggleStoreSelection = function (kodeToko, account = "") {
     return;
   }
 
-  // --- Validasi sebelum menambahkan ---
+  // --- Validasi & Penentuan Status Kunjungan ---
   const visitStatus = getStoreVisitStatus(kodeToko, acc);
-
-  if (visitStatus.isLockedByOther) {
-    // HARD BLOCK: dikover MDS lain
-    showToast(`🔒 Toko dikover oleh ${visitStatus.lockedBy.namaCrew} (${visitStatus.lockedBy.modul} – Rute ${visitStatus.lockedBy.rute}). Tidak bisa dipilih!`, "error");
-    map.closePopup();
-    return;
-  }
-
-  let isRevisit = false;
-  let statusKunjungan = "Kunjungan Pertama";
-  let revisitReason = "-";
-
-  if (visitStatus.isRevisitTooSoon) {
-    // SOFT BLOCK: re-visit < 14 hari — minta konfirmasi & alasan
-    const lastVisit = visitStatus.lastSelfVisit;
-    const dayGap = visitStatus.daysSinceLastVisit;
-    const promptInput = prompt(
-      `⚠️ RE-VISIT TERLALU CEPAT\n\nToko ini sudah Anda kunjungi pada Rute ${lastVisit.rute} (${dayGap} hari lalu, min. 14 hari).\n\nMasukkan alasan re-visit (akan dicatat ke Rekap Spreadsheet):`,
-      "Wilayah minim toko"
-    );
-
-    if (promptInput === null) {
-      // User klik Batal
-      map.closePopup();
-      return;
-    }
-
-    isRevisit = true;
-    statusKunjungan = `Re-Visit (< 14 Hari)`;
-    revisitReason = promptInput.trim() || "Wilayah minim toko";
-    showToast(`⚠️ Re-visit dicatat: "${revisitReason}" (${dayGap} hari sejak Rute ${lastVisit.rute})`, "warning");
-  } else if (visitStatus.isRevisitAllowed) {
-    // Re-visit >= 14 hari — boleh
-    const lastVisit = visitStatus.lastSelfVisit;
-    const dayGap = visitStatus.daysSinceLastVisit;
-    isRevisit = true;
-    statusKunjungan = `Re-Visit (≥ 14 Hari)`;
-    revisitReason = "Jadwal berkala rutin";
-    showToast(`ℹ️ Re-visit OK: ${dayGap} hari sejak kunjungan terakhir (Rute ${lastVisit.rute})`, "warning");
-  }
+  const isRevisit = visitStatus.isRevisit;
+  const statusKunjungan = isRevisit ? "Re-Visit" : "Kunjungan Pertama";
+  const revisitReason = isRevisit ? "Re-Visit Rutin" : "-";
 
   // Tambahkan ke rute
   targetStore = targetStore || { kodeToko, account: acc };
@@ -1579,74 +1452,45 @@ window.toggleStoreSelection = function (kodeToko, account = "") {
   updateFloatingBar();
   map.closePopup();
 
-  if (!visitStatus.isRevisitTooSoon && !visitStatus.isRevisitAllowed) {
-    showToast(`Urutan #${currentCount}: ${targetStore.namaToko || targetStore.kodeToko} masuk Rute ${state.currentRute}`, "success");
-  }
+  showToast(`Urutan #${currentCount}: ${targetStore.namaToko || targetStore.kodeToko} masuk Rute ${state.currentRute}${isRevisit ? ' (Re-Visit)' : ''}`, "success");
 };
 
 /**
  * Analisis status kunjungan toko berdasarkan data claimedStores
- * 
- * Returns:
- *   { isLockedByOther, lockedBy, isRevisitTooSoon, isRevisitAllowed, lastSelfVisit, daysSinceLastVisit }
+ * Returns: { isRevisit, lastVisit, daysSinceLastVisit, isSelf }
  */
 function getStoreVisitStatus(kodeToko, account = "") {
-  const REVISIT_MIN_DAYS = 14;
-  let visits = state.claimedStores[kodeToko]; // array or undefined
+  let visits = state.claimedStores[kodeToko];
   const myCrewCode = (state.profile.kodeCrew || "").trim();
   const currentRute = parseInt(state.currentRute) || new Date().getDate();
 
   const result = {
-    isLockedByOther: false,
-    lockedBy: null,
-    isRevisitTooSoon: false,
-    isRevisitAllowed: false,
-    lastSelfVisit: null,
-    daysSinceLastVisit: null
+    isRevisit: false,
+    lastVisit: null,
+    daysSinceLastVisit: null,
+    isSelf: false
   };
 
   if (!visits || !Array.isArray(visits) || visits.length === 0) return result;
 
-  // Filter jika account diberikan agar Alfa dan Indomaret dengan kode sama tidak saling mengunci
   const cleanAcc = (account || "").toString().trim().toUpperCase();
   if (cleanAcc) {
     visits = visits.filter(v => (v.account || "").toString().trim().toUpperCase() === cleanAcc);
     if (visits.length === 0) return result;
   }
 
-  // Pisahkan kunjungan MDS lain dan kunjungan sendiri
-  const otherVisits = visits.filter(v => v.kodeCrew && v.kodeCrew !== myCrewCode);
-  const selfVisits = visits.filter(v => v.kodeCrew === myCrewCode);
+  // Ambil riwayat kunjungan paling akhir
+  const latestVisit = visits.reduce((a, b) =>
+    (parseInt(b.rute) || 0) > (parseInt(a.rute) || 0) ? b : a
+  );
 
-  // Cek apakah ada MDS lain yang sudah mengkover toko ini
-  if (otherVisits.length > 0) {
-    // Ambil kunjungan MDS lain yang paling baru (rute terbesar = paling akhir di bulan ini)
-    const latestOther = otherVisits.reduce((a, b) =>
-      (parseInt(b.rute) || 0) > (parseInt(a.rute) || 0) ? b : a
-    );
-    result.isLockedByOther = true;
-    result.lockedBy = latestOther;
-    return result;
-  }
-
-  // Cek kunjungan sendiri (re-visit)
-  if (selfVisits.length > 0) {
-    // Ambil kunjungan terakhir dari kode crew sendiri (rute terbesar)
-    const lastSelf = selfVisits.reduce((a, b) =>
-      (parseInt(b.rute) || 0) > (parseInt(a.rute) || 0) ? b : a
-    );
-
-    const lastRute = parseInt(lastSelf.rute) || 0;
-    const dayGap = currentRute - lastRute; // selisih hari dalam bulan yang sama
-
-    result.lastSelfVisit = lastSelf;
-    result.daysSinceLastVisit = dayGap;
-
-    if (dayGap < REVISIT_MIN_DAYS) {
-      result.isRevisitTooSoon = true;
-    } else {
-      result.isRevisitAllowed = true;
-    }
+  if (latestVisit) {
+    const lastRute = parseInt(latestVisit.rute) || 0;
+    const dayGap = currentRute - lastRute;
+    result.isRevisit = true;
+    result.lastVisit = latestVisit;
+    result.daysSinceLastVisit = isNaN(dayGap) ? null : dayGap;
+    result.isSelf = latestVisit.kodeCrew === myCrewCode;
   }
 
   return result;
