@@ -5968,8 +5968,8 @@
               </div>
               <input type="checkbox"
                 :disabled="mds.assignedToOther"
-                :checked="activeSpvTeamUser && Array.isArray(activeSpvTeamUser.managedMds) && activeSpvTeamUser.managedMds.includes(mds.linkedCrew)"
-                @change="toggleSpvMdsMember(mds.linkedCrew)"
+                :checked="mds.isCurrentTeam"
+                @change="toggleSpvMdsMember(mds.linkedCrew || mds.name)"
                 class="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
                 :class="mds.assignedToOther ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'">
             </label>
