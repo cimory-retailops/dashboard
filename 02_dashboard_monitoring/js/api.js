@@ -135,12 +135,13 @@ const ApiService = {
    */
   async getVisitsDirect(params = {}) {
     const targetModules = [];
+    const modUpper = (params.modul || 'ALL').toUpperCase().trim();
     for (const [modKey, sheetId] of Object.entries(CONFIG.MODUL_IDS)) {
-      if (!params.modul || params.modul === 'ALL') {
+      if (!modUpper || modUpper === 'ALL' || modUpper === 'NASIONAL') {
         targetModules.push({ modKey, sheetId });
-      } else if (params.modul.length === 2 && modKey.startsWith(params.modul)) {
+      } else if (modUpper.length === 2 && modKey.startsWith(modUpper)) {
         targetModules.push({ modKey, sheetId });
-      } else if (params.modul === modKey) {
+      } else if (modUpper === modKey) {
         targetModules.push({ modKey, sheetId });
       }
     }
@@ -326,8 +327,9 @@ const ApiService = {
 
   async getAbsensiDirect(params = {}) {
     const targetAbsen = [];
+    const modUpper = (params.modul || 'ALL').toUpperCase().trim();
     for (const [absKey, sheetId] of Object.entries(CONFIG.ABSEN_IDS)) {
-      if (!params.modul || params.modul === 'ALL' || params.modul.startsWith(absKey)) {
+      if (!modUpper || modUpper === 'ALL' || modUpper === 'NASIONAL' || modUpper.startsWith(absKey) || absKey.startsWith(modUpper)) {
         targetAbsen.push({ absKey, sheetId });
       }
     }
@@ -472,12 +474,13 @@ const ApiService = {
 
     // 2. Fallback: Parallel fetch across 15 branch spreadsheets
     const targetModules = [];
+    const modUpper = (params.modul || 'ALL').toUpperCase().trim();
     for (const [modKey, sheetId] of Object.entries(CONFIG.MODUL_IDS)) {
-      if (!params.modul || params.modul === 'ALL') {
+      if (!modUpper || modUpper === 'ALL' || modUpper === 'NASIONAL') {
         targetModules.push({ modKey, sheetId });
-      } else if (params.modul.length === 2 && modKey.startsWith(params.modul)) {
+      } else if (modUpper.length === 2 && modKey.startsWith(modUpper)) {
         targetModules.push({ modKey, sheetId });
-      } else if (params.modul === modKey) {
+      } else if (modUpper === modKey) {
         targetModules.push({ modKey, sheetId });
       }
     }

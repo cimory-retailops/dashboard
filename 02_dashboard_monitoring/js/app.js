@@ -382,7 +382,12 @@ function dashboardApp() {
         // Prioritas pemulihan tab aktif saat browser di-refresh: URL Param -> URL Hash -> SessionStorage -> LocalStorage -> State
         const urlParams = new URLSearchParams(window.location.search);
         const urlTab = urlParams.get('tab') || (window.location.hash ? window.location.hash.replace('#', '') : '');
-        const savedTab = urlTab || sessionStorage.getItem('cimory_active_tab') || localStorage.getItem('cimory_active_tab') || (state ? state.activeTab : null) || 'kunjungan';
+        let savedTab = urlTab || sessionStorage.getItem('cimory_active_tab') || localStorage.getItem('cimory_active_tab') || (state ? state.activeTab : null) || 'kunjungan';
+        if (savedTab === 'rbac' || savedTab === 'control_panel') {
+          if (!this.currentUser || (this.currentUser.role !== 'SUPERADMIN' && !this.currentUser.isSuperAdmin && this.currentUser.role !== 'MANAGER')) {
+            savedTab = 'kunjungan';
+          }
+        }
         if (savedTab) {
           this.activeTab = savedTab;
         }
@@ -725,10 +730,11 @@ function dashboardApp() {
     getEffectiveFetchModul() {
       if (this.currentUser) {
         const role = (this.currentUser.role || '').toUpperCase();
-        if (role === 'MDS' && this.currentUser.modul && this.currentUser.modul !== 'ALL') {
+        const uMod = (this.currentUser.modul || '').toUpperCase().trim();
+        if (role === 'MDS' && uMod && uMod !== 'ALL' && uMod !== 'NASIONAL') {
           return this.currentUser.modul;
         }
-        if (role === 'SPV' && this.currentUser.modul && this.currentUser.modul !== 'ALL') {
+        if (role === 'SPV' && uMod && uMod !== 'ALL' && uMod !== 'NASIONAL') {
           return this.currentUser.modul;
         }
       }
@@ -737,11 +743,14 @@ function dashboardApp() {
         if (raw) {
           const u = JSON.parse(raw);
           const r = (u.role || '').toUpperCase();
-          if (r === 'MDS' && u.modul && u.modul !== 'ALL') return u.modul;
-          if (r === 'SPV' && u.modul && u.modul !== 'ALL') return u.modul;
+          const uMod = (u.modul || u.moduleOrArea || '').toUpperCase().trim();
+          if (r === 'MDS' && uMod && uMod !== 'ALL' && uMod !== 'NASIONAL') return u.modul || u.moduleOrArea;
+          if (r === 'SPV' && uMod && uMod !== 'ALL' && uMod !== 'NASIONAL') return u.modul || u.moduleOrArea;
         }
       } catch (e) {}
 
+      const sMod = (this.selectedModul || 'ALL').toUpperCase().trim();
+      if (sMod === 'NASIONAL' || sMod === 'ALL') return 'ALL';
       return this.selectedModul || 'ALL';
     },
 
@@ -8095,6 +8104,9 @@ function dashboardApp() {
           } else {
             this.role = 'mds';
           }
+          if (!this.canAccessTab(this.activeTab)) {
+            this.navigateToTab(this.getFirstAllowedTab());
+          }
           this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
         });
 
@@ -8218,6 +8230,8 @@ function dashboardApp() {
       // 1. Bersihkan sesi secara instan
       localStorage.removeItem('cimory_portal_active_session');
       localStorage.removeItem('cimory_mock_user');
+      localStorage.removeItem('cimory_active_tab');
+      sessionStorage.removeItem('cimory_active_tab');
       sessionStorage.removeItem('cimory_portal_session');
       this.currentUser = null;
       this.userDropdownOpen = false;
