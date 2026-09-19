@@ -26,7 +26,7 @@ function dashboardApp() {
     hasNewDataAvailable: false,
     newUpdateCount: 0,
     newUpdateMessage: 'Ada pembaruan data lapangan terbaru',
-    lastBgCheckTime: 0,
+    lastBgCheckTime: Date.now(),
     // Firebase & RBAC Authentication State
     currentUser: null, // { uid, email, displayName, role, isSuperAdmin }
     isLoginModalOpen: false,
@@ -64,7 +64,7 @@ function dashboardApp() {
       { id: 'kunjungan', label: 'Kunjungan', icon: '📍' },
       { id: 'absensi', label: 'Absensi', icon: '⏱️' },
       { id: 'jadwal', label: 'Jadwal', icon: '📅' },
-      { id: 'tokonasional', label: '49k Toko', icon: '🏬' },
+      { id: 'tokonasional', label: 'Toko Nasional', icon: '🏬' },
       { id: 'laporan', label: 'Laporan', icon: '📑' },
       { id: 'evaluasi', label: 'Evaluasi', icon: '🎖️' },
       { id: 'galeri', label: 'Galeri', icon: '🖼️' },
@@ -142,13 +142,21 @@ function dashboardApp() {
       customEndInput: '',
       status: 'ALL', // 'ALL' | 'LENGKAP' | 'MASUK_ONLY' | 'PULANG_ONLY'
       searchInputText: '',
-      searchQuery: ''
+      searchQuery: '',
+      selectedCrews: [],
+      tempSelectedCrews: [],
+      crewDropdownOpen: false,
+      crewDropdownSearch: ''
     },
 
     // 3. Filters Tab 3: Target Jadwal Rute (Independent Scoped Filter - On Demand)
     filterJadwal: {
       modul: 'ALL',
       selectedCrew: 'ALL',
+      selectedCrews: [],
+      tempSelectedCrews: [],
+      crewDropdownOpen: false,
+      crewDropdownSearch: '',
       rute: 'ALL', // 'ALL' | '1' .. '31'
       showRuteGridMenu: false,
       account: 'ALL',
@@ -161,6 +169,7 @@ function dashboardApp() {
       appliedAccount: 'ALL',
       appliedSearchQuery: ''
     },
+    selectedJadwalKeys: [],
 
     // 4. Filters Tab 4: Database Toko Nasional (49k) (IndexedDB High-Performance Cache)
     stores49k: [],
@@ -221,6 +230,10 @@ function dashboardApp() {
       activeSubTable: 'ALL', // 'ALL' | 'TOKO' | 'DC'
       searchQuery: '',
       searchInput: '',
+      selectedCrews: [],
+      tempSelectedCrews: [],
+      crewDropdownOpen: false,
+      crewDropdownSearch: '',
       page: 1,
       pageSize: 50
     },
@@ -321,7 +334,7 @@ function dashboardApp() {
      * Save active dashboard state & data to IndexedDB
      * Allows seamless switching between WhatsApp and Dashboard without reload or data loss (>100MB capacity)
      */
-    async saveSessionState() {
+    async saveSessionState(saveBigData = false) {
       try {
         const state = {
           selectedModul: this.selectedModul || 'ALL',
@@ -335,6 +348,12 @@ function dashboardApp() {
         };
 
         if (window.DashboardDB) {
+          // Navigasi tab / ganti filter: Cukup simpan app_state secara instan (< 1ms) tanpa freeze
+          if (!saveBigData) {
+            await DashboardDB.set('app_state', state);
+            return;
+          }
+
           const entries = {
             app_state: state
           };
@@ -345,7 +364,6 @@ function dashboardApp() {
           if (this.archiveList && this.archiveList.length > 0) entries.archive_list = this.archiveList;
 
           await DashboardDB.setMany(entries);
-          console.log(`%c[IndexedDB Save]%c State & ${this.visits ? this.visits.length : 0} kunjungan tersimpan permanen di memori HP`, 'background:#059669;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#34d399;');
         }
       } catch (e) {
         console.warn('Gagal menyimpan cache IndexedDB:', e);
@@ -358,6 +376,34 @@ function dashboardApp() {
     async restoreSessionState() {
       try {
         if (!window.DashboardDB) return false;
+
+        // FAST-PATH SUPABASE: Pulihkan preferensi filter UI secara instan (< 2ms) tanpa membaca ratusan MB cache basi dari IndexedDB
+        if (window.CONFIG && CONFIG.USE_SUPABASE) {
+          try {
+            const state = await DashboardDB.get('app_state', true);
+            if (state) {
+              this.selectedModul = state.selectedModul || 'ALL';
+              this.selectedAccount = state.selectedAccount || 'ALL';
+              this.selectedPeriod = state.selectedPeriod || 'LIVE';
+              this.dateFilter = state.dateFilter || 'LATEST_DAY';
+              this.startDate = state.startDate || '';
+              this.endDate = state.endDate || '';
+            }
+          } catch (e) {}
+
+          const urlParams = new URLSearchParams(window.location.search);
+          const urlTab = urlParams.get('tab') || (window.location.hash ? window.location.hash.replace('#', '') : '');
+          let savedTab = urlTab || sessionStorage.getItem('cimory_active_tab') || localStorage.getItem('cimory_active_tab') || 'kunjungan';
+          if (savedTab === 'rbac' || savedTab === 'control_panel') {
+            if (!this.currentUser || (this.currentUser.role !== 'SUPERADMIN' && !this.currentUser.isSuperAdmin && this.currentUser.role !== 'MANAGER')) {
+              savedTab = 'kunjungan';
+            }
+          }
+          if (savedTab) {
+            this.activeTab = savedTab;
+          }
+          return false; // Picu unduh data live langsung dari Supabase
+        }
 
         console.time('⚡ [Cache-First] Baca Data Lokal IndexedDB');
         const [state, cachedVisits, cachedAbsensi, cachedMaster, cachedUsers, cachedArchives] = await Promise.all([
@@ -390,6 +436,11 @@ function dashboardApp() {
         }
         if (savedTab) {
           this.activeTab = savedTab;
+        }
+
+        const savedSubTab = urlParams.get('subtab') || localStorage.getItem('mds_tokonasional_subtab') || sessionStorage.getItem('mds_tokonasional_subtab');
+        if (savedSubTab === 'compare' || savedSubTab === 'catalog') {
+          this.tokonasionalSubTab = savedSubTab;
         }
 
         if (cachedMaster && cachedMaster.length > 0) this.masterToko = cachedMaster;
@@ -439,7 +490,7 @@ function dashboardApp() {
       // Tampilkan status pemulihan memori lokal yang jelas
       this.isLoading = true;
       this.loadingStage = 3;
-      this.loadingMessage = '⚡ Membaca data lokal dari memori perangkat...';
+      this.loadingMessage = CONFIG.USE_SUPABASE ? '⚡ Menghubungkan ke Supabase Cloud REST API...' : '⚡ Membaca data lokal dari memori perangkat...';
       this.dismissPreloader(); // Transisi dari splash screen statis ke dynamic loading overlay
 
       // 1. Coba pulihkan sesi secara instan dari IndexedDB lokal (< 20ms)
@@ -474,11 +525,27 @@ function dashboardApp() {
         });
 
         this.loadArchiveMonths();
+
+        // ⚡ SILENT BACKGROUND SYNC: Sinkronkan Master Jadwal Toko langsung dari Supabase (< 100ms)
+        if (CONFIG.USE_SUPABASE) {
+          setTimeout(async () => {
+            try {
+              const freshMaster = await ApiService.getMasterToko({ modul: 'ALL', forceRefresh: true });
+              if (freshMaster && Array.isArray(freshMaster)) {
+                this.masterToko = freshMaster;
+                if (window.DashboardDB) DashboardDB.set('master_toko', freshMaster);
+                console.log(`⚡ [Silent Background Sync] Jadwal Supabase terbaru tersinkronisasi (${freshMaster.length} baris)`);
+              }
+            } catch (syncErr) {
+              console.warn('⚠️ Silent background sync Supabase warning:', syncErr);
+            }
+          }, 300);
+        }
       } else {
-        // Cold start pertama kali (hanya jika cache lokal benar-benar kosong)
-        console.log('%c[Cache Status]%c ⚠️ COLD START (Cache Kosong / First Boot) -> Mengunduh 15 Sheets...', 'background:#d97706;color:white;font-weight:bold;padding:1px 6px;border-radius:3px;', 'color:#fbbf24;');
+        // Cold start pertama kali atau mode Supabase live
+        console.log('%c[Cache Status]%c ⚡ Inisialisasi Data Live dari Cloud...', 'background:#2563eb;color:white;font-weight:bold;padding:1px 6px;border-radius:3px;', 'color:#60a5fa;');
         console.groupEnd();
-        this.refreshAllData(true, false);
+        await this.refreshAllData(true, true);
         this.loadArchiveMonths();
       }
 
@@ -523,6 +590,36 @@ function dashboardApp() {
         });
       }
 
+      // Real-time inter-tab sync listener (Web Absen <-> Dashboard Monitoring)
+      try {
+        const syncChannel = new BroadcastChannel('mds_sync_channel');
+        syncChannel.onmessage = (event) => {
+          const msg = event.data;
+          if (!msg) return;
+          console.log('📡 [BroadcastChannel] Sinyal update dari Web Absen:', msg);
+          if (msg.type === 'STORE_DELETED' && msg.kodeToko) {
+            const targetKode = String(msg.kodeToko).toUpperCase().trim();
+            const targetRute = String(msg.rute || '').replace(/[^0-9]/g, '');
+            if (this.masterToko && Array.isArray(this.masterToko)) {
+              this.masterToko = this.masterToko.filter(m => {
+                const k = String(m.kodeToko || '').toUpperCase().trim();
+                const r = String(m.rute || '').replace(/[^0-9]/g, '');
+                if (targetRute) return !(k === targetKode && r === targetRute);
+                return k !== targetKode;
+              });
+              if (window.DashboardDB) DashboardDB.set('master_toko', this.masterToko);
+              console.log(`🗑️ [Realtime Inter-Tab] Toko ${targetKode} otomatis dihapus dari memori Dashboard!`);
+              this.$nextTick(() => {
+                if (typeof this.renderJadwalRouteMap === 'function') this.renderJadwalRouteMap();
+              });
+            }
+          } else if (msg.type === 'SCHEDULE_SUBMITTED') {
+            console.log('📥 [Realtime Inter-Tab] Ada jadwal baru, menyinkronkan data...');
+            this.refreshAllData(true, false);
+          }
+        };
+      } catch (bcErr) {}
+
       // Auto-save session state saat user minimize / switch aplikasi
       window.addEventListener('pagehide', () => this.saveSessionState());
       window.addEventListener('beforeunload', () => this.saveSessionState());
@@ -552,16 +649,30 @@ function dashboardApp() {
      * Web onResume & Smart Lifecycle Listeners
      */
     initLifecycleListeners() {
-      // 1. Tab Visibility Change (Saat balik dari aplikasi lain / WhatsApp)
+      this.lastBgCheckTime = Date.now();
+      const triggerAutoSync = () => {
+        if (this.selectedPeriod !== 'LIVE' || this.isLoading || this.isSilentSyncing || this.isSyncLocked) return;
+        if (!this.visits || this.visits.length === 0) return; // Jangan trigger jika data boot awal belum siap
+        const now = Date.now();
+        const elapsed = now - (this.lastBgCheckTime || now);
+        // Jika tab ditinggal > 3 menit, langsung tarik data Supabase live secara hening
+        if (elapsed > 3 * 60 * 1000) {
+          this.lastBgCheckTime = now;
+          if (window.CONFIG && CONFIG.USE_SUPABASE) {
+            this.syncRealtimeDataOnly();
+          } else {
+            this.checkBackgroundUpdates();
+          }
+        }
+      };
+
+      // 1. Tab Visibility Change (Saat balik dari aplikasi lain / WhatsApp / tab lain)
       document.addEventListener('visibilitychange', async () => {
         if (document.visibilityState === 'visible') {
           if (this.isLoading && !this.wakeLockSentinel) {
             await this.requestWakeLock();
           }
-          const elapsed = Date.now() - (this.lastBgCheckTime || 0);
-          if (elapsed > 10 * 60 * 1000 && this.selectedPeriod === 'LIVE') {
-            this.checkBackgroundUpdates();
-          }
+          triggerAutoSync();
         } else if (document.visibilityState === 'hidden') {
           this.saveSessionState();
         }
@@ -569,26 +680,33 @@ function dashboardApp() {
 
       // 2. Window Focus (Alt-Tab / klik browser)
       window.addEventListener('focus', () => {
-        const elapsed = Date.now() - (this.lastBgCheckTime || 0);
-        if (elapsed > 10 * 60 * 1000 && this.selectedPeriod === 'LIVE') {
-          this.checkBackgroundUpdates();
-        }
+        triggerAutoSync();
       });
 
       // 3. Online Reconnect
       window.addEventListener('online', () => {
         if (this.selectedPeriod === 'LIVE') {
-          this.checkBackgroundUpdates();
+          this.lastBgCheckTime = Date.now();
+          if (window.CONFIG && CONFIG.USE_SUPABASE) {
+            this.syncRealtimeDataOnly();
+          } else {
+            this.checkBackgroundUpdates();
+          }
         }
       });
 
-      // 4. Smart Background Check: Tiap 10 menit secara hening (hanya saat jam operasional 07:00 - 20:00)
+      // 4. Smart Background Check: Tiap 3 menit secara hening dan instan
       if (this.syncTimer) clearInterval(this.syncTimer);
       this.syncTimer = setInterval(() => {
         if (document.visibilityState === 'visible' && this.selectedPeriod === 'LIVE' && !this.isLoading && !this.isSilentSyncing) {
-          this.checkBackgroundUpdates();
+          this.lastBgCheckTime = Date.now();
+          if (window.CONFIG && CONFIG.USE_SUPABASE) {
+            this.syncRealtimeDataOnly();
+          } else {
+            this.checkBackgroundUpdates();
+          }
         }
-      }, 10 * 60 * 1000);
+      }, 3 * 60 * 1000);
     },
 
     /**
@@ -1828,8 +1946,12 @@ function dashboardApp() {
 
       // 3. Filter by Selected Crew / Multi-Selected Crews / Search Query
       const q = (f.searchQuery || '').toUpperCase().trim();
-      if (this.selectedCrews && this.selectedCrews.length > 0) {
-        const selCrewsUpper = new Set(this.selectedCrews.map(c => String(c).toUpperCase().trim()));
+      const absCrews = (f.selectedCrews && f.selectedCrews.length > 0)
+        ? f.selectedCrews
+        : (this.selectedCrews && this.selectedCrews.length > 0 ? this.selectedCrews : []);
+
+      if (absCrews.length > 0) {
+        const selCrewsUpper = new Set(absCrews.map(c => String(c).toUpperCase().trim()));
         data = data.filter(a => {
           const cName = (a.namaCrew || '').toUpperCase().trim();
           const cCode = (a.kodeCrew || '').toUpperCase().trim();
@@ -2056,12 +2178,16 @@ function dashboardApp() {
       const f = this.filterJadwal || {};
 
       // 1. Filter MDS / Personil Crew (PRIORITAS: Jika memilih MDS spesifik, cari langsung nama MDS tersebut)
-      const selCrew = (f.appliedSelectedCrew || 'ALL').toUpperCase().trim();
-      if (selCrew !== 'ALL') {
+      const jadwalCrews = (f.selectedCrews && f.selectedCrews.length > 0)
+        ? f.selectedCrews.map(c => c.toUpperCase().trim())
+        : (f.appliedSelectedCrew && f.appliedSelectedCrew !== 'ALL' ? [f.appliedSelectedCrew.toUpperCase().trim()] : []);
+
+      if (jadwalCrews.length > 0) {
+        const selSet = new Set(jadwalCrews);
         data = data.filter(m => {
           const cName = (m.namaCrew || '').toUpperCase().trim();
           const cCode = (m.kodeCrew || '').toUpperCase().trim();
-          return cName === selCrew || cCode === selCrew || (cName && (cName.includes(selCrew) || selCrew.includes(cName)));
+          return selSet.has(cName) || selSet.has(cCode) || jadwalCrews.some(sc => cName.includes(sc) || sc.includes(cName));
         });
       } else {
         // Hanya filter modul wilayah jika sedang memilih "Semua MDS"
@@ -3246,6 +3372,246 @@ function dashboardApp() {
         if (this.initCharts) this.initCharts();
       });
     },
+
+    // =========================================================================
+    // ABSENSI: Multi-Select Crew Dropdown Helpers
+    // =========================================================================
+    get filteredAbsensiDropdownCrews() {
+      if (this.currentUser && this.currentUser.role === 'MDS') {
+        return this.allAvailableCrews;
+      }
+      const q = (this.filterAbsensi.crewDropdownSearch || '').toUpperCase().trim();
+      let list = this.allAvailableCrews;
+      const mod = this.filterAbsensi.modul;
+      if (mod && mod !== 'ALL' && mod.toUpperCase() !== 'NASIONAL') {
+        if (mod.length === 2) {
+          list = list.filter(c => c.modul.startsWith(mod));
+        } else {
+          list = list.filter(c => c.modul === mod);
+        }
+      }
+      if (q) {
+        list = list.filter(c => c.upper.includes(q) || c.kodeCrew.toUpperCase().includes(q) || c.modul.includes(q));
+      }
+      return list;
+    },
+
+    openAbsensiCrewDropdown() {
+      this.filterAbsensi.tempSelectedCrews = [...(this.filterAbsensi.selectedCrews || [])];
+      this.filterAbsensi.crewDropdownSearch = '';
+      this.filterAbsensi.crewDropdownOpen = true;
+    },
+
+    toggleAbsensiCrewTempSelection(crewName) {
+      if (!crewName) return;
+      const upper = crewName.toUpperCase().trim();
+      const arr = this.filterAbsensi.tempSelectedCrews;
+      const idx = arr.findIndex(c => c.toUpperCase().trim() === upper);
+      if (idx >= 0) {
+        arr.splice(idx, 1);
+      } else {
+        arr.push(crewName);
+      }
+    },
+
+    isAbsensiCrewTempSelected(crewName) {
+      if (!crewName || !this.filterAbsensi.tempSelectedCrews) return false;
+      const upper = crewName.toUpperCase().trim();
+      return this.filterAbsensi.tempSelectedCrews.some(c => c.toUpperCase().trim() === upper);
+    },
+
+    selectAllAbsensiFilteredTempCrews() {
+      const currentFiltered = this.filteredAbsensiDropdownCrews;
+      const toAdd = currentFiltered.map(c => c.namaCrew);
+      const set = new Set(this.filterAbsensi.tempSelectedCrews);
+      toAdd.forEach(name => set.add(name));
+      this.filterAbsensi.tempSelectedCrews = Array.from(set);
+    },
+
+    clearAllAbsensiTempCrews() {
+      this.filterAbsensi.tempSelectedCrews = [];
+      this.filterAbsensi.crewDropdownSearch = '';
+    },
+
+    applyAbsensiCrewSelection() {
+      this.filterAbsensi.selectedCrews = [...(this.filterAbsensi.tempSelectedCrews || [])];
+      this.filterAbsensi.crewDropdownOpen = false;
+      this.currentPage = 1;
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
+    clearAllAbsensiSelectedCrews() {
+      this.filterAbsensi.tempSelectedCrews = [];
+      if (this.currentUser && this.currentUser.role === 'MDS') {
+        const myCrew = this.getCurrentMdsCrewName();
+        this.filterAbsensi.selectedCrews = myCrew ? [myCrew] : [];
+      } else {
+        this.filterAbsensi.selectedCrews = [];
+      }
+      this.filterAbsensi.crewDropdownSearch = '';
+      this.currentPage = 1;
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
+    // =========================================================================
+    // JADWAL: Multi-Select Crew Dropdown Helpers
+    // =========================================================================
+    get filteredJadwalDropdownCrews() {
+      if (this.currentUser && this.currentUser.role === 'MDS') {
+        return this.allAvailableCrews;
+      }
+      const q = (this.filterJadwal.crewDropdownSearch || '').toUpperCase().trim();
+      let list = this.allAvailableCrews;
+      const mod = this.filterJadwal.modul;
+      if (mod && mod !== 'ALL' && mod.toUpperCase() !== 'NASIONAL') {
+        if (mod.length === 2) {
+          list = list.filter(c => c.modul.startsWith(mod));
+        } else {
+          list = list.filter(c => c.modul === mod);
+        }
+      }
+      if (q) {
+        list = list.filter(c => c.upper.includes(q) || c.kodeCrew.toUpperCase().includes(q) || c.modul.includes(q));
+      }
+      return list;
+    },
+
+    openJadwalCrewDropdown() {
+      this.filterJadwal.tempSelectedCrews = [...(this.filterJadwal.selectedCrews || [])];
+      this.filterJadwal.crewDropdownSearch = '';
+      this.filterJadwal.crewDropdownOpen = true;
+    },
+
+    toggleJadwalCrewTempSelection(crewName) {
+      if (!crewName) return;
+      const upper = crewName.toUpperCase().trim();
+      const arr = this.filterJadwal.tempSelectedCrews;
+      const idx = arr.findIndex(c => c.toUpperCase().trim() === upper);
+      if (idx >= 0) {
+        arr.splice(idx, 1);
+      } else {
+        arr.push(crewName);
+      }
+    },
+
+    isJadwalCrewTempSelected(crewName) {
+      if (!crewName || !this.filterJadwal.tempSelectedCrews) return false;
+      const upper = crewName.toUpperCase().trim();
+      return this.filterJadwal.tempSelectedCrews.some(c => c.toUpperCase().trim() === upper);
+    },
+
+    selectAllJadwalFilteredTempCrews() {
+      const currentFiltered = this.filteredJadwalDropdownCrews;
+      const toAdd = currentFiltered.map(c => c.namaCrew);
+      const set = new Set(this.filterJadwal.tempSelectedCrews);
+      toAdd.forEach(name => set.add(name));
+      this.filterJadwal.tempSelectedCrews = Array.from(set);
+    },
+
+    clearAllJadwalTempCrews() {
+      this.filterJadwal.tempSelectedCrews = [];
+      this.filterJadwal.crewDropdownSearch = '';
+    },
+
+    applyJadwalCrewSelection() {
+      this.filterJadwal.selectedCrews = [...(this.filterJadwal.tempSelectedCrews || [])];
+      this.filterJadwal.crewDropdownOpen = false;
+      if (this.filterJadwal.selectedCrews.length === 1) {
+        this.filterJadwal.selectedCrew = this.filterJadwal.selectedCrews[0];
+      } else if (this.filterJadwal.selectedCrews.length === 0) {
+        this.filterJadwal.selectedCrew = 'ALL';
+      }
+      this.applyJadwalFilter();
+    },
+
+    clearAllJadwalSelectedCrews() {
+      this.filterJadwal.tempSelectedCrews = [];
+      if (this.currentUser && this.currentUser.role === 'MDS') {
+        const myCrew = this.getCurrentMdsCrewName();
+        this.filterJadwal.selectedCrews = myCrew ? [myCrew] : [];
+        this.filterJadwal.selectedCrew = myCrew || 'ALL';
+      } else {
+        this.filterJadwal.selectedCrews = [];
+        this.filterJadwal.selectedCrew = 'ALL';
+      }
+      this.filterJadwal.crewDropdownSearch = '';
+      this.applyJadwalFilter();
+    },
+
+    // =========================================================================
+    // EVALUASI SPV: Multi-Select Crew Dropdown Helpers
+    // =========================================================================
+    get filteredSpvDropdownCrews() {
+      const q = (this.filterSpv.crewDropdownSearch || '').toUpperCase().trim();
+      let list = this.allAvailableCrews;
+      const spvCode = this.filterSpv.spv;
+      if (spvCode && spvCode !== 'ALL') {
+        list = list.filter(c => {
+          const mod = (c.modul || '').toUpperCase();
+          if (spvCode === 'DK') return mod.startsWith('DK');
+          if (spvCode === 'LK') return mod.startsWith('LK');
+          if (spvCode === 'LP') return mod.startsWith('LP');
+          return true;
+        });
+      }
+      if (q) {
+        list = list.filter(c => c.upper.includes(q) || c.kodeCrew.toUpperCase().includes(q) || c.modul.includes(q));
+      }
+      return list;
+    },
+
+    openSpvCrewDropdown() {
+      this.filterSpv.tempSelectedCrews = [...(this.filterSpv.selectedCrews || [])];
+      this.filterSpv.crewDropdownSearch = '';
+      this.filterSpv.crewDropdownOpen = true;
+    },
+
+    toggleSpvCrewTempSelection(crewName) {
+      if (!crewName) return;
+      const upper = crewName.toUpperCase().trim();
+      const arr = this.filterSpv.tempSelectedCrews;
+      const idx = arr.findIndex(c => c.toUpperCase().trim() === upper);
+      if (idx >= 0) {
+        arr.splice(idx, 1);
+      } else {
+        arr.push(crewName);
+      }
+    },
+
+    isSpvCrewTempSelected(crewName) {
+      if (!crewName || !this.filterSpv.tempSelectedCrews) return false;
+      const upper = crewName.toUpperCase().trim();
+      return this.filterSpv.tempSelectedCrews.some(c => c.toUpperCase().trim() === upper);
+    },
+
+    selectAllSpvFilteredTempCrews() {
+      const currentFiltered = this.filteredSpvDropdownCrews;
+      const toAdd = currentFiltered.map(c => c.namaCrew);
+      const set = new Set(this.filterSpv.tempSelectedCrews);
+      toAdd.forEach(name => set.add(name));
+      this.filterSpv.tempSelectedCrews = Array.from(set);
+    },
+
+    clearAllSpvTempCrews() {
+      this.filterSpv.tempSelectedCrews = [];
+      this.filterSpv.crewDropdownSearch = '';
+    },
+
+    applySpvCrewSelection() {
+      this.filterSpv.selectedCrews = [...(this.filterSpv.tempSelectedCrews || [])];
+      this.filterSpv.crewDropdownOpen = false;
+      this.filterSpv.page = 1;
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
+    clearAllSpvSelectedCrews() {
+      this.filterSpv.tempSelectedCrews = [];
+      this.filterSpv.selectedCrews = [];
+      this.filterSpv.crewDropdownSearch = '';
+      this.filterSpv.page = 1;
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
 
     toggleCrewCardExpand(crewKey) {
       this.expandedCrews[crewKey] = !this.expandedCrews[crewKey];
@@ -7317,8 +7683,9 @@ function dashboardApp() {
           
           // Clear API cache & Trigger Fresh Background Sync
           if (ApiService.memoryCache) ApiService.memoryCache.clear();
+          if (window.DashboardDB) DashboardDB.set('master_toko', this.masterToko);
           this.saveSessionState();
-          await this.refreshAllData(false);
+          await this.refreshAllData(true, true);
 
         } else if (mode === 'transfer') {
           if (!f.newCrewName) throw new Error('Silakan pilih Personil MDS baru tujuan transfer.');
@@ -7357,8 +7724,9 @@ function dashboardApp() {
           
           // Clear API cache & Trigger Fresh Background Sync
           if (ApiService.memoryCache) ApiService.memoryCache.clear();
+          if (window.DashboardDB) DashboardDB.set('master_toko', this.masterToko);
           this.saveSessionState();
-          await this.refreshAllData(false);
+          await this.refreshAllData(true, true);
 
         } else if (mode === 'delete') {
           const payload = {
@@ -7385,13 +7753,14 @@ function dashboardApp() {
           
           // Clear API cache & Trigger Fresh Background Sync
           if (ApiService.memoryCache) ApiService.memoryCache.clear();
+          if (window.DashboardDB) DashboardDB.set('master_toko', this.masterToko);
           this.saveSessionState();
-          await this.refreshAllData(false);
+          await this.refreshAllData(true, true);
 
         } else if (mode === 'create_master') {
           if (!f.kodeToko || !f.namaToko) throw new Error('Kode Toko dan Nama Toko wajib diisi.');
 
-          this.crudModal.statusMsg = 'Mendaftarkan toko ke Master Database 49k...';
+          this.crudModal.statusMsg = 'Mendaftarkan toko ke Master Database Toko Nasional...';
           const res = await ApiService.postAction('create_or_update_master_store', { store: f });
 
           this.crudModal.isSuccess = true;
@@ -7400,7 +7769,7 @@ function dashboardApp() {
           
           // Clear API cache & Trigger Fresh Background Sync
           if (ApiService.memoryCache) ApiService.memoryCache.clear();
-          await this.refreshAllData(false);
+          await this.refreshAllData(true, true);
 
         } else if (mode === 'assign_schedule') {
           if (!f.namaCrew) throw new Error('Silakan pilih personil MDS tujuan.');
@@ -7429,12 +7798,13 @@ function dashboardApp() {
           this.crudModal.auditResult = res.data;
           this.crudModal.statusMsg = (res.data && res.data.message) || `Toko berhasil dijadwalkan ke ${f.namaCrew}!`;
           if (ApiService.memoryCache) ApiService.memoryCache.clear();
+          if (window.DashboardDB) DashboardDB.set('master_toko', this.masterToko);
           this.saveSessionState();
           await this.refreshAllData(false);
 
         } else if (mode === 'edit_master') {
           if (!f.kodeToko || !f.namaToko) throw new Error('Kode Toko dan Nama Toko wajib diisi.');
-          this.crudModal.statusMsg = 'Menyimpan perubahan toko di Master Database 49k...';
+          this.crudModal.statusMsg = 'Menyimpan perubahan toko di Master Database Toko Nasional...';
           const res = await ApiService.postAction('create_or_update_master_store', { store: f });
 
           // Optimistic local update in stores49k
@@ -7461,7 +7831,7 @@ function dashboardApp() {
           if (ApiService.memoryCache) ApiService.memoryCache.clear();
 
         } else if (mode === 'delete_master') {
-          this.crudModal.statusMsg = 'Menghapus toko dari Master Database 49k...';
+          this.crudModal.statusMsg = 'Menghapus toko dari Master Database Toko Nasional...';
           const res = await ApiService.postAction('delete_master_store', { kodeToko: f.kodeToko });
 
           // Optimistic local removal from stores49k
@@ -7493,6 +7863,135 @@ function dashboardApp() {
         this.crudModal.errorMsg = err.message || 'Terjadi kesalahan saat memproses data ke Google Sheet.';
       } finally {
         this.crudModal.isSubmitting = false;
+        this.$nextTick(() => {
+          if (window.lucide) lucide.createIcons();
+        });
+      }
+    },
+
+    // ==============================================================================
+    // MULTIPLE SELECT & BATCH DELETE JADWAL
+    // ==============================================================================
+    isJadwalItemSelected(m) {
+      if (!m) return false;
+      const key = `${m.kodeToko}_${m.rute}_${m.namaCrew}_${m.modul || m._officialModul || ''}`;
+      return (this.selectedJadwalKeys || []).includes(key);
+    },
+
+    toggleSelectJadwalItem(m) {
+      if (!m) return;
+      if (!this.selectedJadwalKeys) this.selectedJadwalKeys = [];
+      const key = `${m.kodeToko}_${m.rute}_${m.namaCrew}_${m.modul || m._officialModul || ''}`;
+      const idx = this.selectedJadwalKeys.indexOf(key);
+      if (idx !== -1) {
+        this.selectedJadwalKeys.splice(idx, 1);
+      } else {
+        this.selectedJadwalKeys.push(key);
+      }
+    },
+
+    get isAllJadwalSelected() {
+      const list = (this.filteredMasterToko || []).slice(0, 200);
+      if (list.length === 0) return false;
+      const keys = this.selectedJadwalKeys || [];
+      return list.every(m => {
+        const key = `${m.kodeToko}_${m.rute}_${m.namaCrew}_${m.modul || m._officialModul || ''}`;
+        return keys.includes(key);
+      });
+    },
+
+    toggleSelectAllJadwal() {
+      const list = (this.filteredMasterToko || []).slice(0, 200);
+      if (!this.selectedJadwalKeys) this.selectedJadwalKeys = [];
+      if (this.isAllJadwalSelected) {
+        const visibleKeys = list.map(m => `${m.kodeToko}_${m.rute}_${m.namaCrew}_${m.modul || m._officialModul || ''}`);
+        this.selectedJadwalKeys = this.selectedJadwalKeys.filter(k => !visibleKeys.includes(k));
+      } else {
+        list.forEach(m => {
+          const key = `${m.kodeToko}_${m.rute}_${m.namaCrew}_${m.modul || m._officialModul || ''}`;
+          if (!this.selectedJadwalKeys.includes(key)) {
+            this.selectedJadwalKeys.push(key);
+          }
+        });
+      }
+    },
+
+    clearSelectedJadwal() {
+      this.selectedJadwalKeys = [];
+    },
+
+    async executeBatchDeleteJadwal() {
+      if (!this.selectedJadwalKeys || this.selectedJadwalKeys.length === 0) return;
+
+      const keysSet = new Set(this.selectedJadwalKeys);
+      const selectedStores = (this.masterToko || []).filter(m => {
+        const key = `${m.kodeToko}_${m.rute}_${m.namaCrew}_${m.modul || m._officialModul || ''}`;
+        return keysSet.has(key);
+      });
+
+      if (selectedStores.length === 0) {
+        this.selectedJadwalKeys = [];
+        return;
+      }
+
+      const confirmMsg = `⚠️ KONFIRMASI HAPUS MASSAL:\n\nApakah Anda yakin ingin menghapus ${selectedStores.length} jadwal rute toko yang dipilih dari Supabase dan Google Spreadsheet Cabang?\n\nTindakan ini langsung dieksekusi real-time dan tidak dapat dibatalkan.`;
+      if (!confirm(confirmMsg)) return;
+
+      this.isLoading = true;
+      this.loadingStage = 2;
+      this.loadingMessage = `Menghapus ${selectedStores.length} jadwal toko secara massal...`;
+
+      try {
+        // 1. Hapus dari Supabase paralel instan
+        if (CONFIG.USE_SUPABASE) {
+          for (const s of selectedStores) {
+            const mod = (s.modul || s._officialModul || '').toUpperCase().trim();
+            const kTok = (s.kodeToko || '').toUpperCase().trim();
+            const rute = String(s.rute || '').replace(/[^0-9]/g, '');
+            if (mod && kTok) {
+              const flt = { modul: `eq.${mod}`, kode_toko: `eq.${kTok}` };
+              if (rute) flt.rute = `eq.${rute}`;
+              try {
+                await ApiService.deleteFromSupabase('tbl_jadwal_rps', flt);
+              } catch (sbErr) {}
+            }
+          }
+        }
+
+        // 2. Hapus dari Google Sheet via GAS
+        for (const s of selectedStores) {
+          try {
+            await ApiService.postAction('delete_scheduled_store', {
+              store: {
+                modul: s.modul || s._officialModul,
+                account: s.account,
+                kodeToko: s.kodeToko,
+                namaToko: s.namaToko,
+                rute: s.rute,
+                namaCrew: s.namaCrew,
+                kodeCrew: s.kodeCrew
+              }
+            });
+          } catch (gasErr) {
+            console.warn('Batch delete GAS warning:', gasErr);
+          }
+        }
+
+        // 3. Update state memori lokal & IndexedDB
+        this.masterToko = this.masterToko.filter(m => {
+          const key = `${m.kodeToko}_${m.rute}_${m.namaCrew}_${m.modul || m._officialModul || ''}`;
+          return !keysSet.has(key);
+        });
+        if (window.DashboardDB) DashboardDB.set('master_toko', this.masterToko);
+        if (ApiService.memoryCache) ApiService.memoryCache.clear();
+
+        this.selectedJadwalKeys = [];
+        alert(`✅ Berhasil menghapus ${selectedStores.length} jadwal toko terpilih!`);
+        await this.refreshAllData(true, true);
+      } catch (err) {
+        alert('Gagal menghapus massal: ' + (err.message || 'Terjadi kesalahan sistem'));
+      } finally {
+        this.isLoading = false;
         this.$nextTick(() => {
           if (window.lucide) lucide.createIcons();
         });
@@ -7589,6 +8088,14 @@ function dashboardApp() {
                         spvName.toUpperCase().includes(searchQ) ||
                         (crw.kodeCrew && crw.kodeCrew.toUpperCase().includes(searchQ));
           if (!match) return;
+        }
+
+        // Apply Multi-select Crew Filter
+        if (this.filterSpv.selectedCrews && this.filterSpv.selectedCrews.length > 0) {
+          const upperCrews = new Set(this.filterSpv.selectedCrews.map(c => c.toUpperCase().trim()));
+          const crwCode = (crw.kodeCrew || '').toUpperCase().trim();
+          const crwName = rawName.toUpperCase().trim();
+          if (!upperCrews.has(crwName) && !upperCrews.has(crwCode)) return;
         }
 
         // Get crew visits
@@ -9026,6 +9533,7 @@ function dashboardApp() {
         if (window.history && window.history.replaceState) {
           window.history.replaceState(null, '', '#' + tabName);
         }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       } catch (e) {}
 
       if (tabName === 'rbac') {
@@ -9057,6 +9565,695 @@ function dashboardApp() {
         this.$nextTick(() => {
           if (window.lucide) lucide.createIcons();
         });
+      }
+    },
+
+    // =========================================================================
+    // FITUR KOMPARASI & AUDIT TOKO NASIONAL VS HASIL KUNJUNGAN LAPANGAN
+    // =========================================================================
+    tokonasionalSubTab: (function() {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const sub = urlParams.get('subtab') || localStorage.getItem('mds_tokonasional_subtab') || sessionStorage.getItem('mds_tokonasional_subtab');
+        if (sub === 'compare' || sub === 'catalog') return sub;
+      } catch (e) {}
+      return 'catalog';
+    })(),
+    setTokoNasionalSubTab(tab) {
+      this.tokonasionalSubTab = tab;
+      try {
+        localStorage.setItem('mds_tokonasional_subtab', tab);
+        sessionStorage.setItem('mds_tokonasional_subtab', tab);
+        const url = new URL(window.location.href);
+        url.searchParams.set('subtab', tab);
+        window.history.replaceState({}, '', url.toString());
+      } catch (e) {}
+    },
+    compareFilter: {
+      searchInput: '',
+      modul: 'ALL',
+      selectedCrews: [],
+      tempSelectedCrews: [],
+      crewDropdownOpen: false,
+      crewDropdownSearch: '',
+      account: 'ALL',
+      status: 'ALL' // 'ALL' | 'DIFF_FAR' | 'DIFF_MED' | 'ACCURATE' | 'GPS_ZERO' | 'DIFF_NAME' | 'DRAFT'
+    },
+    showMobileCompareFilters: false,
+
+    get activeCompareFilterCount() {
+      let count = 0;
+      if (this.compareFilter.modul !== 'ALL') count++;
+      if (this.compareFilter.selectedCrews && this.compareFilter.selectedCrews.length > 0) count++;
+      if (this.compareFilter.account !== 'ALL') count++;
+      if (this.compareFilter.status !== 'ALL') count++;
+      return count;
+    },
+
+    appliedCompareFilter: {
+      searchInput: '',
+      modul: 'ALL',
+      selectedCrews: [],
+      account: 'ALL',
+      status: 'ALL',
+      page: 1,
+      pageSize: 25
+    },
+    selectedCompareStore: null,
+    compareEditForm: {
+      namaToko: '',
+      updateName: true,
+      updateGps: false
+    },
+    compareDraftMap: (function() {
+      try {
+        return JSON.parse(localStorage.getItem('mds_compare_drafts') || '{}');
+      } catch (e) {
+        return {};
+      }
+    })(),
+    isSavingCompareBatch: false,
+    hideCompletedCompare: true,
+    completedCompareStores: (function() {
+      try {
+        const raw = JSON.parse(localStorage.getItem('mds_compare_completed') || '[]');
+        return new Set(Array.isArray(raw) ? raw.map(k => String(k).toUpperCase()) : []);
+      } catch (e) {
+        return new Set();
+      }
+    })(),
+
+    saveCompareDrafts() {
+      try {
+        localStorage.setItem('mds_compare_drafts', JSON.stringify(this.compareDraftMap || {}));
+      } catch (e) {}
+    },
+
+    saveCompletedCompareStores() {
+      try {
+        localStorage.setItem('mds_compare_completed', JSON.stringify(Array.from(this.completedCompareStores || [])));
+      } catch (e) {}
+    },
+
+    resetCompletedCompareStores() {
+      if (confirm('Tampilkan kembali semua toko yang sudah pernah ditandai selesai?')) {
+        this.completedCompareStores.clear();
+        this.saveCompletedCompareStores();
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+      }
+    },
+
+    get completedCompareCount() {
+      return (this.completedCompareStores && this.completedCompareStores.size) || 0;
+    },
+
+    get compareDraftCount() {
+      return Object.keys(this.compareDraftMap || {}).length;
+    },
+
+    get rawStoreComparisonList() {
+      // 1. Index 49k catalog by kodeToko
+      const catalogMap = new Map();
+      (this.stores49k || []).forEach(st => {
+        const k = (st.kodeToko || st.kode || '').toUpperCase().trim();
+        if (k) catalogMap.set(k, st);
+      });
+
+      // Enrich dengan masterToko jadwal jika toko belum terindeks di stores49k
+      (this.masterToko || []).forEach(st => {
+        const k = (st.kodeToko || st.kode_toko || '').toUpperCase().trim();
+        if (k && !catalogMap.has(k)) {
+          catalogMap.set(k, {
+            kodeToko: k,
+            namaToko: st.namaToko || st.nama_toko || '-',
+            account: (st.account || '').toUpperCase(),
+            branchName: st.branchName || st.dc || '-',
+            kecamatan: st.kecamatan || '-',
+            kabKota: st.kabKota || st.kota || '-',
+            lat: st.lat || st.latitude || null,
+            lon: st.lon || st.lng || st.longitude || null
+          });
+        }
+      });
+
+      // 2. Ambil kunjungan terakhir per kode toko
+      const latestVisitMap = new Map();
+      (this.visits || []).forEach(v => {
+        const k = (v.kodeToko || '').toUpperCase().trim();
+        if (!k) return;
+        const existing = latestVisitMap.get(k);
+        if (!existing || (v.date > existing.date) || (v.date === existing.date && v.time > existing.time)) {
+          latestVisitMap.set(k, v);
+        }
+      });
+
+      // 3. Gabungkan perbandingan
+      const list = [];
+      latestVisitMap.forEach((v, k) => {
+        const dbStore = catalogMap.get(k) || {
+          kodeToko: k,
+          namaToko: '(Belum di Master)',
+          account: v.account || 'ALFAMART',
+          lat: null,
+          lon: null,
+          kecamatan: '-',
+          kabKota: '-'
+        };
+
+        // Parse koordinat lapangan
+        let fLat = null, fLon = null;
+        if (v.koordinat && v.koordinat.includes(',')) {
+          const parts = v.koordinat.split(',').map(s => parseFloat(s.trim()));
+          if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            fLat = parts[0];
+            fLon = parts[1];
+          }
+        }
+        const isFieldGpsZero = (fLat === 0 && fLon === 0) || (fLat === null || fLon === null);
+        const dbLat = parseFloat(dbStore.lat || dbStore.latitude);
+        const dbLon = parseFloat(dbStore.lon || dbStore.lng || dbStore.longitude);
+        const hasDbGps = !isNaN(dbLat) && !isNaN(dbLon) && (dbLat !== 0 || dbLon !== 0);
+
+        let distMeters = null;
+        if (!isFieldGpsZero && hasDbGps && typeof MapService !== 'undefined' && MapService.calculateDistance) {
+          distMeters = Math.round(MapService.calculateDistance(dbLat, dbLon, fLat, fLon));
+        }
+
+        const rawFieldNama = (v.namaToko || '').trim();
+        // Deteksi jika nama toko dari kunjungan hanya berupa placeholder akun + kode (contoh: ALFAMART_R584)
+        const isPlaceholderName = rawFieldNama.toUpperCase() === `${(v.account || '').toUpperCase()}_${k}` ||
+                                  rawFieldNama.toUpperCase() === `ALFAMART_${k}` ||
+                                  rawFieldNama.toUpperCase() === `INDOMARET_${k}` ||
+                                  rawFieldNama.toUpperCase() === `ALFAMIDI_${k}`;
+
+        const isNameDiff = (dbStore.namaToko || '').trim().toLowerCase() !== rawFieldNama.toLowerCase();
+        const isDrafted = !!(this.compareDraftMap && this.compareDraftMap[k]);
+
+        list.push({
+          kodeToko: k,
+          dbStore: {
+            kodeToko: k,
+            namaToko: dbStore.namaToko || '-',
+            account: (dbStore.account || v.account || 'ALFAMART').toUpperCase(),
+            branchName: dbStore.branchName || dbStore.dcName || '-',
+            kecamatan: dbStore.kecamatan || '-',
+            kabKota: dbStore.kabKota || dbStore.kota || '-',
+            lat: hasDbGps ? dbLat : null,
+            lon: hasDbGps ? dbLon : null
+          },
+          fieldVisit: {
+            namaToko: rawFieldNama || '-',
+            account: (v.account || 'ALFAMART').toUpperCase(),
+            namaCrew: v.namaCrew || '-',
+            kodeCrew: v.kodeCrew || '-',
+            modul: v.modul || v.prefix || '-',
+            date: v.date || '-',
+            time: v.time || '-',
+            lat: fLat,
+            lon: fLon
+          },
+          fieldLat: fLat,
+          fieldLon: fLon,
+          hasDbGps,
+          isFieldGpsZero,
+          distMeters,
+          isNameDiff,
+          isPlaceholderName,
+          isNotInMaster: !catalogMap.has(k) || dbStore.namaToko === '(Belum di Master)',
+          isDrafted
+        });
+      });
+
+      // Hitung frekuensi koordinat kembar (Master DB dan Lapangan)
+      const dbCoordFreq = new Map();
+      const fieldCoordFreq = new Map();
+
+      list.forEach(item => {
+        if (item.hasDbGps) {
+          const key = `${parseFloat(item.dbStore.lat).toFixed(5)},${parseFloat(item.dbStore.lon).toFixed(5)}`;
+          dbCoordFreq.set(key, (dbCoordFreq.get(key) || 0) + 1);
+        }
+        if (!item.isFieldGpsZero && item.fieldLat !== null && item.fieldLon !== null) {
+          const key = `${parseFloat(item.fieldLat).toFixed(5)},${parseFloat(item.fieldLon).toFixed(5)}`;
+          fieldCoordFreq.set(key, (fieldCoordFreq.get(key) || 0) + 1);
+        }
+      });
+
+      // Berikan penanda koordinat kembar pada setiap toko
+      list.forEach(item => {
+        let isDupDb = false;
+        let isDupField = false;
+        let dupDbCount = 0;
+        let dupFieldCount = 0;
+
+        if (item.hasDbGps) {
+          const key = `${parseFloat(item.dbStore.lat).toFixed(5)},${parseFloat(item.dbStore.lon).toFixed(5)}`;
+          dupDbCount = dbCoordFreq.get(key) || 0;
+          if (dupDbCount > 1) isDupDb = true;
+        }
+
+        if (!item.isFieldGpsZero && item.fieldLat !== null && item.fieldLon !== null) {
+          const key = `${parseFloat(item.fieldLat).toFixed(5)},${parseFloat(item.fieldLon).toFixed(5)}`;
+          dupFieldCount = fieldCoordFreq.get(key) || 0;
+          if (dupFieldCount > 1) isDupField = true;
+        }
+
+        item.isDuplicateDbCoord = isDupDb;
+        item.dupDbCount = dupDbCount;
+        item.isDuplicateFieldCoord = isDupField;
+        item.dupFieldCount = dupFieldCount;
+        item.hasDuplicateCoord = isDupDb || isDupField;
+      });
+
+      return list;
+    },
+
+    // =========================================================================
+    // MULTI-SELECT CREW & STAGED FILTER COMPATIBILITY UNTUK KOMPARASI
+    // =========================================================================
+    get filteredCompareDropdownCrews() {
+      const q = (this.compareFilter.crewDropdownSearch || '').toUpperCase().trim();
+      let list = this.allAvailableCrews || [];
+
+      const m = this.compareFilter.modul;
+      if (m && m !== 'ALL' && m.toUpperCase() !== 'NASIONAL') {
+        if (m.length === 2) {
+          list = list.filter(c => c.modul.startsWith(m));
+        } else {
+          list = list.filter(c => c.modul === m);
+        }
+      }
+
+      if (q) {
+        list = list.filter(c => c.upper.includes(q) || (c.kodeCrew && c.kodeCrew.toUpperCase().includes(q)) || (c.modul && c.modul.includes(q)));
+      }
+      return list;
+    },
+
+    openCompareCrewDropdown() {
+      this.compareFilter.tempSelectedCrews = [...(this.compareFilter.selectedCrews || [])];
+      this.compareFilter.crewDropdownSearch = '';
+      this.compareFilter.crewDropdownOpen = true;
+    },
+
+    toggleCompareCrewTemp(crewName) {
+      if (!crewName) return;
+      const upper = crewName.toUpperCase().trim();
+      const idx = this.compareFilter.tempSelectedCrews.findIndex(c => c.toUpperCase().trim() === upper);
+      if (idx >= 0) {
+        this.compareFilter.tempSelectedCrews.splice(idx, 1);
+      } else {
+        this.compareFilter.tempSelectedCrews.push(crewName);
+      }
+    },
+
+    isCompareCrewTempSelected(crewName) {
+      if (!crewName || !this.compareFilter.tempSelectedCrews) return false;
+      const upper = crewName.toUpperCase().trim();
+      return this.compareFilter.tempSelectedCrews.some(c => c.toUpperCase().trim() === upper);
+    },
+
+    selectAllCompareTempCrews() {
+      const list = this.filteredCompareDropdownCrews.map(c => c.namaCrew);
+      const set = new Set(this.compareFilter.tempSelectedCrews);
+      list.forEach(name => set.add(name));
+      this.compareFilter.tempSelectedCrews = Array.from(set);
+    },
+
+    clearAllCompareTempCrews() {
+      this.compareFilter.tempSelectedCrews = [];
+      this.compareFilter.crewDropdownSearch = '';
+    },
+
+    applyCompareCrewSelection() {
+      this.compareFilter.selectedCrews = [...(this.compareFilter.tempSelectedCrews || [])];
+      this.compareFilter.crewDropdownOpen = false;
+    },
+
+    clearAllCompareSelectedCrews() {
+      this.compareFilter.selectedCrews = [];
+      this.compareFilter.tempSelectedCrews = [];
+    },
+
+    get hasUnappliedCompareFilter() {
+      const f = this.compareFilter;
+      const a = this.appliedCompareFilter;
+      if (!f || !a) return false;
+      if ((f.searchInput || '') !== (a.searchInput || '')) return true;
+      if ((f.modul || 'ALL') !== (a.modul || 'ALL')) return true;
+      if ((f.account || 'ALL') !== (a.account || 'ALL')) return true;
+      if ((f.status || 'ALL') !== (a.status || 'ALL')) return true;
+      const fCrews = (f.selectedCrews || []).slice().sort().join(',');
+      const aCrews = (a.selectedCrews || []).slice().sort().join(',');
+      return fCrews !== aCrews;
+    },
+
+    applyCompareFilter() {
+      this.appliedCompareFilter = {
+        searchInput: (this.compareFilter.searchInput || '').trim(),
+        modul: this.compareFilter.modul || 'ALL',
+        selectedCrews: [...(this.compareFilter.selectedCrews || [])],
+        account: this.compareFilter.account || 'ALL',
+        status: this.compareFilter.status || 'ALL',
+        page: 1,
+        pageSize: (this.appliedCompareFilter && this.appliedCompareFilter.pageSize) || 25
+      };
+    },
+
+    resetCompareFilter() {
+      this.compareFilter = {
+        searchInput: '',
+        modul: 'ALL',
+        selectedCrews: [],
+        tempSelectedCrews: [],
+        crewDropdownOpen: false,
+        crewDropdownSearch: '',
+        account: 'ALL',
+        status: 'ALL'
+      };
+      this.appliedCompareFilter = {
+        searchInput: '',
+        modul: 'ALL',
+        selectedCrews: [],
+        account: 'ALL',
+        status: 'ALL',
+        page: 1,
+        pageSize: 25
+      };
+    },
+
+    get filteredStoreComparisonList() {
+      let list = this.rawStoreComparisonList;
+      const f = this.appliedCompareFilter || this.compareFilter;
+
+      // Filter search
+      const q = (f.searchInput || '').trim().toLowerCase();
+      if (q) {
+        list = list.filter(item => 
+          item.kodeToko.toLowerCase().includes(q) ||
+          (item.dbStore.namaToko || '').toLowerCase().includes(q) ||
+          (item.fieldVisit.namaToko || '').toLowerCase().includes(q) ||
+          (item.fieldVisit.namaCrew || '').toLowerCase().includes(q) ||
+          (item.dbStore.kecamatan || '').toLowerCase().includes(q) ||
+          (item.dbStore.kabKota || '').toLowerCase().includes(q)
+        );
+      }
+
+      // Filter modul
+      if (f.modul && f.modul !== 'ALL') {
+        const m = f.modul.toUpperCase();
+        list = list.filter(item => (item.fieldVisit.modul || '').toUpperCase().startsWith(m));
+      }
+
+      // Filter Multi-select MDS
+      if (f.selectedCrews && f.selectedCrews.length > 0) {
+        const crewSet = new Set(f.selectedCrews.map(c => c.toUpperCase().trim()));
+        list = list.filter(item => crewSet.has((item.fieldVisit.namaCrew || '').toUpperCase().trim()));
+      }
+
+      // Filter account
+      if (f.account && f.account !== 'ALL') {
+        const acc = f.account.toUpperCase();
+        list = list.filter(item => (item.dbStore.account || item.fieldVisit.account || '').toUpperCase().includes(acc));
+      }
+
+      // Filter status
+      if (f.status === 'DIFF_FAR') {
+        list = list.filter(item => item.distMeters !== null && item.distMeters > 100);
+      } else if (f.status === 'DIFF_MED') {
+        list = list.filter(item => item.distMeters !== null && item.distMeters >= 50 && item.distMeters <= 100);
+      } else if (f.status === 'ACCURATE') {
+        list = list.filter(item => item.distMeters !== null && item.distMeters < 50);
+      } else if (f.status === 'GPS_ZERO') {
+        list = list.filter(item => item.isFieldGpsZero);
+      } else if (f.status === 'DIFF_NAME') {
+        list = list.filter(item => item.isNameDiff);
+      } else if (f.status === 'DUP_COORD') {
+        list = list.filter(item => item.hasDuplicateCoord);
+      } else if (f.status === 'NOT_IN_MASTER') {
+        list = list.filter(item => item.isNotInMaster);
+      } else if (f.status === 'DRAFT') {
+        list = list.filter(item => item.isDrafted);
+      }
+
+      // Sembunyikan toko yang sudah berhasil di-audit / disimpan
+      if (this.hideCompletedCompare && this.completedCompareStores && this.completedCompareStores.size > 0) {
+        list = list.filter(item => !this.completedCompareStores.has(item.kodeToko.toUpperCase()));
+      }
+
+      return list;
+    },
+
+    get paginatedCompareList() {
+      const f = this.appliedCompareFilter || this.compareFilter;
+      const p = f.page || 1;
+      const ps = f.pageSize || 25;
+      const start = (p - 1) * ps;
+      return this.filteredStoreComparisonList.slice(start, start + ps);
+    },
+
+    get totalComparePages() {
+      const f = this.appliedCompareFilter || this.compareFilter;
+      const ps = f.pageSize || 25;
+      return Math.ceil(this.filteredStoreComparisonList.length / ps) || 1;
+    },
+
+    get compareStatusCounts() {
+      let list = this.rawStoreComparisonList || [];
+      const f = this.appliedCompareFilter || this.compareFilter;
+
+      // Filter kontekstual sesuai search, modul, dan ritel yang diterapkan
+      const q = (f.searchInput || '').trim().toLowerCase();
+      if (q) {
+        list = list.filter(item => 
+          item.kodeToko.toLowerCase().includes(q) ||
+          (item.dbStore.namaToko || '').toLowerCase().includes(q) ||
+          (item.fieldVisit.namaToko || '').toLowerCase().includes(q) ||
+          (item.fieldVisit.namaCrew || '').toLowerCase().includes(q) ||
+          (item.dbStore.kecamatan || '').toLowerCase().includes(q) ||
+          (item.dbStore.kabKota || '').toLowerCase().includes(q)
+        );
+      }
+
+      if (f.modul && f.modul !== 'ALL') {
+        const m = f.modul.toUpperCase();
+        list = list.filter(item => (item.fieldVisit.modul || '').toUpperCase().startsWith(m));
+      }
+
+      if (f.selectedCrews && f.selectedCrews.length > 0) {
+        const crewSet = new Set(f.selectedCrews.map(c => c.toUpperCase().trim()));
+        list = list.filter(item => crewSet.has((item.fieldVisit.namaCrew || '').toUpperCase().trim()));
+      }
+
+      if (f.account && f.account !== 'ALL') {
+        const acc = f.account.toUpperCase();
+        list = list.filter(item => (item.dbStore.account || item.fieldVisit.account || '').toUpperCase().includes(acc));
+      }
+
+      // Sembunyikan toko selesai pada perhitungan status
+      if (this.hideCompletedCompare && this.completedCompareStores && this.completedCompareStores.size > 0) {
+        list = list.filter(item => !this.completedCompareStores.has(item.kodeToko.toUpperCase()));
+      }
+
+      const counts = {
+        all: list.length,
+        diffFar: 0,
+        diffMed: 0,
+        accurate: 0,
+        gpsZero: 0,
+        diffName: 0,
+        dupCoord: 0,
+        notInMaster: 0,
+        draft: 0
+      };
+
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        if (item.distMeters !== null && item.distMeters > 100) counts.diffFar++;
+        if (item.distMeters !== null && item.distMeters >= 50 && item.distMeters <= 100) counts.diffMed++;
+        if (item.distMeters !== null && item.distMeters < 50) counts.accurate++;
+        if (item.isFieldGpsZero) counts.gpsZero++;
+        if (item.isNameDiff) counts.diffName++;
+        if (item.hasDuplicateCoord) counts.dupCoord++;
+        if (item.isNotInMaster) counts.notInMaster++;
+        if (item.isDrafted) counts.draft++;
+      }
+
+      return counts;
+    },
+
+    /**
+     * Shortcut Google Street View Anti-Numpuk (Dedicated Reused Tab)
+     */
+    openStreetView(lat, lon, label = '') {
+      if (!lat || !lon || isNaN(lat) || isNaN(lon) || (Number(lat) === 0 && Number(lon) === 0)) {
+        if (typeof this.showToast === 'function') {
+          this.showToast('⚠️ Titik koordinat GPS tidak valid untuk Street View', 'warning');
+        } else {
+          alert('Titik koordinat GPS tidak valid');
+        }
+        return;
+      }
+      const cleanLat = parseFloat(lat).toFixed(6);
+      const cleanLon = parseFloat(lon).toFixed(6);
+      const url = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${cleanLat},${cleanLon}`;
+      
+      // Target 'mds_streetview_viewer' otomatis me-reuse tab yang sudah ada
+      const svWin = window.open(url, 'mds_streetview_viewer');
+      if (svWin) svWin.focus();
+    },
+
+    selectStoreForCompare(item) {
+      this.selectedCompareStore = item;
+      const k = item.kodeToko;
+      if (this.compareDraftMap && this.compareDraftMap[k]) {
+        const dr = this.compareDraftMap[k];
+        this.compareEditForm = {
+          namaToko: dr.namaToko,
+          updateName: dr.updateName,
+          updateGps: dr.updateGps
+        };
+      } else {
+        // Jika nama riil lapangan adalah format placeholder akun (misal ALFAMART_R584), utamakan nama resmi master
+        let defName = '';
+        if (item.dbStore.namaToko && item.dbStore.namaToko !== '(Belum di Master)' && item.dbStore.namaToko !== '-') {
+          defName = item.dbStore.namaToko;
+        } else if (!item.isPlaceholderName && item.fieldVisit.namaToko !== '-') {
+          defName = item.fieldVisit.namaToko;
+        } else {
+          defName = '';
+        }
+
+        this.compareEditForm = {
+          namaToko: (defName || '').toUpperCase().trim(),
+          updateName: item.isNameDiff,
+          updateGps: !item.isFieldGpsZero && item.distMeters !== null && item.distMeters > 50
+        };
+      }
+
+      this.$nextTick(() => {
+        const mapEl = document.getElementById('compare-map');
+        if (mapEl && typeof MapService !== 'undefined') {
+          MapService.initCompareMap('compare-map', this.theme === 'dark');
+          MapService.renderComparePins(item.dbStore, {
+            ...item.fieldVisit,
+            lat: item.fieldLat,
+            lon: item.fieldLon
+          }, item.distMeters);
+        }
+
+        // Auto-scroll ke panel editor & peta di mobile agar pengguna tidak bingung
+        if (window.innerWidth < 1024) {
+          const target = document.getElementById('compare-editor-container');
+          if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }
+      });
+    },
+
+    applyFieldNameQuick() {
+      if (this.selectedCompareStore) {
+        this.compareEditForm.namaToko = (this.selectedCompareStore?.fieldVisit?.namaToko || '').toUpperCase().trim();
+        this.compareEditForm.updateName = true;
+      }
+    },
+
+    applyDbNameQuick() {
+      if (this.selectedCompareStore) {
+        this.compareEditForm.namaToko = (this.selectedCompareStore?.dbStore?.namaToko || '').toUpperCase().trim();
+        this.compareEditForm.updateName = true;
+      }
+    },
+
+    saveSelectedStoreToDraft() {
+      if (!this.selectedCompareStore) return;
+      const item = this.selectedCompareStore;
+      const k = item.kodeToko;
+      const f = this.compareEditForm;
+
+      const upperNama = (f.namaToko || '').trim().toUpperCase();
+      if (!upperNama) {
+        alert('Nama toko tidak boleh kosong.');
+        return;
+      }
+
+      const willUpdateGps = f.updateGps && !item.isFieldGpsZero;
+      this.compareDraftMap[k] = {
+        kodeToko: k,
+        namaToko: upperNama,
+        account: item.dbStore.account || item.fieldVisit.account || 'ALFAMART',
+        branchName: item.dbStore.branchName || item.dbStore.dcName || '-',
+        kecamatan: item.dbStore.kecamatan || '-',
+        kota: item.dbStore.kabKota || item.dbStore.kota || '-',
+        updateName: f.updateName,
+        updateGps: willUpdateGps,
+        lat: willUpdateGps ? item.fieldLat : item.dbStore.lat,
+        lon: willUpdateGps ? item.fieldLon : item.dbStore.lon,
+        diffDistMeters: item.distMeters,
+        originalDbName: item.dbStore.namaToko,
+        originalFieldName: item.fieldVisit.namaToko,
+        timestamp: Date.now()
+      };
+      this.saveCompareDrafts();
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
+    removeFromCompareDraft(kodeToko) {
+      if (this.compareDraftMap && this.compareDraftMap[kodeToko]) {
+        delete this.compareDraftMap[kodeToko];
+        this.saveCompareDrafts();
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+      }
+    },
+
+    clearAllCompareDrafts() {
+      if (confirm('Kosongkan semua antrean draft perbaikan toko?')) {
+        this.compareDraftMap = {};
+        this.saveCompareDrafts();
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+      }
+    },
+
+    async executeBatchCompareSave() {
+      const draftKeys = Object.keys(this.compareDraftMap || {});
+      if (draftKeys.length === 0) return;
+      if (!confirm(`Simpan dan sinkronkan perubahan ${draftKeys.length} toko ke Master Database Nasional (Supabase & Google Sheets)?`)) return;
+
+      this.isSavingCompareBatch = true;
+      try {
+        const storeList = draftKeys.map(k => this.compareDraftMap[k]);
+        await ApiService.postAction('batch_update_master_stores', { stores: storeList });
+
+        // Optimistic local update in stores49k
+        storeList.forEach(st => {
+          const idx = this.stores49k.findIndex(s => (s.kodeToko || s.kode || '').toUpperCase() === st.kodeToko.toUpperCase());
+          if (idx !== -1) {
+            this.stores49k[idx] = {
+              ...this.stores49k[idx],
+              namaToko: st.namaToko,
+              lat: st.lat,
+              lon: st.lon
+            };
+          }
+        });
+
+        // Tandai toko yang berhasil disimpan ke completedCompareStores (take out dari list)
+        draftKeys.forEach(k => {
+          this.completedCompareStores.add(k.toUpperCase());
+        });
+        this.saveCompletedCompareStores();
+
+        this.compareDraftMap = {};
+        this.saveCompareDrafts();
+        this.selectedCompareStore = null;
+        alert(`✅ Berhasil! ${storeList.length} toko sukses diperbarui di Master Database Nasional dan dikeluarkan dari antrean.`);
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+      } catch (err) {
+        console.error('Batch compare save error:', err);
+        alert(`❌ Gagal menyimpan: ${err.message || err}`);
+      } finally {
+        this.isSavingCompareBatch = false;
       }
     }
   };

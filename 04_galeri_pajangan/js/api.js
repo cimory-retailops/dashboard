@@ -8,6 +8,64 @@
 const ApiService = {
   memoryCache: new Map(),
 
+  async fetchFromSupabase(table, queryParams = {}) {
+    try {
+      const requestedLimit = parseInt(queryParams.limit || '1000', 10);
+      if (requestedLimit <= 1000) {
+        const url = new URL(`${CONFIG.SUPABASE_URL}/${table}`);
+        Object.entries(queryParams).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && v !== '') {
+            url.searchParams.append(k, String(v));
+          }
+        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(url.toString(), {
+          headers: {
+            'apikey': CONFIG.SUPABASE_KEY,
+            'Authorization': `Bearer ${CONFIG.SUPABASE_KEY}`
+          },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) return await res.json();
+        return null;
+      }
+
+      const numBatches = Math.min(Math.ceil(requestedLimit / 1000), 20);
+      const batchPromises = [];
+      for (let i = 0; i < numBatches; i++) {
+        batchPromises.push((async () => {
+          const url = new URL(`${CONFIG.SUPABASE_URL}/${table}`);
+          Object.entries(queryParams).forEach(([k, v]) => {
+            if (k !== 'limit' && k !== 'offset' && v !== undefined && v !== null && v !== '') {
+              url.searchParams.append(k, String(v));
+            }
+          });
+          url.searchParams.append('limit', '1000');
+          url.searchParams.append('offset', String(i * 1000));
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
+          const res = await fetch(url.toString(), {
+            headers: {
+              'apikey': CONFIG.SUPABASE_KEY,
+              'Authorization': `Bearer ${CONFIG.SUPABASE_KEY}`
+            },
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+          if (res.ok) return await res.json();
+          return [];
+        })());
+      }
+      const results = await Promise.all(batchPromises);
+      return results.flat();
+    } catch (e) {
+      console.warn(`Supabase [${table}] fetch failed:`, e);
+      return null;
+    }
+  },
+
   /**
    * Fast CSV Parser (RFC 4180 compliant)
    */
@@ -206,6 +264,65 @@ const ApiService = {
    * 1. Get All Store Photos across 15 Modules (Direct Parallel Fetch ~1.5s)
    */
   async getVisitsWithPhotos(params = {}) {
+    // 0. FAST PATH: SUPABASE CLOUD (< 100ms Query)
+    if (CONFIG.USE_SUPABASE && CONFIG.SUPABASE_URL) {
+      try {
+        const query = {
+          order: 'tanggal.desc,waktu.desc',
+          limit: params.limit || 5000
+        };
+        const modUpper = (params.modul || 'ALL').toUpperCase().trim();
+        if (modUpper && modUpper !== 'ALL' && modUpper !== 'NASIONAL') {
+          query.modul = modUpper.length === 2 ? `like.${modUpper}*` : `eq.${modUpper}`;
+        }
+        if (params.date) {
+          query.tanggal = `eq.${params.date}`;
+        }
+
+        const data = await this.fetchFromSupabase('tbl_all_kunjungan', query);
+        if (data && Array.isArray(data) && data.length > 0) {
+          const cleanTime = (t) => {
+            if (!t) return '';
+            const m = String(t).match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+            return m ? m[1] : String(t).trim();
+          };
+
+          const visits = [];
+          for (let i = 0; i < data.length; i++) {
+            const r = data[i];
+            const beforeList = [r.foto_before_1 || '', r.foto_before_2 || '', r.foto_before_3 || '', r.foto_before_4 || ''].filter(s => s && s.trim().length > 5);
+            const afterList = [r.foto_after_1 || '', r.foto_after_2 || '', r.foto_after_3 || '', r.foto_after_4 || ''].filter(s => s && s.trim().length > 5);
+            const selfie = (r.foto_selfie_depan_toko || '').trim();
+
+            if (beforeList.length === 0 && afterList.length === 0 && !selfie) continue;
+
+            visits.push({
+              idVisit: r.id_visit || '',
+              time: cleanTime(r.waktu),
+              date: r.tanggal || '',
+              dateIso: r.tanggal || '',
+              hariKe: r.rute || '',
+              kodeCrew: r.idcrew || '',
+              namaCrew: r.nama_crew || '',
+              account: (r.account || 'ALFAMART').toUpperCase().trim(),
+              kodeToko: (r.kode_toko || '').toUpperCase().trim(),
+              namaToko: r.nama_toko || '',
+              tipeToko: r.tipe_toko || '-',
+              fotoSelfie: selfie,
+              fotoBefore: beforeList,
+              fotoAfter: afterList,
+              modul: r.modul || '',
+              prefix: (r.modul || '').substring(0, 2)
+            });
+          }
+          return visits;
+        }
+      } catch (e) {
+        console.warn('Supabase getVisitsWithPhotos fallback ke Sheets:', e);
+      }
+    }
+
+    // 1. Fallback Lama: Direct 15 Branch Sheets Fetch
     await this.loadMasterTokoTypes();
 
     const targetModules = [];

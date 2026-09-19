@@ -308,3 +308,67 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   }
 }
 
+/* ==============================================================================
+   MOBILE PERFORMANCE OVERDRIVE (<= 768px)
+   Mematikan shader backdrop-filter berat & memaksa hardware acceleration
+   ============================================================================== */
+.animate-spin {
+  will-change: transform;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+@media screen and (max-width: 768px) {
+  /* Matikan filter backdrop-filter blur di HP agar GPU tidak drop fps */
+  .glass-card,
+  .glass-nav,
+  header,
+  nav,
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  /* Warna solid bersih & ringan di HP */
+  .glass-card {
+    background: #ffffff !important;
+    border-color: rgba(226, 232, 240, 0.9) !important;
+  }
+  .dark .glass-card {
+    background: #1e293b !important;
+    border-color: rgba(51, 65, 85, 0.8) !important;
+  }
+
+  header.fixed {
+    background: #ffffff !important;
+  }
+  .dark header.fixed {
+    background: #0f172a !important;
+  }
+
+  nav.glass-card {
+    background: #ffffff !important;
+  }
+  .dark nav.glass-card {
+    background: #0f172a !important;
+  }
+
+  /* Matikan animasi box-shadow berat di HP */
+  .animate-pulse-glow {
+    animation: none !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15) !important;
+  }
+
+  /* Optimalkan animasi spinner */
+  .animate-spin {
+    animation-duration: 0.75s !important;
+  }
+
+  /* Off-screen Card Lazy Rendering: Menghemat proses render layout kartu di HP */
+  .space-y-6 > .glass-card {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 250px;
+  }
+}
+
+

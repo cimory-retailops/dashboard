@@ -8,6 +8,11 @@ const CONFIG = {
   APP_TITLE: 'Cimory Retail Ops',
   APP_SUBTITLE: 'Display & Planogram Compliance Gallery',
   
+  // Supabase Cloud REST API Config (Instant Sub-100ms Query)
+  SUPABASE_URL: 'https://lzvxxcnubtcvdiwfnjmh.supabase.co/rest/v1',
+  SUPABASE_KEY: 'sb_publishable_Yrqw13m5rQQKNF0XnWtlOg_JvZZ2_AE',
+  USE_SUPABASE: true,
+
   // Dedicated Planogram Review Spreadsheet
   REVIEW_SHEET_ID: '1svQnu6-5fJUMEfBF9UCRFgg1pKBdBnRxcLesinDw6jI',
   REVIEW_SHEET_NAME: 'Penilaian_Display',

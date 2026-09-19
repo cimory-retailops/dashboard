@@ -239,14 +239,39 @@ function renderMapMarkers(stores, autoFit = false) {
 
     const marker = L.marker([store.lat, store.lon], { icon: customIcon });
 
-    // Popup Detail Toko — gunakan getStoreVisitStatus untuk info lengkap
+    // Popup Detail Toko — gunakan getStoreVisitStatus untuk info pemilik rute & koordinasi WA
     const visitStatus = getStoreVisitStatus(store.kodeToko, store.account);
-    const revisitBadgeHtml = visitStatus.isRevisit
-      ? `<span style="font-size:9px; background: rgba(59, 130, 246, 0.15); color: #2563eb; border: 1px solid rgba(59, 130, 246, 0.3); padding: 1px 6px; border-radius: 99px; font-weight: 600;">🔄 Re-Visit (Rute ${escapeHtml(visitStatus.lastVisit.rute)})</span>`
-      : "";
-    const revisitInfoHtml = visitStatus.isRevisit
-      ? `<div style="font-size:10px; color: var(--text-muted); margin-bottom: 4px;">ℹ️ Pernah dikunjungi pada Rute ${escapeHtml(visitStatus.lastVisit.rute)}${visitStatus.daysSinceLastVisit !== null ? ` (${visitStatus.daysSinceLastVisit} hari lalu)` : ''}</div>`
-      : "";
+    let revisitBadgeHtml = "";
+    let revisitInfoHtml = "";
+
+    if (visitStatus.isRevisit && visitStatus.lastVisit) {
+      const lv = visitStatus.lastVisit;
+      const isSelf = visitStatus.isSelf;
+
+      if (isSelf) {
+        revisitBadgeHtml = `<span style="font-size:9px; background: rgba(59, 130, 246, 0.15); color: #2563eb; border: 1px solid rgba(59, 130, 246, 0.3); padding: 1px 6px; border-radius: 99px; font-weight: 600;">🔄 Rute Kamu (Rute ${escapeHtml(lv.rute)})</span>`;
+        revisitInfoHtml = `<div style="font-size:10px; color: var(--text-muted); margin-bottom: 4px;">ℹ️ Pernah di rute kamu (Rute ${escapeHtml(lv.rute)})${visitStatus.daysSinceLastVisit !== null ? ` • ${visitStatus.daysSinceLastVisit} hari lalu` : ''}</div>`;
+      } else {
+        const ownerName = lv.namaCrew || "MDS Lain";
+        const ownerModul = lv.modul || "-";
+        revisitBadgeHtml = `<span style="font-size:9px; background: rgba(245, 158, 11, 0.15); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.3); padding: 1px 6px; border-radius: 99px; font-weight: 700;">⚠️ Terjadwal: ${escapeHtml(ownerName)}</span>`;
+        revisitInfoHtml = `
+          <div style="font-size:10.5px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 8px; padding: 6px 8px; margin: 5px 0 6px 0;">
+            <div style="font-weight: 700; color: #b45309; display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+              <span>👤 Pemilik Rute Toko:</span>
+              <span style="color: var(--text-main); font-weight: 800;">${escapeHtml(ownerName)}</span>
+            </div>
+            <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
+              Modul: <b>${escapeHtml(ownerModul)}</b> • Terjadwal di <b>Rute ${escapeHtml(lv.rute || '-')}</b>
+            </div>
+            <button type="button" class="btn-wa-direct" onclick="event.stopPropagation(); openWhatsAppTukarToko('${escapeHtml(ownerName)}', '${escapeHtml(lv.kodeCrew || '')}', '${escapeHtml(ownerModul)}', '${escapeHtml(store.kodeToko)}', '${escapeHtml(store.namaToko)}', '${escapeHtml(lv.rute || '')}')" style="margin-top: 6px; width: 100%; height: 28px; background: #25D366; color: white; border: none; border-radius: 6px; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#1ebc57'" onmouseout="this.style.background='#25D366'">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.298.144.347.491 1.2.534 1.288.043.088.072.188.014.304-.058.116-.087.188-.173.289l-.26.304c-.087.086-.177.18-.076.354.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86.174.086.275.073.376-.044.101-.116.433-.506.549-.68.116-.173.231-.145.39-.086s1.011.477 1.184.564.289.13.332.202c.045.072.045.419-.099.824z"/></svg>
+              <span>Chat WA untuk Tukar Toko</span>
+            </button>
+          </div>
+        `;
+      }
+    }
 
     const popupContent = `
       <div class="popup-container">
@@ -1288,15 +1313,37 @@ function renderFloatingSearchResults(stores, showContainer = true) {
     // Pakai getStoreVisitStatus untuk validasi info kunjungan
     const visitStatus = getStoreVisitStatus(store.kodeToko, store.account);
 
-    // Badge status info revisit (jika pernah dikunjungi sebelumnya)
-    let statusBadgeHtml = "";
-    if (visitStatus.isRevisit) {
-      statusBadgeHtml = `
-        <span style="font-size:9px; background: rgba(59, 130, 246, 0.15); color: #2563eb; border: 1px solid rgba(59, 130, 246, 0.3); padding: 1px 5px; border-radius: 99px; font-weight:600;">🔄 RE-VISIT</span>
-        <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
-          Pernah di Rute ${escapeHtml(visitStatus.lastVisit.rute)}${visitStatus.daysSinceLastVisit !== null ? ` (${visitStatus.daysSinceLastVisit} hari lalu)` : ''}
-        </div>
-      `;
+    // Badge status info revisit / kepemilikan rute MDS
+    let statusBadgeTop = "";
+    let statusBadgeBottom = "";
+    let waActionButtonHtml = "";
+
+    if (visitStatus.isRevisit && visitStatus.lastVisit) {
+      const lv = visitStatus.lastVisit;
+      const isSelf = visitStatus.isSelf;
+
+      if (isSelf) {
+        statusBadgeTop = `<span style="font-size:9px; background: rgba(59, 130, 246, 0.15); color: #2563eb; border: 1px solid rgba(59, 130, 246, 0.3); padding: 1px 5px; border-radius: 99px; font-weight:600;">🔄 Rute Kamu</span>`;
+        statusBadgeBottom = `
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
+            Pernah di Rute ${escapeHtml(lv.rute)}${visitStatus.daysSinceLastVisit !== null ? ` (${visitStatus.daysSinceLastVisit} hari lalu)` : ''}
+          </div>
+        `;
+      } else {
+        const ownerName = lv.namaCrew || "MDS Lain";
+        const ownerModul = lv.modul || "-";
+        statusBadgeTop = `<span style="font-size:9px; background: rgba(245, 158, 11, 0.15); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.3); padding: 1px 5px; border-radius: 99px; font-weight:700;">⚠️ Punya MDS Lain</span>`;
+        statusBadgeBottom = `
+          <div style="font-size: 10px; color: #b45309; font-weight: 600; margin-top: 2px;">
+            <span class="truncate" title="Milik ${escapeHtml(ownerName)} (${escapeHtml(ownerModul)}) Rute ${escapeHtml(lv.rute)}">👤 ${escapeHtml(ownerName)} (${escapeHtml(ownerModul)}) • R${escapeHtml(lv.rute)}</span>
+          </div>
+        `;
+        waActionButtonHtml = `
+          <button type="button" class="btn-icon-mini" style="background: rgba(37, 211, 102, 0.15); color: #16a34a; border: 1px solid rgba(37, 211, 102, 0.35);" onclick="event.stopPropagation(); openWhatsAppTukarToko('${escapeHtml(ownerName)}', '${escapeHtml(lv.kodeCrew || '')}', '${escapeHtml(ownerModul)}', '${escapeHtml(store.kodeToko)}', '${escapeHtml(store.namaToko)}', '${escapeHtml(lv.rute)}')" title="Chat WA ke ${escapeHtml(ownerName)} untuk Tukar Toko">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.298.144.347.491 1.2.534 1.288.043.088.072.188.014.304-.058.116-.087.188-.173.289l-.26.304c-.087.086-.177.18-.076.354.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86.174.086.275.073.376-.044.101-.116.433-.506.549-.68.116-.173.231-.145.39-.086s1.011.477 1.184.564.289.13.332.202c.045.072.045.419-.099.824z"/></svg>
+          </button>
+        `;
+      }
     }
 
     const actionButtonHtml = `
@@ -1315,7 +1362,7 @@ function renderFloatingSearchResults(stores, showContainer = true) {
             <span class="badge-code">${escapeHtml(store.kodeToko)}</span>
             <span class="badge-brand ${brandClass}">${escapeHtml(store.account)}</span>
             ${noGpsBadgeHtml}
-            ${statusBadgeHtml.split('\n')[0]}
+            ${statusBadgeTop}
           </div>
           <div style="font-size: 12px; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
             ${escapeHtml(store.namaToko)}
@@ -1323,9 +1370,10 @@ function renderFloatingSearchResults(stores, showContainer = true) {
           <div style="font-size: 10px; color: var(--text-muted); margin-top: 1px;">
             ${escapeHtml(store.kecamatan || store.kota || 'Area Toko')}${store.provinsi ? ' • ' + escapeHtml(store.provinsi) : ''}${store.crew ? ' • 👤 ' + escapeHtml(store.crew) : ''}
           </div>
-          ${statusBadgeHtml.split('\n').slice(1).join('\n')}
+          ${statusBadgeBottom}
         </div>
-        <div style="display: flex; align-items: center; gap: 3px;">
+        <div style="display: flex; align-items: center; gap: 4px;">
+          ${waActionButtonHtml}
           <button type="button" class="btn-icon-mini" onclick="event.stopPropagation(); editStoreByCode('${escapeHtml(store.kodeToko)}', '${escapeHtml(store.account || '')}')" title="Edit Data Toko">
             <i data-lucide="edit-3" style="width: 13px; height: 13px;"></i>
           </button>
@@ -1848,17 +1896,69 @@ async function loadScheduledStores(targetCrew = null) {
       crewName: activeCrewName
     });
 
-    // Cari koordinat GPS (lat & lon) dari database lokal IndexedDB untuk setiap toko yang terinput
+    // Cari koordinat GPS (lat & lon)
+    // 1. Coba dari local IndexedDB dulu
+    const missingGpsStores = [];
     for (let i = 0; i < stores.length; i++) {
       const st = stores[i];
       if (!st.lat || !st.lon) {
         const localDetail = await getStoreByCode(st.kodeToko, st.account, st.namaToko);
-        if (localDetail) {
-          st.lat = localDetail.lat;
-          st.lon = localDetail.lon;
+        if (localDetail && localDetail.lat && localDetail.lon) {
+          st.lat = parseFloat(localDetail.lat);
+          st.lon = parseFloat(localDetail.lon);
           st.kecamatan = localDetail.kecamatan || st.kecamatan;
           st.kota = localDetail.kota || st.kota;
+        } else {
+          missingGpsStores.push(st);
         }
+      }
+    }
+
+    // 2. Batch enrich koordinat GPS dari Supabase tbl_master_toko (< 50ms) jika ada toko yang belum tersimpan di cache lokal
+    if (missingGpsStores.length > 0 && typeof fetchFromSupabase === 'function' && API_CONFIG && API_CONFIG.USE_SUPABASE) {
+      try {
+        const codes = Array.from(new Set(missingGpsStores.map(s => (s.kodeToko || '').trim().toUpperCase()).filter(Boolean)));
+        if (codes.length > 0) {
+          const inFilter = `in.(${codes.map(c => `"${c}"`).join(',')})`;
+          const cloudList = await fetchFromSupabase("tbl_master_toko", {
+            store_code: inFilter,
+            limit: 500
+          });
+          if (cloudList && Array.isArray(cloudList)) {
+            const cloudMap = new Map();
+            cloudList.forEach(item => {
+              const kExact = `${(item.store_code || '').toUpperCase()}_${(item.account || '').toUpperCase()}`;
+              cloudMap.set(kExact, item);
+              cloudMap.set((item.store_code || '').toUpperCase(), item);
+            });
+
+            missingGpsStores.forEach(st => {
+              const kExact = `${(st.kodeToko || '').toUpperCase()}_${(st.account || '').toUpperCase()}`;
+              const found = cloudMap.get(kExact) || cloudMap.get((st.kodeToko || '').toUpperCase());
+              if (found && (found.latitude || found.lat) && (found.longitude || found.lon)) {
+                st.lat = parseFloat(found.latitude || found.lat);
+                st.lon = parseFloat(found.longitude || found.lon);
+                st.kecamatan = found.kecamatan || st.kecamatan;
+                st.kota = found.kab_kota || st.kota;
+
+                // Cache ke IndexedDB lokal
+                if (typeof addOrUpdateSingleStore === 'function') {
+                  addOrUpdateSingleStore({
+                    kodeToko: st.kodeToko,
+                    namaToko: st.namaToko,
+                    account: st.account,
+                    kecamatan: st.kecamatan,
+                    kota: st.kota,
+                    lat: st.lat,
+                    lon: st.lon
+                  });
+                }
+              }
+            });
+          }
+        }
+      } catch (sbErr) {
+        console.warn("Batch enrich GPS from Supabase error:", sbErr);
       }
     }
 
@@ -2048,12 +2148,20 @@ window.confirmDeleteStoreFromSchedule = async function (kodeToko, namaToko) {
       module: state.profile.modul,
       rute: state.currentRute,
       crewCode: state.profile.kodeCrew,
+      crewName: state.profile.nama,
       kodeToko: kodeToko
     });
 
+    // Prune langsung dari memori lokal agar tampilan instan bersih
+    if (state.scheduleStores && Array.isArray(state.scheduleStores)) {
+      state.scheduleStores = state.scheduleStores.filter(
+        s => String(s.kodeToko || s.kode || '').toUpperCase().trim() !== String(kodeToko || '').toUpperCase().trim()
+      );
+    }
+
     showToast(`Toko ${namaToko} (${kodeToko}) berhasil dihapus dari jadwal Rute ${state.currentRute}!`, "success");
 
-    // Auto-reload jadwal dari Google Sheet
+    // Auto-reload jadwal dari cloud
     await loadScheduledStores();
   } catch (err) {
     showToast(`Gagal menghapus toko: ${err.message}`, "error");
@@ -3327,6 +3435,255 @@ function initPwaInstall() {
     document.getElementById("pwaInstallGateModal")?.classList.remove("active");
     deferredPwaPrompt = null;
   });
+}
+
+// Real-time Inter-Tab Master Store Sync (Dashboard Monitoring -> Web Absen)
+try {
+  const mdsSyncChannel = new BroadcastChannel('mds_sync_channel');
+  mdsSyncChannel.onmessage = async (event) => {
+    const msg = event.data;
+    if (!msg) return;
+    if (msg.type === 'MASTER_STORE_UPDATED' || msg.type === 'MASTER_STORE_ADDED') {
+      if (typeof addOrUpdateSingleStore === 'function') {
+        await addOrUpdateSingleStore({
+          kodeToko: msg.kodeToko,
+          namaToko: msg.namaToko,
+          account: msg.account,
+          dcName: msg.dcName,
+          kecamatan: msg.kecamatan,
+          kota: msg.kota,
+          provinsi: msg.provinsi,
+          lat: msg.lat,
+          lon: msg.lon
+        });
+        console.log(`🏬 [Realtime Master Sync] Toko ${msg.kodeToko} (${msg.namaToko}) tersinkronisasi otomatis ke memori lokal!`);
+      }
+    }
+  };
+} catch (e) {}
+
+/**
+ * Direct Message WhatsApp untuk Koordinasi & Tukar Toko Rute Antar-MDS
+ */
+window.openWhatsAppTukarToko = async function (targetCrewName, targetCrewCode, targetModul, kodeToko, namaToko, ruteToko) {
+  const myName = (state.profile && (state.profile.namaCrew || state.profile.nama)) || "Tim MDS";
+  const myModul = (state.profile && state.profile.modul) || "";
+
+  // Template pesan sopan, santai, dan jelas
+  const textMsg = `Halo Mas/Mbak ${targetCrewName}, salam kenal saya ${myName}${myModul ? ` (MDS Modul ${myModul})` : ''}.\n\nMau izin koordinasi & tanya nih mas/mbak, terkait toko:\n🏬 *${namaToko}* (${kodeToko})\nyang terdata di *Rute ${ruteToko}* kamu, berhubung sedang ada rombak rute, apakah toko ini bisa/boleh ditukar ke rute saya ya?\n\nTerima kasih banyak sebelumnya ya mas/mbak 🙏`;
+
+  // 1. Lookup nomor WhatsApp langsung dari Cloud Firestore (portal_users / users)
+  let phone = await getCrewPhoneFromFirestore(targetCrewName, targetCrewCode);
+
+  // Fallback 2: cek IndexedDB lokal
+  if (!phone) {
+    try {
+      const allCrews = await getAllCrew();
+      const found = allCrews.find(c =>
+        (targetCrewCode && c.id && String(c.id).toUpperCase().trim() === String(targetCrewCode).toUpperCase().trim()) ||
+        (targetCrewName && c.nama && String(c.nama).toLowerCase().trim() === String(targetCrewName).toLowerCase().trim())
+      );
+      if (found && (found.noWa || found.wa || found.noHp || found.telepon)) {
+        phone = String(found.noWa || found.wa || found.noHp || found.telepon).trim();
+      }
+    } catch (e) {
+      console.warn("Gagal lookup nomor WA crew di IndexedDB:", e);
+    }
+  }
+
+  // Sanitasi nomor HP ke format internasional WhatsApp (628xxx)
+  if (phone) {
+    phone = phone.replace(/[^0-9]/g, "");
+    if (phone.startsWith("0")) {
+      phone = "62" + phone.substring(1);
+    } else if (phone.startsWith("8")) {
+      phone = "62" + phone;
+    }
+  }
+
+  if (phone && phone.length >= 10) {
+    // Nomor HP valid ditemukan dari Firestore, langsung buka WhatsApp
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(textMsg)}`;
+    window.open(waUrl, "_blank");
+  } else {
+    // Nomor HP belum terdaftar di Firestore, tampilkan dialog ramah + opsi copy pesan
+    showWhatsAppManualDialog({
+      targetCrewName,
+      targetCrewCode,
+      targetModul,
+      kodeToko,
+      namaToko,
+      ruteToko,
+      textMsg
+    });
+  }
+};
+
+/**
+ * Helper Penarik Nomor WA dari Cloud Firestore (portal_users & users)
+ */
+async function getCrewPhoneFromFirestore(targetCrewName, targetCrewCode) {
+  try {
+    // A. Cek cache memori/localStorage dulu (< 1ms)
+    let cacheMap = {};
+    try {
+      cacheMap = JSON.parse(localStorage.getItem('mds_firestore_crew_phones') || '{}');
+    } catch (e) {}
+
+    const normName = (targetCrewName || '').toLowerCase().trim();
+    const normCode = (targetCrewCode || '').toUpperCase().trim();
+
+    if (normCode && cacheMap[normCode]) return cacheMap[normCode];
+    if (normName && cacheMap[normName]) return cacheMap[normName];
+
+    // B. Tarik dari Firestore SDK jika tersedia
+    if (window.firebase && typeof firebase.firestore === 'function') {
+      try {
+        const db = firebase.firestore();
+        const snap = await db.collection('portal_users').get();
+        if (!snap.empty) {
+          snap.forEach(doc => {
+            const d = doc.data() || {};
+            const p = d.noWa || d.phone || d.wa || d.nomorWa || d.noHp || d.telp || d.telepon || d.kontak || '';
+            if (p) {
+              const nameKey = (d.name || d.nama || '').toLowerCase().trim();
+              const codeKey = (d.id || d.linkedCrew || d.crewCode || '').toUpperCase().trim();
+              if (nameKey) cacheMap[nameKey] = p;
+              if (codeKey) cacheMap[codeKey] = p;
+            }
+          });
+          localStorage.setItem('mds_firestore_crew_phones', JSON.stringify(cacheMap));
+          if (normCode && cacheMap[normCode]) return cacheMap[normCode];
+          if (normName && cacheMap[normName]) return cacheMap[normName];
+        }
+      } catch (sdkErr) {
+        console.warn("Firestore SDK check fallback ke REST:", sdkErr.message);
+      }
+    }
+
+    // C. Tarik langsung lewat REST API Firestore (koleksi portal_users & users)
+    const collectionsToQuery = ['portal_users', 'users'];
+    for (const col of collectionsToQuery) {
+      const restUrl = `https://firestore.googleapis.com/v1/projects/dashboard-portal-cimory/databases/(default)/documents/${col}`;
+      const res = await fetch(restUrl);
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.documents) {
+          json.documents.forEach(docItem => {
+            const fields = docItem.fields || {};
+            const parseVal = (v) => v ? (v.stringValue || v.integerValue || '') : '';
+            const p = parseVal(fields.noWa) || parseVal(fields.phone) || parseVal(fields.wa) || parseVal(fields.nomorWa) || parseVal(fields.noHp) || parseVal(fields.telepon);
+            if (p) {
+              const nameKey = (parseVal(fields.name) || parseVal(fields.nama) || '').toLowerCase().trim();
+              const codeKey = (parseVal(fields.linkedCrew) || parseVal(fields.crewCode) || docItem.name.split('/').pop() || '').toUpperCase().trim();
+              if (nameKey) cacheMap[nameKey] = String(p).trim();
+              if (codeKey) cacheMap[codeKey] = String(p).trim();
+            }
+          });
+          localStorage.setItem('mds_firestore_crew_phones', JSON.stringify(cacheMap));
+          if (normCode && cacheMap[normCode]) return cacheMap[normCode];
+          if (normName && cacheMap[normName]) return cacheMap[normName];
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Gagal membaca nomor telepon crew dari Firestore:", err.message);
+  }
+  return "";
+}
+
+/**
+ * Modal Pop-up Dialog Salin Pesan / Hubungi Manual
+ */
+function showWhatsAppManualDialog({ targetCrewName, targetModul, kodeToko, namaToko, ruteToko, textMsg }) {
+  let modal = document.getElementById("mdsWaTukarModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "mdsWaTukarModal";
+    modal.style.cssText = `
+      position: fixed; inset: 0; z-index: 99999;
+      background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center; padding: 16px;
+    `;
+    document.body.appendChild(modal);
+  }
+
+  modal.innerHTML = `
+    <div style="background: var(--bg-card, #ffffff); color: var(--text-main, #0f172a); border: 1px solid var(--border, #e2e8f0); border-radius: 20px; max-width: 440px; width: 100%; padding: 20px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2); animation: fadeIn 0.2s ease-out;">
+      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border, #e2e8f0); padding-bottom: 12px; margin-bottom: 14px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 32px; height: 32px; border-radius: 10px; background: #25D366; display: flex; align-items: center; justify-content: center; color: white;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.298.144.347.491 1.2.534 1.288.043.088.072.188.014.304-.058.116-.087.188-.173.289l-.26.304c-.087.086-.177.18-.076.354.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86.174.086.275.073.376-.044.101-.116.433-.506.549-.68.116-.173.231-.145.39-.086s1.011.477 1.184.564.289.13.332.202c.045.072.045.419-.099.824z"/></svg>
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 14px; font-weight: 800;">Koordinasi Tukar Toko</h3>
+            <p style="margin: 0; font-size: 11px; color: var(--text-muted, #64748b);">Hubungi ${escapeHtml(targetCrewName)} (${escapeHtml(targetModul)})</p>
+          </div>
+        </div>
+        <button type="button" onclick="document.getElementById('mdsWaTukarModal').style.display='none'" style="background: none; border: none; font-size: 18px; color: var(--text-muted, #94a3b8); cursor: pointer; padding: 4px;">✕</button>
+      </div>
+
+      <div style="font-size: 11.5px; line-height: 1.5; color: var(--text-muted, #475569); margin-bottom: 12px;">
+        Nomor WhatsApp resmi <b>${escapeHtml(targetCrewName)}</b> belum tersimpan di database. Kamu bisa menyalin draf pesan berikut lalu mengirimkannya via WhatsApp:
+      </div>
+
+      <!-- Preview Template Pesan -->
+      <div style="background: var(--bg-main, #f8fafc); border: 1px solid var(--border, #e2e8f0); border-radius: 12px; padding: 10px 12px; font-size: 11px; font-family: monospace; white-space: pre-wrap; max-height: 140px; overflow-y: auto; color: var(--text-main, #1e293b); margin-bottom: 14px;">${escapeHtml(textMsg)}</div>
+
+      <!-- Input Manual No WA jika punya nomornya -->
+      <div style="margin-bottom: 14px;">
+        <label style="display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; color: var(--text-muted, #64748b); margin-bottom: 4px;">Punya No WA ${escapeHtml(targetCrewName)}? Masukkan di sini:</label>
+        <div style="display: flex; gap: 6px;">
+          <input type="tel" id="inputManualWaNumber" placeholder="Contoh: 08123456789" style="flex: 1; height: 36px; padding: 0 10px; font-size: 12px; border-radius: 10px; border: 1px solid var(--border, #cbd5e1); background: var(--bg-main, #ffffff); color: var(--text-main, #0f172a);">
+          <button type="button" id="btnLaunchManualWa" style="height: 36px; padding: 0 14px; background: #25D366; color: white; font-size: 11.5px; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+            <span>Kirim WA</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tombol Aksi Utama -->
+      <div style="display: flex; gap: 8px;">
+        <button type="button" id="btnCopyWaMsg" style="flex: 1; height: 38px; background: var(--primary, #3b82f6); color: white; border: none; border-radius: 10px; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <span>📋 Salin Teks Pesan</span>
+        </button>
+        <button type="button" onclick="document.getElementById('mdsWaTukarModal').style.display='none'" style="height: 38px; padding: 0 16px; background: var(--bg-main, #f1f5f9); color: var(--text-main, #475569); border: 1px solid var(--border, #e2e8f0); border-radius: 10px; font-size: 12px; font-weight: 700; cursor: pointer;">
+          Tutup
+        </button>
+      </div>
+    </div>
+  `;
+
+  modal.style.display = "flex";
+
+  // Event handler Salin Pesan
+  document.getElementById("btnCopyWaMsg").onclick = async function () {
+    try {
+      await navigator.clipboard.writeText(textMsg);
+      this.innerHTML = "<span>✓ Berhasil Disalin!</span>";
+      this.style.background = "#10b981";
+      setTimeout(() => {
+        this.innerHTML = "<span>📋 Salin Teks Pesan</span>";
+        this.style.background = "var(--primary, #3b82f6)";
+      }, 2000);
+      if (typeof showToast === "function") showToast("Draf pesan berhasil disalin ke clipboard!", "success");
+    } catch (e) {
+      alert("Silakan salin teks di kotak atas secara manual.");
+    }
+  };
+
+  // Event handler Buka WA Manual
+  document.getElementById("btnLaunchManualWa").onclick = function () {
+    let inp = document.getElementById("inputManualWaNumber").value.replace(/[^0-9]/g, "");
+    if (!inp || inp.length < 8) {
+      alert("Masukkan nomor WhatsApp yang valid (contoh: 0812xxxxxx)");
+      return;
+    }
+    if (inp.startsWith("0")) inp = "62" + inp.substring(1);
+    else if (inp.startsWith("8")) inp = "62" + inp;
+
+    window.open(`https://wa.me/${inp}?text=${encodeURIComponent(textMsg)}`, "_blank");
+    modal.style.display = "none";
+  };
 }
 
 

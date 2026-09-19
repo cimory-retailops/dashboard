@@ -609,6 +609,142 @@ const MapService = {
     // Sort ascending by distance and take top N
     scored.sort((a, b) => a.distanceMeters - b.distanceMeters);
     return scored.slice(0, limit);
+  },
+
+  /**
+   * Initialize or Reset Map Komparasi Dual-Pin
+   */
+  compareMapInstance: null,
+  compareMarkerGroup: null,
+
+  initCompareMap(elementId = 'compare-map', isDark = false) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    if (this.compareMapInstance) {
+      this.compareMapInstance.remove();
+      this.compareMapInstance = null;
+    }
+
+    this.compareMapInstance = L.map(elementId, {
+      zoomControl: true,
+      scrollWheelZoom: true
+    }).setView([-6.2088, 106.8456], 13); // Default Jakarta
+
+    const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+
+    L.tileLayer(tileUrl, { attribution, maxZoom: 19 }).addTo(this.compareMapInstance);
+    this.compareMarkerGroup = L.layerGroup().addTo(this.compareMapInstance);
+
+    setTimeout(() => {
+      if (this.compareMapInstance) this.compareMapInstance.invalidateSize();
+    }, 250);
+  },
+
+  /**
+   * Render Dual-Pin Marker (Database Biru vs Lapangan Hijau) + Polyline Selisih
+   */
+  renderComparePins(dbStore, fieldStore, distMeters) {
+    if (!this.compareMapInstance || !this.compareMarkerGroup) return;
+    this.compareMarkerGroup.clearLayers();
+
+    const bounds = [];
+    const hasDbGps = dbStore && dbStore.lat && dbStore.lon && !isNaN(dbStore.lat) && !isNaN(dbStore.lon) && (Number(dbStore.lat) !== 0 || Number(dbStore.lon) !== 0);
+    const hasFieldGps = fieldStore && fieldStore.lat && fieldStore.lon && !isNaN(fieldStore.lat) && !isNaN(fieldStore.lon) && (Number(fieldStore.lat) !== 0 || Number(fieldStore.lon) !== 0);
+
+    // 1. Pin Biru: Versi Database Master Toko
+    if (hasDbGps) {
+      const dbLat = parseFloat(dbStore.lat);
+      const dbLon = parseFloat(dbStore.lon);
+      const dbIcon = L.divIcon({
+        className: 'custom-pin-db',
+        html: `
+          <div class="relative flex flex-col items-center">
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-black bg-sky-600 text-white shadow-md uppercase tracking-wider mb-0.5 border border-white">DATABASE</span>
+            <div class="w-8 h-8 rounded-full bg-sky-500 text-white flex items-center justify-center shadow-lg border-2 border-white">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 7v10c0 2 1.5 3 3.5 3h9c2 0 3.5-1 3.5-3V7c0-2-1.5-3-3.5-3h-9C5.5 4 4 5 4 7z"></path><path d="M9 17v-6l4 3 4-3v6"></path></svg>
+            </div>
+            <div class="w-1.5 h-1.5 rounded-full bg-sky-700 mt-0.5"></div>
+          </div>
+        `,
+        iconSize: [60, 60],
+        iconAnchor: [30, 56],
+        popupAnchor: [0, -50]
+      });
+
+      const mDb = L.marker([dbLat, dbLon], { icon: dbIcon, zIndexOffset: 800 });
+      mDb.bindPopup(`
+        <div class="text-xs p-1 space-y-1">
+          <div class="font-extrabold text-sky-600 uppercase text-[10px]">📍 DATABASE MASTER TOKO</div>
+          <div class="font-bold text-slate-800">${dbStore.namaToko || '-'}</div>
+          <div class="text-[11px] text-slate-500 font-mono">${dbLat.toFixed(5)}, ${dbLon.toFixed(5)}</div>
+        </div>
+      `);
+      this.compareMarkerGroup.addLayer(mDb);
+      bounds.push([dbLat, dbLon]);
+    }
+
+    // 2. Pin Hijau: Versi Kunjungan Riil Lapangan
+    if (hasFieldGps) {
+      const fLat = parseFloat(fieldStore.lat);
+      const fLon = parseFloat(fieldStore.lon);
+      const fieldIcon = L.divIcon({
+        className: 'custom-pin-field',
+        html: `
+          <div class="relative flex flex-col items-center">
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-600 text-white shadow-md uppercase tracking-wider mb-0.5 border border-white animate-pulse">LAPANGAN</span>
+            <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg border-2 border-white ring-2 ring-emerald-400">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"></path></svg>
+            </div>
+            <div class="w-1.5 h-1.5 rounded-full bg-emerald-700 mt-0.5"></div>
+          </div>
+        `,
+        iconSize: [60, 60],
+        iconAnchor: [30, 56],
+        popupAnchor: [0, -50]
+      });
+
+      const mField = L.marker([fLat, fLon], { icon: fieldIcon, zIndexOffset: 900 });
+      mField.bindPopup(`
+        <div class="text-xs p-1.5 space-y-1">
+          <div class="font-extrabold text-emerald-600 uppercase text-[10px] flex items-center justify-between gap-2">
+            <span>🎯 HASIL KUNJUNGAN MDS</span>
+            <span class="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 font-black text-[9px]">MODUL ${fieldStore.modul || '-'}</span>
+          </div>
+          <div class="font-bold text-slate-900 dark:text-white">${fieldStore.namaToko || '-'}</div>
+          <div class="text-[11px] text-slate-600 dark:text-slate-300">Petugas: <strong>${fieldStore.namaCrew || '-'}</strong> (${fieldStore.kodeCrew || '-'})</div>
+          <div class="text-[10px] text-slate-500">Waktu: ${fieldStore.date || '-'} ${fieldStore.time || ''}</div>
+          <div class="text-[11px] text-slate-500 font-mono">${fLat.toFixed(5)}, ${fLon.toFixed(5)}</div>
+        </div>
+      `);
+      this.compareMarkerGroup.addLayer(mField);
+      bounds.push([fLat, fLon]);
+    }
+
+    // 3. Garis Ukur Selisih Jarak jika kedua koordinat valid
+    if (hasDbGps && hasFieldGps) {
+      const line = L.polyline([[parseFloat(dbStore.lat), parseFloat(dbStore.lon)], [parseFloat(fieldStore.lat), parseFloat(fieldStore.lon)]], {
+        color: '#f59e0b',
+        weight: 4,
+        dashArray: '8, 8',
+        opacity: 0.9
+      });
+      const distLabel = distMeters !== null ? (distMeters < 1000 ? `${distMeters} meter` : `${(distMeters / 1000).toFixed(2)} km`) : 'Beda Posisi';
+      line.bindTooltip(`📏 Selisih Jarak: ${distLabel}`, { permanent: true, direction: 'center', className: 'bg-amber-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded shadow' });
+      this.compareMarkerGroup.addLayer(line);
+    }
+
+    // Fit Bounds
+    if (bounds.length > 0) {
+      try {
+        if (bounds.length === 1) {
+          this.compareMapInstance.setView(bounds[0], 16);
+        } else {
+          this.compareMapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+        }
+      } catch (e) {}
+    }
   }
 };
 

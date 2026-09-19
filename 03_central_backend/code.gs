@@ -1560,6 +1560,8 @@ function doPost(e) {
       result.data = handleAssignScheduledStore_(payload);
     } else if (action === "create_or_update_master_store") {
       result.data = handleCreateOrUpdateMasterStore_(payload);
+    } else if (action === "batch_update_master_stores") {
+      result.data = handleBatchUpdateMasterStores_(payload);
     } else if (action === "delete_master_store") {
       result.data = handleDeleteMasterStore_(payload);
     } else if (action === "ping") {
@@ -1601,18 +1603,19 @@ function findStoreRowIndices_(sheet, criteria) {
   var crewNameIdx = headers.findIndex(function(h) { return h.includes("namacrew") || (h.includes("crew") && !h.includes("kode")); });
   var ruteIdx = headers.findIndex(function(h) { return h.includes("rute") || h.includes("route"); });
 
-  var cMod = modIdx >= 0 ? modIdx : 0;
-  var cAcc = accIdx >= 0 ? accIdx : 1;
-  var cCode = codeIdx >= 0 ? codeIdx : 2;
-  var cName = nameIdx >= 0 ? nameIdx : 3;
-  var cCrewCode = crewCodeIdx >= 0 ? crewCodeIdx : 4;
-  var cCrewName = crewNameIdx >= 0 ? crewNameIdx : 5;
-  var cRute = ruteIdx >= 0 ? ruteIdx : 6;
+  var isBranchSheet = (modIdx === -1);
+  var cMod = modIdx;
+  var cAcc = accIdx >= 0 ? accIdx : 0;
+  var cCode = codeIdx >= 0 ? codeIdx : (isBranchSheet ? 1 : 2);
+  var cName = nameIdx >= 0 ? nameIdx : (isBranchSheet ? 2 : 3);
+  var cCrewCode = crewCodeIdx >= 0 ? crewCodeIdx : (isBranchSheet ? 3 : 4);
+  var cCrewName = crewNameIdx >= 0 ? crewNameIdx : (isBranchSheet ? 4 : 5);
+  var cRute = ruteIdx >= 0 ? ruteIdx : (isBranchSheet ? 5 : 6);
 
-  var targetCode = (criteria.kodeToko || criteria.oldKodeToko || "").toString().trim().toUpperCase();
+  var targetCode = (criteria.kodeToko || criteria.oldKodeToko || criteria.kode || "").toString().trim().toUpperCase();
   var targetRute = (criteria.rute || criteria.oldRute || "").toString().trim().replace(/[^0-9]/g, "");
-  var targetCrew = (criteria.namaCrew || criteria.oldNamaCrew || criteria.kodeCrew || "").toString().trim().toUpperCase();
-  var targetModul = normalizeModulKey_(criteria.modul || criteria.oldModul || "");
+  var targetCrew = (criteria.namaCrew || criteria.oldNamaCrew || criteria.kodeCrew || criteria.crewName || criteria.crewCode || "").toString().trim().toUpperCase();
+  var targetModul = normalizeModulKey_(criteria.modul || criteria.oldModul || criteria.module || "");
 
   var matches = [];
 
@@ -1624,8 +1627,10 @@ function findStoreRowIndices_(sheet, criteria) {
     var rRute = String(row[cRute] || "").trim().replace(/[^0-9]/g, "");
     if (targetRute && rRute && rRute !== targetRute) continue;
 
-    var rMod = normalizeModulKey_(String(row[cMod] || ""));
-    if (targetModul && rMod && rMod !== targetModul && rMod.substring(0,2) !== targetModul.substring(0,2)) continue;
+    if (cMod >= 0 && targetModul) {
+      var rMod = normalizeModulKey_(String(row[cMod] || ""));
+      if (rMod && rMod !== targetModul && rMod.substring(0,2) !== targetModul.substring(0,2)) continue;
+    }
 
     var rCrewName = String(row[cCrewName] || "").trim().toUpperCase();
     var rCrewCode = String(row[cCrewCode] || "").trim().toUpperCase();
@@ -1703,11 +1708,11 @@ function handleUpdateStoreRouteInfo_(payload) {
     for (var p = 0; p < pMatches.length; p++) {
       var m = pMatches[p];
       var cols = m.colIndices;
-      if (newModul) centralSheet.getRange(m.rowNumber, cols.modul + 1).setValue(newModul);
-      if (newAcc) centralSheet.getRange(m.rowNumber, cols.account + 1).setValue(newAcc);
-      if (newKode) centralSheet.getRange(m.rowNumber, cols.kodeToko + 1).setValue(newKode);
-      if (newNama) centralSheet.getRange(m.rowNumber, cols.namaToko + 1).setValue(newNama);
-      if (newRute) centralSheet.getRange(m.rowNumber, cols.rute + 1).setValue(newRute);
+      if (newModul && cols.modul >= 0) centralSheet.getRange(m.rowNumber, cols.modul + 1).setValue(newModul);
+      if (newAcc && cols.account >= 0) centralSheet.getRange(m.rowNumber, cols.account + 1).setValue(newAcc);
+      if (newKode && cols.kodeToko >= 0) centralSheet.getRange(m.rowNumber, cols.kodeToko + 1).setValue(newKode);
+      if (newNama && cols.namaToko >= 0) centralSheet.getRange(m.rowNumber, cols.namaToko + 1).setValue(newNama);
+      if (newRute && cols.rute >= 0) centralSheet.getRange(m.rowNumber, cols.rute + 1).setValue(newRute);
       audit.pipelineUpdated++;
       audit.details.push("Pipeline Master_Toko Baris " + m.rowNumber + " diupdate");
     }
@@ -1718,17 +1723,17 @@ function handleUpdateStoreRouteInfo_(payload) {
   if (modulIDs[targetModulKey]) {
     try {
       var mSs = SpreadsheetApp.openById(modulIDs[targetModulKey]);
-      var mSheet = getSheetByNames_(mSs, ["Master_Toko", "master_toko", "Master Toko", "DATA TOKO", "Sheet1"]);
+      var mSheet = getSheetByNames_(mSs, ["Master_Toko", "master_toko", "Master Toko", "DATA TOKO", "Sheet1"]) || mSs.getSheets()[0];
       if (mSheet) {
         var mMatches = findStoreRowIndices_(mSheet, oldData);
         for (var mi = 0; mi < mMatches.length; mi++) {
           var mm = mMatches[mi];
           var mCols = mm.colIndices;
-          if (newModul) mSheet.getRange(mm.rowNumber, mCols.modul + 1).setValue(newModul);
-          if (newAcc) mSheet.getRange(mm.rowNumber, mCols.account + 1).setValue(newAcc);
-          if (newKode) mSheet.getRange(mm.rowNumber, mCols.kodeToko + 1).setValue(newKode);
-          if (newNama) mSheet.getRange(mm.rowNumber, mCols.namaToko + 1).setValue(newNama);
-          if (newRute) mSheet.getRange(mm.rowNumber, mCols.rute + 1).setValue(newRute);
+          if (newModul && mCols.modul >= 0) mSheet.getRange(mm.rowNumber, mCols.modul + 1).setValue(newModul);
+          if (newAcc && mCols.account >= 0) mSheet.getRange(mm.rowNumber, mCols.account + 1).setValue(newAcc);
+          if (newKode && mCols.kodeToko >= 0) mSheet.getRange(mm.rowNumber, mCols.kodeToko + 1).setValue(newKode);
+          if (newNama && mCols.namaToko >= 0) mSheet.getRange(mm.rowNumber, mCols.namaToko + 1).setValue(newNama);
+          if (newRute && mCols.rute >= 0) mSheet.getRange(mm.rowNumber, mCols.rute + 1).setValue(newRute);
           audit.modulSheetUpdated++;
           audit.details.push("Modul " + targetModulKey + " Baris " + mm.rowNumber + " diupdate");
         }
@@ -1743,16 +1748,16 @@ function handleUpdateStoreRouteInfo_(payload) {
   if (absenIDs[prefix]) {
     try {
       var aSs = SpreadsheetApp.openById(absenIDs[prefix]);
-      var aSheet = getSheetByNames_(aSs, ["Toko_Absen", "toko_absen", "Toko Absen", "Master_Toko", "Sheet1"]);
+      var aSheet = getSheetByNames_(aSs, ["Toko_Absen", "toko_absen", "Toko Absen", "Master_Toko", "Sheet1"]) || aSs.getSheets()[0];
       if (aSheet) {
         var aMatches = findStoreRowIndices_(aSheet, oldData);
         for (var ai = 0; ai < aMatches.length; ai++) {
           var am = aMatches[ai];
           var aCols = am.colIndices;
-          if (newAcc) aSheet.getRange(am.rowNumber, aCols.account + 1).setValue(newAcc);
-          if (newKode) aSheet.getRange(am.rowNumber, aCols.kodeToko + 1).setValue(newKode);
-          if (newNama) aSheet.getRange(am.rowNumber, aCols.namaToko + 1).setValue(newNama);
-          if (newRute) aSheet.getRange(am.rowNumber, aCols.rute + 1).setValue(newRute);
+          if (newAcc && aCols.account >= 0) aSheet.getRange(am.rowNumber, aCols.account + 1).setValue(newAcc);
+          if (newKode && aCols.kodeToko >= 0) aSheet.getRange(am.rowNumber, aCols.kodeToko + 1).setValue(newKode);
+          if (newNama && aCols.namaToko >= 0) aSheet.getRange(am.rowNumber, aCols.namaToko + 1).setValue(newNama);
+          if (newRute && aCols.rute >= 0) aSheet.getRange(am.rowNumber, aCols.rute + 1).setValue(newRute);
           audit.absenSheetUpdated++;
         }
       }
@@ -1852,7 +1857,7 @@ function handleTransferStoreCrew_(payload) {
       var newSheet = getSheetByNames_(newSs, ["Master_Toko", "master_toko", "Master Toko", "DATA TOKO", "Sheet1"]);
       if (newSheet) {
         // Strict 13 Columns for AppSheet: ACCOUNT, KODE TOKO, NAMA TOKO, KODE CREW, NAMA CREW, RUTE, TIPE TOKO, KEPALA TOKO, ALAMAT, NO TELP, ATASAN, CATATAN, STATUS
-        var newRow = [account, kodeToko, namaToko, newCrewCode, newCrewName, newRute, "MINIMARKET", "-", "-", "-", "-", "-", "AKTIF"];
+        var newRow = [account, kodeToko, namaToko, newCrewCode, newCrewName, newRute, "", "-", "-", "-", "-", "-", "AKTIF"];
         newSheet.appendRow(newRow);
         audit.newModulAdded = true;
       }
@@ -1870,9 +1875,13 @@ function handleTransferStoreCrew_(payload) {
  */
 function handleDeleteScheduledStore_(payload) {
   var criteria = payload.store || payload;
-  var targetModul = normalizeModulKey_(criteria.modul || "");
-  var targetKode = String(criteria.kodeToko || "").trim().toUpperCase();
-  var targetRute = String(criteria.rute || "").trim().replace(/[^0-9]/g, "");
+  var targetModul = normalizeModulKey_(criteria.modul || criteria.module || payload.modul || payload.module || "");
+  var targetKode = String(criteria.kodeToko || criteria.kode || payload.kodeToko || payload.kode || "").trim().toUpperCase();
+  var targetRute = String(criteria.rute || payload.rute || "").trim().replace(/[^0-9]/g, "");
+
+  criteria.modul = targetModul;
+  criteria.kodeToko = targetKode;
+  criteria.rute = targetRute;
 
   if (!targetKode) throw new Error("Kode Toko yang ingin dihapus wajib disertakan");
 
@@ -2036,7 +2045,7 @@ function handleAssignScheduledStore_(payload) {
   var centralSs = SpreadsheetApp.getActiveSpreadsheet();
   var centralSheet = centralSs.getSheetByName("Master_Toko");
   if (centralSheet) {
-    var pRow = [targetModul, account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "MINIMARKET", "-", "-", "-", "-", "-", "TERSEBAR"];
+    var pRow = [targetModul, account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "", "-", "-", "-", "-", "-", "TERSEBAR"];
     centralSheet.appendRow(pRow);
     audit.pipelineAdded = true;
     audit.details.push("Ditambahkan ke Pipeline Master_Toko Sentral (Modul " + targetModul + ", " + targetCrewName + ", Rute " + targetRute + ")");
@@ -2048,7 +2057,7 @@ function handleAssignScheduledStore_(payload) {
       var mSs = SpreadsheetApp.openById(modulIDs[targetModul]);
       var mSheet = getSheetByNames_(mSs, ["Master_Toko", "master_toko", "Master Toko", "DATA TOKO", "Sheet1"]);
       if (mSheet) {
-        var mRow = [account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "MINIMARKET", "-", "-", "-", "-", "-", "AKTIF"];
+        var mRow = [account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "", "-", "-", "-", "-", "-", "AKTIF"];
         mSheet.appendRow(mRow);
         audit.modulSheetAdded = true;
         audit.details.push("Ditambahkan ke Modul " + targetModul);
@@ -2065,7 +2074,7 @@ function handleAssignScheduledStore_(payload) {
       var aSs = SpreadsheetApp.openById(absenIDs[prefix]);
       var aSheet = getSheetByNames_(aSs, ["Toko_Absen", "toko_absen", "Toko Absen", "Master_Toko", "Sheet1"]);
       if (aSheet) {
-        var aRow = [account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "MINIMARKET", "-", "-", "-", "-", "-", "AKTIF"];
+        var aRow = [account, kodeToko, namaToko, targetCrewCode, targetCrewName, targetRute, "", "-", "-", "-", "-", "-", "AKTIF"];
         aSheet.appendRow(aRow);
         audit.absenSheetAdded = true;
       }
@@ -2214,6 +2223,50 @@ function handleCreateOrUpdateMasterStore_(payload) {
     sheet.appendRow(newRow);
     return { message: "Toko " + namaToko + " (" + kodeToko + ") berhasil ditambahkan sebagai toko baru ke Master Database Nasional 49k!", isNew: true };
   }
+}
+
+/**
+ * 5b. BATCH UPDATE MASTER TOKO NASIONAL DI MASTER 49K SPREADSHEET
+ */
+function handleBatchUpdateMasterStores_(payload) {
+  var storeList = Array.isArray(payload.stores) ? payload.stores : (payload.storeList || []);
+  if (!storeList.length) return { message: "Tidak ada data toko yang dikirim", count: 0 };
+
+  var masterSs = SpreadsheetApp.openById(MASTER_49K_ID);
+  var sheet = masterSs.getSheetByName("master_toko") || masterSs.getSheets()[0];
+  var data = sheet.getDataRange().getValues();
+
+  // Index baris berdasarkan kodeToko (kolom 0)
+  var rowMap = {};
+  for (var i = 1; i < data.length; i++) {
+    var k = String(data[i][0] || "").trim().toUpperCase();
+    if (k) rowMap[k] = i + 1; // 1-indexed row number
+  }
+
+  var updatedCount = 0;
+  storeList.forEach(function(st) {
+    var kTok = String(st.kodeToko || st.store_code || "").trim().toUpperCase();
+    var foundRow = rowMap[kTok];
+    if (foundRow) {
+      if (st.namaToko || st.store_name) sheet.getRange(foundRow, 4).setValue(String(st.namaToko || st.store_name).trim());
+      if (st.account) sheet.getRange(foundRow, 10).setValue(String(st.account).toUpperCase().trim());
+      if (st.branchName || st.dcName) sheet.getRange(foundRow, 3).setValue(st.branchName || st.dcName);
+      if (st.kecamatan) sheet.getRange(foundRow, 5).setValue(st.kecamatan);
+      if (st.kota || st.kabKota) sheet.getRange(foundRow, 6).setValue(st.kota || st.kabKota);
+      if (st.lat !== undefined && st.lat !== null && !isNaN(Number(st.lat)) && Number(st.lat) !== 0) {
+        sheet.getRange(foundRow, 8).setValue(st.lat);
+      }
+      if (st.lon !== undefined && st.lon !== null && !isNaN(Number(st.lon)) && Number(st.lon) !== 0) {
+        sheet.getRange(foundRow, 9).setValue(st.lon);
+      }
+      updatedCount++;
+    }
+  });
+
+  return {
+    message: "Berhasil memperbarui " + updatedCount + " toko di Master Database Spreadsheet!",
+    count: updatedCount
+  };
 }
 
 /**

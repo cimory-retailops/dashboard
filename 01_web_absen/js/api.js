@@ -25,12 +25,182 @@ const API_CONFIG = {
     "LP4": "1kUWJIQxtSkjebZMualR2bIV6HyGxp-baDVz1s-7KspU"
   },
   
-  // URL Google Apps Script Web App Default
-  DEFAULT_GAS_URL: "https://script.google.com/macros/s/AKfycby1QQCwXusMhaEtm79iVISFjrZ3H6RxGOTi3vTXcYF-Xvv9SOk-X4HkugRUEe1E2-pZHQ/exec",
+  // URL Google Apps Script Web App Default (Central Multi-Module Backend)
+  DEFAULT_GAS_URL: "https://script.google.com/macros/s/AKfycbzDkLr0LfbHSiIgBOVO40ktn8c7Doc8jvI7zTPv-EVsNzr9fci42TzP7JSXxXp6lzGV/exec",
   
-  getGasUrl: () => localStorage.getItem("mds_gas_api_url") || API_CONFIG.DEFAULT_GAS_URL,
+  // Supabase Cloud REST API Config (Instant Sub-50ms Query)
+  SUPABASE_URL: "https://lzvxxcnubtcvdiwfnjmh.supabase.co/rest/v1",
+  SUPABASE_KEY: "sb_publishable_Yrqw13m5rQQKNF0XnWtlOg_JvZZ2_AE",
+  USE_SUPABASE: true,
+
+  getGasUrl: () => {
+    const custom = localStorage.getItem("mds_gas_api_url");
+    if (custom && custom.includes("AKfycby1QQCwXusMhaEtm79iVISFjrZ3H6RxGOTi3vTXcYF-Xvv9SOk-X4HkugRUEe1E2-pZHQ")) {
+      localStorage.removeItem("mds_gas_api_url");
+    }
+    return localStorage.getItem("mds_gas_api_url") || API_CONFIG.DEFAULT_GAS_URL;
+  },
   setGasUrl: (url) => localStorage.setItem("mds_gas_api_url", url.trim())
 };
+
+/**
+ * Supabase Cloud REST API Fetcher dengan Batch Pagination Otomatis
+ */
+async function fetchFromSupabase(table, queryParams = {}) {
+  try {
+    const requestedLimit = parseInt(queryParams.limit || '1000', 10);
+    if (requestedLimit <= 1000) {
+      const url = new URL(`${API_CONFIG.SUPABASE_URL}/${table}`);
+      Object.entries(queryParams).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') {
+          url.searchParams.append(k, String(v));
+        }
+      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url.toString(), {
+        headers: {
+          'apikey': API_CONFIG.SUPABASE_KEY,
+          'Authorization': `Bearer ${API_CONFIG.SUPABASE_KEY}`
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) return await res.json();
+      return null;
+    }
+
+    const numBatches = Math.min(Math.ceil(requestedLimit / 1000), 25);
+    const batchPromises = [];
+    for (let i = 0; i < numBatches; i++) {
+      batchPromises.push((async () => {
+        const url = new URL(`${API_CONFIG.SUPABASE_URL}/${table}`);
+        Object.entries(queryParams).forEach(([k, v]) => {
+          if (k !== 'limit' && k !== 'offset' && v !== undefined && v !== null && v !== '') {
+            url.searchParams.append(k, String(v));
+          }
+        });
+        url.searchParams.append('limit', '1000');
+        url.searchParams.append('offset', String(i * 1000));
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(url.toString(), {
+          headers: {
+            'apikey': API_CONFIG.SUPABASE_KEY,
+            'Authorization': `Bearer ${API_CONFIG.SUPABASE_KEY}`
+          },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) return await res.json();
+        return [];
+      })());
+    }
+    const results = await Promise.all(batchPromises);
+    return results.flat();
+  } catch (e) {
+    console.warn(`Supabase [${table}] fetch failed:`, e);
+    return null;
+  }
+}
+
+/**
+ * Supabase Direct INSERT / UPSERT (Instant Cloud Write < 100ms)
+ */
+async function insertToSupabase(table, records = []) {
+  if (!API_CONFIG.USE_SUPABASE || !API_CONFIG.SUPABASE_URL || !records.length) return null;
+  try {
+    const url = new URL(`${API_CONFIG.SUPABASE_URL}/${table}`);
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'apikey': API_CONFIG.SUPABASE_KEY,
+        'Authorization': `Bearer ${API_CONFIG.SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=representation'
+      },
+      body: JSON.stringify(records)
+    });
+    if (res.ok) {
+      console.log(`⚡ [Supabase INSERT] Berhasil simpan ${records.length} baris ke ${table}`);
+      return await res.json();
+    } else {
+      console.warn(`⚠️ [Supabase INSERT] Gagal simpan ke ${table}:`, res.status, await res.text());
+      return null;
+    }
+  } catch (e) {
+    console.warn(`⚠️ [Supabase INSERT] Error:`, e);
+    return null;
+  }
+}
+
+/**
+ * Supabase Direct DELETE (Instant Cloud Delete < 100ms)
+ */
+async function deleteFromSupabase(table, filters = {}) {
+  if (!API_CONFIG.USE_SUPABASE || !API_CONFIG.SUPABASE_URL) return null;
+  try {
+    const url = new URL(`${API_CONFIG.SUPABASE_URL}/${table}`);
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') {
+        url.searchParams.append(k, String(v));
+      }
+    });
+    const res = await fetch(url.toString(), {
+      method: 'DELETE',
+      headers: {
+        'apikey': API_CONFIG.SUPABASE_KEY,
+        'Authorization': `Bearer ${API_CONFIG.SUPABASE_KEY}`,
+        'Prefer': 'return=representation'
+      }
+    });
+    if (res.ok) {
+      console.log(`⚡ [Supabase DELETE] Berhasil hapus dari ${table}`);
+      return await res.json();
+    } else {
+      console.warn(`⚠️ [Supabase DELETE] Gagal hapus dari ${table}:`, res.status, await res.text());
+      return null;
+    }
+  } catch (e) {
+    console.warn(`⚠️ [Supabase DELETE] Error:`, e);
+    return null;
+  }
+}
+
+/**
+ * Supabase Direct PATCH (Instant Cloud Update < 100ms)
+ */
+async function patchSupabase(table, filters = {}, data = {}) {
+  if (!API_CONFIG.USE_SUPABASE || !API_CONFIG.SUPABASE_URL) return null;
+  try {
+    const url = new URL(`${API_CONFIG.SUPABASE_URL}/${table}`);
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') {
+        url.searchParams.append(k, String(v));
+      }
+    });
+    const res = await fetch(url.toString(), {
+      method: 'PATCH',
+      headers: {
+        'apikey': API_CONFIG.SUPABASE_KEY,
+        'Authorization': `Bearer ${API_CONFIG.SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(data)
+    });
+    if (res.ok) {
+      console.log(`⚡ [Supabase PATCH] Berhasil update ${table}:`, data);
+      return await res.json();
+    } else {
+      console.warn(`⚠️ [Supabase PATCH] Gagal update ${table}:`, res.status, await res.text());
+      return null;
+    }
+  } catch (e) {
+    console.warn(`⚠️ [Supabase PATCH] Error:`, e);
+    return null;
+  }
+}
 
 /**
  * Fast & Safe CSV Stream Parser
@@ -223,6 +393,7 @@ async function syncMasterCrewFromSheet() {
     const idxDivisi = findCol(["DIVISI", "DIVISION"], 3);
     const idxAccount = findCol(["ACCOUNT", "AKUN"], 4);
     const idxModul = findCol(["MODUL", "BRANCH", "WILAYAH"], 7);
+    const idxNoWa = findCol(["NOWA", "WA", "NOHP", "TELP", "TELEPON", "PHONE", "NOMORWA"], -1);
 
     const crews = [];
 
@@ -234,7 +405,8 @@ async function syncMasterCrewFromSheet() {
         nama: "Yohandi Pratama",
         modul: "LP4",
         account: "ALFAMART",
-        jabatan: "Administrator & Merchandiser"
+        jabatan: "Administrator & Merchandiser",
+        noWa: ""
       });
     }
 
@@ -248,9 +420,10 @@ async function syncMasterCrewFromSheet() {
       const modul = (row[idxModul] || "").toString().trim().toUpperCase();
       const account = (row[idxAccount] || "").toString().trim().toUpperCase();
       const jabatan = (row[idxJabatan] || "").toString().trim();
+      const noWa = idxNoWa !== -1 ? (row[idxNoWa] || "").toString().trim() : "";
 
       if (nama && id && !crews.some(c => c.id === id && c.nama.toLowerCase() === nama.toLowerCase() && c.modul === modul)) {
-        crews.push({ id, nama, modul, account, jabatan });
+        crews.push({ id, nama, modul, account, jabatan, noWa });
       }
     }
 
@@ -285,6 +458,46 @@ async function submitRouteAttendance({ module, crewCode, crewName, rute, stores,
   console.log("👤 Crew Profil:", { nama: crewName, id: crewCode, modul: module, rute: rute });
   console.log("📦 Total Toko Dikirim:", stores.length);
   console.log("📋 Data Payload Lengkap:", payload);
+
+  // 0. FAST-PATH DIRECT SUPABASE DUAL-WRITE (< 100ms)
+  try {
+    if (API_CONFIG.USE_SUPABASE && API_CONFIG.SUPABASE_URL) {
+      const cleanMod = String(module || '').toUpperCase().replace(/\s+/g, '');
+      const cleanRute = String(rute || '1').trim().replace(/[^0-9]/g, '') || '1';
+      const cleanCrewCode = String(crewCode || '').trim();
+      const cleanCrewName = String(crewName || '').trim();
+
+      // Hapus data rute lama kru ini di Supabase agar bersih (anti duplikat)
+      if (cleanMod && cleanRute && (cleanCrewName || cleanCrewCode)) {
+        const delFilter = {
+          modul: `eq.${cleanMod}`,
+          rute: `eq.${cleanRute}`
+        };
+        if (cleanCrewCode) delFilter.kode_crew = `eq.${cleanCrewCode}`;
+        else if (cleanCrewName) delFilter.nama_crew = `eq.${cleanCrewName}`;
+        await deleteFromSupabase('tbl_jadwal_rps', delFilter);
+      }
+
+      // Siapkan baris baru untuk Supabase
+      const sbRows = stores.map(st => ({
+        modul: cleanMod,
+        account: String(st.account || 'ALFAMART').toUpperCase().trim(),
+        kode_toko: String(st.kodeToko || st.kode || '').toUpperCase().trim(),
+        nama_toko: String(st.namaToko || st.nama || '').trim(),
+        kode_crew: cleanCrewCode,
+        nama_crew: cleanCrewName,
+        rute: cleanRute,
+        tipe_toko: ''
+      })).filter(r => r.kode_toko);
+
+      if (sbRows.length > 0) {
+        await insertToSupabase('tbl_jadwal_rps', sbRows);
+        console.log(`⚡ [Supabase] Tersimpan instan ${sbRows.length} toko ke tbl_jadwal_rps (Modul: ${cleanMod}, Rute: ${cleanRute})`);
+      }
+    }
+  } catch (sbErr) {
+    console.warn('⚠️ Fast-path Supabase rute sync warning:', sbErr);
+  }
 
   if (gasUrl) {
     let resultData = null;
@@ -343,6 +556,18 @@ async function submitRouteAttendance({ module, crewCode, crewName, rute, stores,
 
       console.log("🎉 Pengiriman sukses tercatat!");
       console.groupEnd();
+
+      try {
+        const bc = new BroadcastChannel('mds_sync_channel');
+        bc.postMessage({
+          type: 'SCHEDULE_SUBMITTED',
+          modul: module,
+          rute: rute,
+          crewCode: crewCode,
+          timestamp: Date.now()
+        });
+        bc.close();
+      } catch (e) {}
 
       const successMsg = (resultData && resultData.data && resultData.data.message) 
         ? resultData.data.message 
@@ -452,6 +677,42 @@ async function fetchSavedSchedule({ module, rute, crewCode, crewName }) {
   const targetRuteNum = parseInt(targetRuteStr.replace(/[^0-9]/g, ""), 10);
   const targetCrewCode = (crewCode || "").toUpperCase().trim();
   const targetCrewName = (crewName || "").toUpperCase().trim();
+
+  // 0. FAST PATH: SUPABASE REST API (< 50ms)
+  if (API_CONFIG.USE_SUPABASE && API_CONFIG.SUPABASE_URL) {
+    try {
+      const query = {
+        limit: 500,
+        order: "kode_toko.asc"
+      };
+      if (normModule) {
+        query.modul = normModule.length === 2 ? `like.${normModule}*` : `eq.${normModule}`;
+      }
+      if (targetRuteNum) {
+        query.rute = `eq.${targetRuteNum}`;
+      }
+      if (targetCrewCode) {
+        query.kode_crew = `eq.${targetCrewCode}`;
+      }
+      const data = await fetchFromSupabase("tbl_jadwal_rps", query);
+      if (data && Array.isArray(data)) {
+        return data.map(r => ({
+          account: (r.account || "ALFAMART").toUpperCase(),
+          kodeToko: r.kode_toko || "",
+          namaToko: r.nama_toko || "",
+          rute: r.rute || targetRuteNum || "1",
+          kodeCrew: r.kode_crew || targetCrewCode,
+          namaCrew: r.nama_crew || targetCrewName,
+          tipeToko: r.tipe_toko || "-",
+          alamat: "-",
+          noTelp: "-",
+          status: "AKTIF"
+        }));
+      }
+    } catch (e) {
+      console.warn("Supabase fetchSavedSchedule fallback ke Sheets:", e);
+    }
+  }
 
   // 1. Coba tarik langsung dari Google Spreadsheet Modul Cabang / Central (Master_Toko)
   const sheetIds = [];
@@ -643,6 +904,35 @@ async function fetchSavedSchedule({ module, rute, crewCode, crewName }) {
  * Returns: Map { [kodeToko]: { namaCrew, kodeCrew, modul, rute } }
  */
 async function fetchClaimedStores() {
+  // 0. FAST PATH: SUPABASE REST API (< 100ms)
+  if (API_CONFIG.USE_SUPABASE && API_CONFIG.SUPABASE_URL) {
+    try {
+      const data = await fetchFromSupabase("tbl_jadwal_rps", {
+        select: "kode_toko,account,nama_crew,kode_crew,modul,rute",
+        limit: 25000
+      });
+      if (data && Array.isArray(data) && data.length > 0) {
+        const claimed = {};
+        data.forEach(r => {
+          const code = (r.kode_toko || "").trim().toUpperCase();
+          if (!code) return;
+          if (!claimed[code]) claimed[code] = [];
+          claimed[code].push({
+            kodeToko: code,
+            namaCrew: r.nama_crew || "",
+            kodeCrew: r.kode_crew || "",
+            modul: r.modul || "",
+            rute: r.rute || "1",
+            account: (r.account || "").toUpperCase()
+          });
+        });
+        return claimed;
+      }
+    } catch (e) {
+      console.warn("Supabase fetchClaimedStores fallback ke GAS:", e);
+    }
+  }
+
   const gasUrl = API_CONFIG.getGasUrl();
   if (!gasUrl) return {};
 
@@ -666,35 +956,115 @@ async function fetchClaimedStores() {
 /**
  * Hapus 1 Toko dari Jadwal di Google Spreadsheet (GAS)
  */
-async function deleteScheduledStoreFromCloud({ module, rute, crewCode, kodeToko }) {
+async function deleteScheduledStoreFromCloud({ module, modul, rute, crewCode, kodeCrew, crewName, namaCrew, kodeToko, kode }) {
   const gasUrl = API_CONFIG.getGasUrl();
   if (!gasUrl) throw new Error("URL Google Apps Script belum disetel");
 
+  const cleanMod = String(module || modul || '').toUpperCase().trim();
+  const cleanRute = String(rute || '').replace(/[^0-9]/g, '');
+  const cleanKode = String(kodeToko || kode || '').toUpperCase().trim();
+  const cleanCrew = String(crewCode || kodeCrew || '').trim();
+  const cleanCrewName = String(crewName || namaCrew || '').trim();
+
   const payload = {
     action: "delete_scheduled_store",
-    module: module,
-    rute: rute,
-    crewCode: crewCode,
-    kodeToko: kodeToko
+    modul: cleanMod,
+    module: cleanMod,
+    rute: cleanRute,
+    crewCode: cleanCrew,
+    kodeCrew: cleanCrew,
+    crewName: cleanCrewName,
+    namaCrew: cleanCrewName,
+    kodeToko: cleanKode,
+    kode: cleanKode
   };
 
+  console.group("🗑️ [MDS DELETE STORE TRACKER]");
+  console.log("📍 Target Endpoint GAS:", gasUrl);
+  console.log("🏪 Toko Target:", { kode: cleanKode, rute: cleanRute, modul: cleanMod, crew: cleanCrew });
+  console.log("📋 Data Payload Dikirim:", payload);
+
+  // 0. FAST-PATH DIRECT SUPABASE DELETE (< 100ms)
   try {
-    await fetch(gasUrl, {
+    if (API_CONFIG.USE_SUPABASE && API_CONFIG.SUPABASE_URL) {
+      if (cleanMod && cleanKode) {
+        const flt = { modul: `eq.${cleanMod}`, kode_toko: `eq.${cleanKode}` };
+        if (cleanRute) flt.rute = `eq.${cleanRute}`;
+        const sbRes = await deleteFromSupabase('tbl_jadwal_rps', flt);
+        console.log(`⚡ [Supabase] Status Hapus tbl_jadwal_rps:`, sbRes);
+      }
+    }
+  } catch (sbDelErr) {
+    console.warn('⚠️ Fast-path Supabase delete warning:', sbDelErr);
+  }
+
+  try {
+    console.log("⏳ Mengirim perintah DELETE ke Google Apps Script (Sheet Cabang)...");
+    const response = await fetch(gasUrl, {
       method: "POST",
-      mode: "no-cors",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "text/plain;charset=utf-8"
       },
       body: JSON.stringify(payload)
     });
 
+    console.log("📡 HTTP Status GAS:", response.status, response.statusText);
+    const rawText = await response.text();
+    let resJson = null;
+    try {
+      resJson = JSON.parse(rawText);
+      console.log("✅ Balasan Backend GAS (JSON):", resJson);
+    } catch (je) {
+      console.log("ℹ️ Balasan Backend GAS (Raw Text):", rawText);
+    }
+    console.groupEnd();
+
+    try {
+      const bc = new BroadcastChannel('mds_sync_channel');
+      bc.postMessage({
+        type: 'STORE_DELETED',
+        kodeToko: cleanKode,
+        modul: cleanMod,
+        rute: cleanRute,
+        timestamp: Date.now()
+      });
+      bc.close();
+    } catch (e) {}
+
     return {
       success: true,
-      message: `Toko ${kodeToko} berhasil dihapus dari jadwal Rute ${rute} di Google Sheet!`
+      data: resJson,
+      message: `Toko ${cleanKode} berhasil dihapus dari jadwal Rute ${cleanRute} di Google Sheet!`
     };
   } catch (err) {
-    console.error("Gagal menghapus toko dari jadwal GAS:", err);
-    throw new Error(`Gagal menghapus toko dari Google Sheet: ${err.message}`);
+    console.warn("⚠️ Direct POST gagal, mencoba fallback no-cors text/plain:", err);
+    await fetch(gasUrl, {
+      method: "POST",
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify(payload)
+    });
+    console.log("ℹ️ Request fallback no-cors terkirim ke GAS");
+    console.groupEnd();
+
+    try {
+      const bc = new BroadcastChannel('mds_sync_channel');
+      bc.postMessage({
+        type: 'STORE_DELETED',
+        kodeToko: cleanKode,
+        modul: cleanMod,
+        rute: cleanRute,
+        timestamp: Date.now()
+      });
+      bc.close();
+    } catch (e) {}
+
+    return {
+      success: true,
+      message: `Toko ${cleanKode} berhasil dihapus dari jadwal Rute ${cleanRute} di Google Sheet!`
+    };
   }
 }
 

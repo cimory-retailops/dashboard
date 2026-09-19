@@ -8,6 +8,11 @@ const CONFIG = {
   // Live Central Apps Script Web App API Endpoint
   API_URL: 'https://script.google.com/macros/s/AKfycbzDkLr0LfbHSiIgBOVO40ktn8c7Doc8jvI7zTPv-EVsNzr9fci42TzP7JSXxXp6lzGV/exec',
   
+  // Supabase Cloud REST API Config (Instant Sub-100ms Query)
+  SUPABASE_URL: 'https://lzvxxcnubtcvdiwfnjmh.supabase.co/rest/v1',
+  SUPABASE_KEY: 'sb_publishable_Yrqw13m5rQQKNF0XnWtlOg_JvZZ2_AE',
+  USE_SUPABASE: true,
+  
   // Available Modules
   MODULES: [
     { code: 'ALL', name: 'Semua Modul (DK, LK, LP)' },

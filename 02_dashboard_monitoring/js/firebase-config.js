@@ -25,7 +25,7 @@ window.RBAC_PAGES = [
   { id: 'kunjungan', label: 'Kunjungan Lapangan', icon: 'map-pin', desc: 'Monitoring kunjungan, stay, GPS, & detail outlet' },
   { id: 'absensi', label: 'Presensi & Absensi', icon: 'clock', desc: 'Jam masuk/pulang, selfie, & status kerja tim MDS' },
   { id: 'jadwal', label: 'Target Jadwal Rute', icon: 'calendar', desc: 'Rute mingguan, matriks tanggal 1-31, & detail kunjungan toko' },
-  { id: 'tokonasional', label: 'Database 49k Toko', icon: 'store', desc: 'Pencarian & eksplorasi 49.861 outlet nasional Cimory' },
+  { id: 'tokonasional', label: 'Database Toko Nasional', icon: 'store', desc: 'Pencarian & eksplorasi database outlet nasional Cimory' },
   { id: 'laporan', label: 'Pusat Laporan WA', icon: 'share-2', desc: 'Broadcast WhatsApp, infografis KPI, & radar anomali' },
   { id: 'evaluasi', label: 'Evaluasi Kinerja SPV', icon: 'award', desc: 'Scorecard, target visit, kepatuhan rute, & ranking tim' },
   { id: 'galeri', label: 'Galeri Foto Pajangan', icon: 'image', desc: 'Audit foto Before/After & kepatuhan planogram per account' },
@@ -143,7 +143,15 @@ class FirebaseRbacService {
           firebase.initializeApp(cfg);
         }
         this.auth = firebase.auth();
-        this.db = firebase.firestore();
+        if (typeof firebase.firestore === 'function') {
+          this.db = firebase.firestore();
+          try {
+            this.db.settings({
+              experimentalAutoDetectLongPolling: true,
+              merge: true
+            });
+          } catch (settingErr) {}
+        }
         this.isUsingMock = false;
 
         // Muat sesi portal aktif terlebih dahulu
@@ -444,7 +452,83 @@ class FirebaseRbacService {
           }
         }
       } catch (err) {
-        console.warn('Gagal membaca Firestore portal_users, mencoba cache lokal:', err);
+        console.warn('Gagal membaca Firestore SDK portal_users, menutup channel & mencoba REST fallback:', err);
+        try {
+          if (this.db && typeof this.db.terminate === 'function') {
+            this.db.terminate();
+          }
+        } catch (termErr) {}
+        this.db = null;
+
+        // Direct REST fallback tanpa WebChannel streaming
+        try {
+          const resp = await fetch('https://firestore.googleapis.com/v1/projects/dashboard-portal-cimory/databases/(default)/documents/portal_users');
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data && data.documents) {
+              const portalList = [];
+              const parseField = (val) => {
+                if (!val) return null;
+                if (val.stringValue !== undefined) return val.stringValue;
+                if (val.booleanValue !== undefined) return val.booleanValue;
+                if (val.integerValue !== undefined) return parseInt(val.integerValue, 10);
+                if (val.timestampValue !== undefined) return val.timestampValue;
+                if (val.mapValue !== undefined) {
+                  const res = {};
+                  for (const k in val.mapValue.fields || {}) { res[k] = parseField(val.mapValue.fields[k]); }
+                  return res;
+                }
+                if (val.arrayValue !== undefined) {
+                  return (val.arrayValue.values || []).map(v => parseField(v));
+                }
+                return null;
+              };
+
+              data.documents.forEach(docItem => {
+                const fields = docItem.fields || {};
+                const d = {};
+                for (const k in fields) { d[k] = parseField(fields[k]); }
+                const docId = docItem.name.split('/').pop();
+                const emailKey = (d.email || docId).toLowerCase();
+                const role = (d.role || 'MDS').toUpperCase();
+                const status = (d.status || 'APPROVED').toUpperCase();
+                const preset = window.RBAC_ROLE_PRESETS && window.RBAC_ROLE_PRESETS[role]
+                  ? window.RBAC_ROLE_PRESETS[role].permissions
+                  : { kunjungan: true, absensi: true, jadwal: false, tokonasional: false, laporan: false, evaluasi: false };
+
+                let userPerms = d.permissions && typeof d.permissions === 'object' && Object.keys(d.permissions).length > 0
+                  ? { ...d.permissions }
+                  : { ...preset };
+
+                if (!userPerms.subTabs) {
+                  userPerms.subTabs = window.getDefaultSubTabsForRole ? window.getDefaultSubTabsForRole(role) : { laporan: { rute: true, jadwal: true, absen: true, anomali: false }, evaluasi: { TOKO: true, DC: true } };
+                }
+
+                matrix[emailKey] = {
+                  id: docId,
+                  name: d.name || emailKey,
+                  email: d.email || emailKey,
+                  modul: d.moduleOrArea || d.modul || 'ALL',
+                  jabatan: d.jabatan || (role === 'SUPERADMIN' ? 'Super Administrator' : (role === 'SPV' ? 'Supervisor' : 'Merchandiser')),
+                  role: role,
+                  status: status,
+                  linkedCrew: d.linkedCrew || '',
+                  managedMds: Array.isArray(d.managedMds) ? d.managedMds : [],
+                  permissions: userPerms,
+                  updatedAt: d.updatedAt || d.approvedAt || new Date().toISOString(),
+                  updatedBy: d.updatedBy || d.approvedBy || 'System'
+                };
+                portalList.push({ id: docId, ...d, status: status, permissions: userPerms });
+              });
+
+              if (portalList.length > 0) {
+                localStorage.setItem('cimory_portal_users', JSON.stringify(portalList));
+              }
+            }
+          }
+        } catch (restErr) {
+          console.warn('REST fallback juga gagal, beralih ke cache lokal:', restErr);
+        }
       }
     }
 

@@ -104,6 +104,59 @@ async function saveStoresBatch(stores) {
 }
 
 /**
+ * Tambah atau Perbarui 1 Toko Tunggal di Database Lokal IndexedDB
+ */
+async function addOrUpdateSingleStore(store) {
+  if (!store || !store.kodeToko) return false;
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("stores", "readwrite");
+    const storeOS = tx.objectStore("stores");
+    const index = storeOS.index("kodeToko");
+    const targetCode = String(store.kodeToko).toUpperCase().trim();
+    const req = index.get(targetCode);
+
+    req.onsuccess = () => {
+      const existing = req.result;
+      const kTok = targetCode;
+      const nTok = String(store.namaToko || (existing ? existing.namaToko : '')).trim();
+      const acc = String(store.account || (existing ? existing.account : 'ALFAMART')).toUpperCase().trim();
+      const searchIndex = `${kTok} ${nTok} ${acc} ${store.kota || ''} ${store.kecamatan || ''} ${store.provinsi || ''}`.toLowerCase();
+
+      if (existing) {
+        existing.namaToko = nTok;
+        existing.account = acc;
+        if (store.dcName) existing.dcName = store.dcName;
+        if (store.kecamatan) existing.kecamatan = store.kecamatan;
+        if (store.kota) existing.kota = store.kota;
+        if (store.provinsi) existing.provinsi = store.provinsi;
+        if (store.lat) existing.lat = store.lat;
+        if (store.lon) existing.lon = store.lon;
+        existing.searchIndex = searchIndex;
+        storeOS.put(existing);
+      } else {
+        storeOS.add({
+          kodeToko: kTok,
+          namaToko: nTok,
+          account: acc,
+          dcName: store.dcName || '',
+          kecamatan: store.kecamatan || '',
+          kota: store.kota || '',
+          provinsi: store.provinsi || '',
+          crew: store.crew || '',
+          lat: store.lat || null,
+          lon: store.lon || null,
+          searchIndex: searchIndex
+        });
+      }
+    };
+
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/**
  * Menyimpan daftar master crew
  */
 async function saveCrewList(crews) {
@@ -123,7 +176,8 @@ async function saveCrewList(crews) {
         nama: c.nama || "",
         modul: c.modul || "",
         account: c.account || "",
-        jabatan: c.jabatan || ""
+        jabatan: c.jabatan || "",
+        noWa: c.noWa || c.wa || c.noHp || c.telepon || ""
       });
     });
 
@@ -149,7 +203,8 @@ async function getAllCrew() {
         nama: c.nama || "",
         modul: c.modul || "",
         account: c.account || "",
-        jabatan: c.jabatan || ""
+        jabatan: c.jabatan || "",
+        noWa: c.noWa || c.wa || c.noHp || c.telepon || ""
       }));
       resolve(normalized);
     };
@@ -214,7 +269,7 @@ async function getStoreByCode(kodeToko, account = "", namaToko = "") {
 
   const db = await initDB();
 
-  return new Promise((resolve) => {
+  const localResult = await new Promise((resolve) => {
     const tx = db.transaction("stores", "readonly");
     const storeOS = tx.objectStore("stores");
 
@@ -269,6 +324,42 @@ async function getStoreByCode(kodeToko, account = "", namaToko = "") {
       resolve(null);
     }
   });
+
+  if (localResult && localResult.lat && localResult.lon) {
+    return localResult;
+  }
+
+  // 2. Fallback ke Supabase tbl_master_toko jika IndexedDB belum memiliki koordinat GPS
+  if (typeof fetchFromSupabase === 'function' && typeof API_CONFIG !== 'undefined' && API_CONFIG.USE_SUPABASE && cleanCode) {
+    try {
+      const q = { store_code: `eq.${cleanCode}`, limit: 1 };
+      if (cleanAccount) q.account = `eq.${cleanAccount}`;
+      const cloud = await fetchFromSupabase("tbl_master_toko", q);
+      if (cloud && cloud.length > 0) {
+        const r = cloud[0];
+        const resultStore = {
+          kodeToko: r.store_code,
+          namaToko: r.store_name,
+          account: (r.account || cleanAccount || "ALFAMART").toUpperCase(),
+          branchName: r.branch_name || "",
+          kecamatan: r.kecamatan || "",
+          kota: r.kab_kota || "",
+          lat: r.latitude ? parseFloat(r.latitude) : null,
+          lon: r.longitude ? parseFloat(r.longitude) : null
+        };
+        if (resultStore.lat && resultStore.lon) {
+          if (typeof addOrUpdateSingleStore === 'function') {
+            addOrUpdateSingleStore(resultStore);
+          }
+          return resultStore;
+        }
+      }
+    } catch (e) {
+      console.warn("getStoreByCode Supabase fallback error:", e);
+    }
+  }
+
+  return localResult;
 }
 
 function fallbackSearchByName(storeOS, cleanName, cleanAccount = "", resolve) {
@@ -399,10 +490,44 @@ async function upsertStores(stores) {
  * (IndexedDB Local First + On-Demand Server Fallback)
  */
 async function searchStores({ query = "", accountFilter = "ALL", limit = 60 }) {
-  const db = await initDB();
-  const cleanQuery = query.trim().toLowerCase();
-  const queryTokens = cleanQuery.split(/\s+/).filter(t => t.length > 0);
+  const cleanQuery = query.trim();
   const filterAccount = accountFilter.toUpperCase();
+
+  // 0. FAST PATH: SUPABASE REST API (< 30ms Query langsung ke 49k Master Toko)
+  if (typeof fetchFromSupabase === 'function' && typeof API_CONFIG !== 'undefined' && API_CONFIG.USE_SUPABASE) {
+    try {
+      const qParams = { limit: limit };
+      if (filterAccount !== "ALL") {
+        qParams.account = `eq.${filterAccount}`;
+      }
+      if (cleanQuery) {
+        qParams.or = `(store_name.ilike.*${cleanQuery}*,store_code.ilike.*${cleanQuery}*,kecamatan.ilike.*${cleanQuery}*,kab_kota.ilike.*${cleanQuery}*)`;
+      }
+      const cloudStores = await fetchFromSupabase("tbl_master_toko", qParams);
+      if (cloudStores && Array.isArray(cloudStores) && cloudStores.length > 0) {
+        return cloudStores.map(r => ({
+          kodeToko: r.store_code || "",
+          namaToko: r.store_name || "",
+          account: (r.account || "").toUpperCase(),
+          branchName: r.branch_name || "",
+          kecamatan: r.kecamatan || "",
+          kota: r.kab_kota || "",
+          provinsi: "",
+          crew: "",
+          lat: r.latitude || null,
+          lon: r.longitude || null,
+          searchIndex: `${r.store_code || ""} ${r.store_name || ""} ${r.account || ""} ${r.kab_kota || ""} ${r.kecamatan || ""}`.toLowerCase()
+        }));
+      }
+    } catch (e) {
+      console.warn("Supabase searchStores fallback ke local IndexedDB:", e);
+    }
+  }
+
+  // 1. Fallback Offline: Local IndexedDB Cursor Search
+  const db = await initDB();
+  const cleanQueryLower = cleanQuery.toLowerCase();
+  const queryTokens = cleanQueryLower.split(/\s+/).filter(t => t.length > 0);
 
   const localResults = await new Promise((resolve, reject) => {
     const tx = db.transaction("stores", "readonly");

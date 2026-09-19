@@ -8,6 +8,11 @@ const CONFIG = {
   APP_TITLE: 'Cimory Retail Ops',
   APP_SUBTITLE: 'Audit SKU, Komparasi Harga & Ketersediaan Stok',
   
+  // Supabase Cloud REST API Config (Instant Sub-100ms Query)
+  SUPABASE_URL: 'https://lzvxxcnubtcvdiwfnjmh.supabase.co/rest/v1',
+  SUPABASE_KEY: 'sb_publishable_Yrqw13m5rQQKNF0XnWtlOg_JvZZ2_AE',
+  USE_SUPABASE: true,
+  
   // Direct 15 Module Spreadsheet IDs (Direct High-Speed Parallel Fetch for Detail Audit)
   MODUL_IDS: {
     "DK1": "1asDdjDm0kUfFmICLtkhJ5VBhmKUels2c-H8Cd22qYvk",

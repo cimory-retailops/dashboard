@@ -8,6 +8,64 @@
 const ApiService = {
   memoryCache: new Map(),
 
+  async fetchFromSupabase(table, queryParams = {}) {
+    try {
+      const requestedLimit = parseInt(queryParams.limit || '1000', 10);
+      if (requestedLimit <= 1000) {
+        const url = new URL(`${CONFIG.SUPABASE_URL}/${table}`);
+        Object.entries(queryParams).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && v !== '') {
+            url.searchParams.append(k, String(v));
+          }
+        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(url.toString(), {
+          headers: {
+            'apikey': CONFIG.SUPABASE_KEY,
+            'Authorization': `Bearer ${CONFIG.SUPABASE_KEY}`
+          },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) return await res.json();
+        return null;
+      }
+
+      const numBatches = Math.min(Math.ceil(requestedLimit / 1000), 20);
+      const batchPromises = [];
+      for (let i = 0; i < numBatches; i++) {
+        batchPromises.push((async () => {
+          const url = new URL(`${CONFIG.SUPABASE_URL}/${table}`);
+          Object.entries(queryParams).forEach(([k, v]) => {
+            if (k !== 'limit' && k !== 'offset' && v !== undefined && v !== null && v !== '') {
+              url.searchParams.append(k, String(v));
+            }
+          });
+          url.searchParams.append('limit', '1000');
+          url.searchParams.append('offset', String(i * 1000));
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
+          const res = await fetch(url.toString(), {
+            headers: {
+              'apikey': CONFIG.SUPABASE_KEY,
+              'Authorization': `Bearer ${CONFIG.SUPABASE_KEY}`
+            },
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+          if (res.ok) return await res.json();
+          return [];
+        })());
+      }
+      const results = await Promise.all(batchPromises);
+      return results.flat();
+    } catch (e) {
+      console.warn(`Supabase [${table}] fetch failed:`, e);
+      return null;
+    }
+  },
+
   parseCsv(text) {
     if (!text) return [];
     const lines = [];
@@ -196,6 +254,118 @@ const ApiService = {
   },
 
   async getAllDetailAudit(params = {}, onProgress = null) {
+    // 0. FAST PATH: SUPABASE CLOUD (Instant Sub-300ms Query across 340k records)
+    if (CONFIG.USE_SUPABASE && CONFIG.SUPABASE_URL) {
+      try {
+        if (typeof onProgress === 'function') onProgress(15, 100, 'Supabase Cloud');
+
+        const auditQuery = {
+          order: 'tanggal.desc,waktu.desc',
+          limit: params.limit || 15000
+        };
+
+        const modUpper = (params.modul || 'ALL').toUpperCase().trim();
+        if (modUpper && modUpper !== 'ALL' && modUpper !== 'NASIONAL') {
+          if (modUpper.length === 2) {
+            auditQuery.modul = `like.${modUpper}*`;
+          } else {
+            auditQuery.modul = `eq.${modUpper}`;
+          }
+        }
+        if (params.date) {
+          auditQuery.tanggal = `eq.${params.date}`;
+        }
+
+        const visitsQuery = {
+          select: 'id_visit,account,kode_toko,nama_toko,tipe_toko,idcrew,nama_crew,tanggal,waktu,modul',
+          limit: 10000
+        };
+        if (modUpper && modUpper !== 'ALL' && modUpper !== 'NASIONAL') {
+          if (modUpper.length === 2) {
+            visitsQuery.modul = `like.${modUpper}*`;
+          } else {
+            visitsQuery.modul = `eq.${modUpper}`;
+          }
+        }
+
+        if (typeof onProgress === 'function') onProgress(40, 100, 'Kunjungan & Detail Audit');
+        const [auditRows, visitRows] = await Promise.all([
+          this.fetchFromSupabase('tbl_all_detail_audit', auditQuery),
+          this.fetchFromSupabase('tbl_all_kunjungan', visitsQuery)
+        ]);
+
+        if (auditRows && Array.isArray(auditRows) && auditRows.length > 0) {
+          if (typeof onProgress === 'function') onProgress(80, 100, 'Menghubungkan Data Toko');
+          const visitsMap = new Map();
+          (visitRows || []).forEach(v => {
+            if (v && v.id_visit) {
+              visitsMap.set(v.id_visit, {
+                account: (v.account || 'LAINNYA').toUpperCase().trim(),
+                kodeToko: v.kode_toko || '',
+                namaToko: v.nama_toko || 'Toko Lapangan',
+                tipeToko: v.tipe_toko || '',
+                kodeCrew: v.idcrew || '',
+                namaCrew: v.nama_crew || '',
+                time: v.waktu || '',
+                date: v.tanggal || '',
+                modul: v.modul || ''
+              });
+            }
+          });
+
+          const items = auditRows.map(r => {
+            const v = visitsMap.get(r.id_visit) || {};
+            const rawHargaNormal = parseFloat(String(r.harga_normal || '').replace(/[^0-9.]/g, '')) || 0;
+            const rawHargaPromo = parseFloat(String(r.harga_promo || '').replace(/[^0-9.]/g, '')) || 0;
+            const rawQtyOsa = parseInt(String(r.qty_osa || '').replace(/[^0-9]/g, ''), 10) || 0;
+            const rawQtySoh = parseInt(String(r.qty_soh || '').replace(/[^0-9]/g, ''), 10) || 0;
+            const isOsa = String(r.osa || '').toUpperCase().includes('ADA') || String(r.osa || '').toUpperCase() === 'YA' || rawQtyOsa > 0;
+            const isExpired = String(r.apakah_ada_expiry || '').toUpperCase().includes('ADA') && !String(r.apakah_ada_expiry || '').toUpperCase().includes('TIDAK');
+
+            const rawTime = r.waktu || v.time || '';
+            const tMatch = String(rawTime).match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+            const cleanT = tMatch ? tMatch[1] : String(rawTime).trim();
+
+            return {
+              detailVisit: r.detail_visit || '',
+              idVisit: r.id_visit || '',
+              time: cleanT,
+              date: r.tanggal || v.date || '',
+              brand: (r.brand || 'CIMORY').toUpperCase().trim(),
+              kategori: r.kategori || '',
+              barcode: String(r.barcode || '').trim(),
+              namaBarang: (r.nama_barang || '').trim(),
+              packsize: r.packsize || '',
+              isOsa: isOsa,
+              qtyOsa: rawQtyOsa,
+              qtySoh: rawQtySoh,
+              hargaNormalRaw: rawHargaNormal,
+              hargaPromoRaw: rawHargaPromo,
+              jenisPromo: r.jenis_promo || '',
+              mulaiPromo: r.mulai_promo || '',
+              akhirPromo: r.akhir_promo || '',
+              isPromoAktif: String(r.aktif_promo || '').toUpperCase().includes('YA') || rawHargaPromo > 0,
+              hasExpiryIssue: isExpired,
+              expiryNote: r.keterangan_expiry || r.apakah_ada_expiry || '',
+              account: v.account || 'LAINNYA',
+              kodeToko: v.kodeToko || '',
+              namaToko: v.namaToko || 'Toko Lapangan',
+              tipeToko: v.tipeToko || '',
+              kodeCrew: v.kodeCrew || '',
+              namaCrew: v.namaCrew || '',
+              modul: r.modul || v.modul || ''
+            };
+          });
+
+          if (typeof onProgress === 'function') onProgress(100, 100, 'Selesai');
+          return items;
+        }
+      } catch (err) {
+        console.warn('Supabase getAllDetailAudit fallback ke Sheets:', err);
+      }
+    }
+
+    // 1. Fallback Lama: Direct 15 Branch Sheets Fetch
     const targetModules = [];
     for (const [modKey, sheetId] of Object.entries(CONFIG.MODUL_IDS)) {
       if (!params.modul || params.modul === 'ALL') {
