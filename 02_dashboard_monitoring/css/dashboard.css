@@ -139,24 +139,22 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
 }
 
-/* Progress Bar Top Animation */
+/* Progress Bar Top Animation (GPU-Accelerated 60fps) */
 @keyframes loading-progress {
   0% {
-    width: 0%;
-    left: 0%;
+    transform: translateX(-100%);
   }
   50% {
-    width: 60%;
-    left: 20%;
+    transform: translateX(0%);
   }
   100% {
-    width: 100%;
-    left: 0%;
+    transform: translateX(100%);
   }
 }
 
 .animate-loading-bar {
-  animation: loading-progress 1.5s ease-in-out infinite alternate;
+  animation: loading-progress 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
 }
 
 /* Pulse Glow */
@@ -197,13 +195,34 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .dark .leaflet-popup-content-wrapper {
-  background: #1e293b;
-  color: #f1f5f9;
+  background: #0f172a;
+  color: #f8fafc;
   border: 1px solid #334155;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+}
+
+.dark .leaflet-popup-content-wrapper p,
+.dark .leaflet-popup-content-wrapper span,
+.dark .leaflet-popup-content-wrapper div {
+  color: #f8fafc;
+}
+
+.dark .leaflet-popup-content-wrapper .text-slate-900,
+.dark .leaflet-popup-content-wrapper p.font-bold {
+  color: #ffffff !important;
+}
+
+.dark .leaflet-popup-content-wrapper .text-slate-600,
+.dark .leaflet-popup-content-wrapper .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+.dark .leaflet-popup-content-wrapper .border-slate-200 {
+  border-color: #334155 !important;
 }
 
 .dark .leaflet-popup-tip {
-  background: #1e293b;
+  background: #0f172a;
 }
 
 /* Reset Leaflet Div Icon Bawaan agar tidak kotak putih */

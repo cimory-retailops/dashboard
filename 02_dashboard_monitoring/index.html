@@ -137,7 +137,7 @@
   <style>
     [x-cloak] { display: none !important; }
     #initial-preloader {
-      transition: opacity 0.4s ease, visibility 0.4s ease;
+      transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.5s ease;
     }
   </style>
 </head>
@@ -994,7 +994,7 @@
             
             <!-- Trigger Container -->
             <div role="button" tabindex="0" 
-              @click="dateDropdownOpen = !dateDropdownOpen"
+              @click="toggleDateDropdown()"
               class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 flex items-center justify-between gap-2 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all shadow-sm select-none cursor-pointer hover:border-brand-400">
               <div class="flex items-center gap-2 truncate">
                 <i :data-lucide="dateFilter === 'CUSTOM' ? 'calendar-range' : (dateFilter === 'LATEST_DAY' ? 'zap' : 'calendar')" 
@@ -1182,6 +1182,38 @@
           </div>
         </div>
 
+        <!-- Action Buttons: Terapkan Filter & Reset -->
+        <div class="flex items-center justify-between gap-3 pt-1 flex-wrap">
+          <div class="flex items-center gap-2.5">
+            <!-- 🔍 Tombol Terapkan Filter -->
+            <button type="button" @click="applyKunjunganFilter()" :disabled="isDateFilterLoading"
+              class="h-10 px-5 rounded-xl bg-gradient-to-r from-brand-600 via-indigo-600 to-brand-500 hover:from-brand-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-brand-500/25 hover:shadow-brand-500/40 transition-all active:scale-95 flex items-center gap-2 cursor-pointer ring-2 ring-transparent hover:ring-brand-400 disabled:opacity-75 disabled:pointer-events-none">
+              <svg x-show="isDateFilterLoading" class="w-4 h-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+              </svg>
+              <i x-show="!isDateFilterLoading" data-lucide="filter" class="w-4 h-4"></i>
+              <span x-text="isDateFilterLoading ? 'Memproses...' : 'Terapkan Filter'"></span>
+            </button>
+            
+            <!-- 🔄 Tombol Reset Filter -->
+            <button type="button" @click="resetKunjunganFilter()"
+              class="h-10 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs border border-slate-300 dark:border-slate-700 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="Reset semua filter ke default">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-slate-500"></i>
+              <span>Reset</span>
+            </button>
+          </div>
+
+          <!-- Pending indicator -->
+          <div x-show="hasPendingKunjunganFilter" 
+               x-transition
+               class="text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border border-amber-400/40 dark:border-amber-600/40 px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-pulse">
+            <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-500"></i>
+            <span>Pilihan filter diubah. Klik <strong>"Terapkan Filter"</strong> untuk memperbarui data & peta.</span>
+          </div>
+        </div>
+
         <!-- Action Toolbar & Active Date Status -->
         <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between pt-2.5 border-t border-slate-200/70 dark:border-slate-800/80 gap-2.5">
           
@@ -1268,7 +1300,7 @@
             <template x-if="!isLoading">
               <span class="text-xl sm:text-2xl font-display font-extrabold text-sky-600 dark:text-sky-400" x-text="`${kpiSummary.achievementRate}%`">0%</span>
             </template>
-            <span class="text-[11px] text-slate-500 font-medium" x-show="!isLoading" x-text="`(${kpiSummary.uniqueStores} / ${kpiSummary.totalTarget} Toko)`"></span>
+            <span class="text-[11px] text-slate-500 font-medium" x-show="!isLoading" x-text="`(${kpiSummary.totalVisitedStores} / ${kpiSummary.totalTarget} Toko Target)`"></span>
           </div>
           <div class="mt-1.5 w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
             <div class="bg-sky-500 h-full rounded-full transition-all duration-500" :style="`width: ${isLoading ? '30%' : kpiSummary.achievementRate + '%'}`" :class="isLoading ? 'animate-pulse' : ''"></div>
@@ -1477,9 +1509,9 @@
           </div>
         </div>
 
-        <!-- Grouped Cards Grid -->
+        <!-- Grouped Cards Grid (Paginated for Ultra-Fast 60fps Performance) -->
         <div class="grid grid-cols-1 gap-4">
-          <template x-for="(card, cIdx) in crewMonitoringCards" :key="card.key">
+          <template x-for="(card, cIdx) in paginatedCrewCards" :key="card.key">
             <div class="rounded-2xl border transition-all duration-150 shadow-sm overflow-hidden"
               :class="expandedCrews[card.key] ? 'bg-white dark:bg-slate-900 border-amber-500/40 ring-1 ring-amber-500/20 shadow-md' : 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200/80 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600'">
               
@@ -1527,9 +1559,9 @@
 
               </div>
 
-              <!-- Card Expandable Content (Accordion Body - Grouped Details) -->
-              <div x-show="!!expandedCrews[card.key]" x-cloak
-                class="border-t border-slate-200 dark:border-slate-800 p-4 sm:p-5 bg-slate-50/50 dark:bg-slate-950/40 space-y-5">
+              <!-- Card Expandable Content (Accordion Body - Grouped Details Lazy Loaded) -->
+              <template x-if="!!expandedCrews[card.key]">
+                <div class="border-t border-slate-200 dark:border-slate-800 p-4 sm:p-5 bg-slate-50/50 dark:bg-slate-950/40 space-y-5">
                 
                 <!-- Quick Info Header (Absensi & Jam Masuk) -->
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1591,7 +1623,7 @@
                               <span class="text-[10px] text-slate-400" x-text="v.date"></span>
                             </td>
                             <td class="py-2.5 px-3">
-                              <span class="font-bold text-slate-800 dark:text-slate-200 block" x-text="v.namaToko"></span>
+                              <span class="font-bold text-slate-800 dark:text-slate-200 block" x-text="getDisplayStoreName(v, card)"></span>
                               <span class="text-[10px] text-slate-400" x-text="`Kode: ${v.kodeToko}`"></span>
                             </td>
                             <td class="py-2.5 px-3 whitespace-nowrap">
@@ -1700,7 +1732,7 @@
                           
                           <div class="min-w-0">
                             <div class="flex items-center gap-1.5 flex-wrap">
-                              <span class="font-bold text-xs truncate text-slate-900 dark:text-slate-100" x-text="st.namaToko"></span>
+                              <span class="font-bold text-xs truncate text-slate-900 dark:text-slate-100" x-text="getDisplayStoreName(st, card)"></span>
                               <span class="px-1.5 py-0.2 rounded text-[9px] font-extrabold"
                                 :class="st.account.includes('ALFA') ? 'bg-rose-100 dark:bg-rose-950 text-rose-600' : (st.account.includes('INDO') ? 'bg-sky-100 dark:bg-sky-950 text-sky-600' : 'bg-slate-100 text-slate-500')"
                                 x-text="st.account"></span>
@@ -1743,7 +1775,8 @@
                 </div>
 
 
-              </div>
+                </div>
+              </template>
 
             </div>
           </template>
@@ -1755,6 +1788,54 @@
               Reset Semua Filter
             </button>
           </div>
+        </div>
+
+        <!-- Pagination Controls for MDS Cards (Ultra-lightweight rendering) -->
+        <div x-show="totalCrewCardsCount > 0" class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200/70 dark:border-slate-800/80 text-xs">
+          
+          <!-- Left: Info count -->
+          <div class="text-slate-500 font-medium text-[11px] sm:text-xs">
+            Menampilkan <strong class="text-slate-900 dark:text-slate-100" x-text="crewCardPageSize === 'ALL' ? '1' : ((crewCardPage - 1) * (parseInt(crewCardPageSize) || 10) + 1).toLocaleString('id-ID')"></strong>
+            - <strong class="text-slate-900 dark:text-slate-100" x-text="crewCardPageSize === 'ALL' ? totalCrewCardsCount.toLocaleString('id-ID') : Math.min(crewCardPage * (parseInt(crewCardPageSize) || 10), totalCrewCardsCount).toLocaleString('id-ID')"></strong>
+            dari <strong class="text-slate-900 dark:text-slate-100" x-text="totalCrewCardsCount.toLocaleString('id-ID')"></strong> Personil MDS
+          </div>
+
+          <!-- Center: Page Size Selector -->
+          <div class="flex items-center gap-1.5">
+            <span class="text-slate-400 text-[11px]">Tampilkan:</span>
+            <select x-model="crewCardPageSize" @change="crewCardPage = 1"
+              class="h-8 text-xs font-semibold px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-brand-500 cursor-pointer">
+              <option value="10">10 MDS</option>
+              <option value="20">20 MDS</option>
+              <option value="50">50 MDS</option>
+              <option value="ALL">Semua</option>
+            </select>
+          </div>
+
+          <!-- Right: Page navigation buttons -->
+          <div x-show="crewCardPageSize !== 'ALL' && totalCrewCardsPages > 1" class="flex items-center gap-1.5">
+            <!-- Prev Page -->
+            <button @click="prevCrewCardPage()" :disabled="crewCardPage <= 1"
+              class="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none cursor-pointer text-xs">
+              ◀ Prev
+            </button>
+
+            <!-- Numbered Pages -->
+            <template x-for="p in crewCardsPaginationWindow" :key="p">
+              <button @click="setCrewCardPage(p)"
+                class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg font-bold transition-all text-xs flex items-center justify-center cursor-pointer"
+                :class="crewCardPage === p ? 'bg-brand-500 text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-400 font-black' : (p === '...' ? 'cursor-default text-slate-400' : 'border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300')"
+                x-text="p">
+              </button>
+            </template>
+
+            <!-- Next Page -->
+            <button @click="nextCrewCardPage()" :disabled="crewCardPage >= totalCrewCardsPages"
+              class="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none cursor-pointer text-xs">
+              Next ▶
+            </button>
+          </div>
+
         </div>
 
       </div>
@@ -2823,10 +2904,18 @@
         <div class="pt-2.5 border-t border-slate-200/70 dark:border-slate-800/80 flex items-center justify-between gap-3 flex-wrap text-xs">
           <div class="flex items-center gap-2 flex-wrap">
             <span class="text-slate-500 text-[11px] font-medium">Status Database:</span>
-            <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-              <i data-lucide="database" class="w-3 h-3"></i>
-              <span x-text="`${stores49k.length.toLocaleString('id-ID')} Toko Tersedia (IndexedDB)`"></span>
-            </span>
+            <template x-if="isStores49kLoading">
+              <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1.5 animate-pulse">
+                <i data-lucide="refresh-cw" class="w-3 h-3 animate-spin"></i>
+                <span>Sedang memuat data master toko...</span>
+              </span>
+            </template>
+            <template x-if="!isStores49kLoading">
+              <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                <i data-lucide="database" class="w-3 h-3"></i>
+                <span x-text="`${stores49k.length.toLocaleString('id-ID')} Toko Tersedia (IndexedDB)`"></span>
+              </span>
+            </template>
             <template x-if="filterTokoNasional.searchQuery || filterTokoNasional.account !== 'ALL'">
               <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20"
                 x-text="`Ditemukan: ${totalTokoNasionalCount.toLocaleString('id-ID')} Toko`"></span>
@@ -2995,8 +3084,25 @@
             </thead>
             <tbody class="divide-y divide-slate-200/60 dark:divide-slate-800/60">
               
+              <!-- SKELETON LOADING ROWS -->
+              <template x-if="isStores49kLoading">
+                <template x-for="i in [1,2,3,4,5,6,7,8]" :key="'skel_tn_'+i">
+                  <tr class="animate-pulse">
+                    <td class="py-3 px-4 text-center"><div class="h-3.5 w-5 bg-slate-200 dark:bg-slate-700/70 rounded mx-auto"></div></td>
+                    <td class="py-3 px-4"><div class="h-4 w-16 bg-slate-200 dark:bg-slate-700/70 rounded"></div></td>
+                    <td class="py-3 px-4"><div class="h-4 w-52 bg-slate-200 dark:bg-slate-700/70 rounded"></div></td>
+                    <td class="py-3 px-4"><div class="h-4 w-20 bg-slate-200 dark:bg-slate-700/70 rounded"></div></td>
+                    <td class="py-3 px-4"><div class="h-4 w-24 bg-slate-200 dark:bg-slate-700/70 rounded"></div></td>
+                    <td class="py-3 px-4"><div class="h-4 w-32 bg-slate-200 dark:bg-slate-700/70 rounded"></div></td>
+                    <td class="py-3 px-4"><div class="h-4 w-20 bg-slate-200 dark:bg-slate-700/70 rounded"></div></td>
+                    <td class="py-3 px-4 text-center"><div class="h-6 w-24 bg-slate-200 dark:bg-slate-700/70 rounded-lg mx-auto"></div></td>
+                  </tr>
+                </template>
+              </template>
+
               <!-- 49k Stores Row Template -->
-              <template x-for="(st, idx) in filteredTokoNasional" :key="st.kodeToko || idx">
+              <template x-if="!isStores49kLoading">
+                <template x-for="(st, idx) in filteredTokoNasional" :key="st.kodeToko || idx">
                 <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group">
                   
                   <!-- 1. No -->
@@ -3099,6 +3205,7 @@
                   </td>
 
                 </tr>
+                </template>
               </template>
 
               <!-- Empty State -->
@@ -3364,7 +3471,15 @@
               </template>
             </div>
 
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <!-- Tombol Export Excel (.xlsx) -->
+              <button type="button" @click="exportCompareToExcel()"
+                class="h-8 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                title="Unduh seluruh data komparasi toko yang terfilter ke format Excel (.xlsx)">
+                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+                <span>Export Excel</span>
+              </button>
+
               <button type="button" @click="resetCompareFilter()"
                 class="h-8 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all">
                 <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
@@ -7528,7 +7643,7 @@
               </div>
               <div>
                 <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Account</label>
-                <select x-model="crudModal.formData.account"
+                <select x-model="crudModal.formData.account" @change="formatCrudStoreName()"
                   class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
                   <template x-for="acc in CONFIG.ACCOUNTS.filter(a => a !== 'ALL')" :key="acc">
                     <option :value="acc" x-text="acc"></option>
@@ -7539,7 +7654,7 @@
 
             <div>
               <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Nama Toko</label>
-              <input type="text" x-model="crudModal.formData.namaToko" required
+              <input type="text" x-model="crudModal.formData.namaToko" @blur="formatCrudStoreName()" required
                 class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
             </div>
 
@@ -7639,7 +7754,7 @@
               </div>
               <div>
                 <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Account</label>
-                <select x-model="crudModal.formData.account"
+                <select x-model="crudModal.formData.account" @change="formatCrudStoreName()"
                   class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
                   <template x-for="acc in CONFIG.ACCOUNTS.filter(a => a !== 'ALL')" :key="acc">
                     <option :value="acc" x-text="acc"></option>
@@ -7650,7 +7765,7 @@
 
             <div>
               <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Nama Toko</label>
-              <input type="text" x-model="crudModal.formData.namaToko" placeholder="Nama Toko / Cabang" required
+              <input type="text" x-model="crudModal.formData.namaToko" @blur="formatCrudStoreName()" placeholder="Nama Toko / Cabang" required
                 class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
             </div>
 
@@ -7773,7 +7888,7 @@
               </div>
               <div>
                 <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Account</label>
-                <select x-model="crudModal.formData.account"
+                <select x-model="crudModal.formData.account" @change="formatCrudStoreName()"
                   class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
                   <template x-for="acc in CONFIG.ACCOUNTS.filter(a => a !== 'ALL')" :key="acc">
                     <option :value="acc" x-text="acc"></option>
@@ -7784,7 +7899,7 @@
 
             <div>
               <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Nama Toko</label>
-              <input type="text" x-model="crudModal.formData.namaToko" required
+              <input type="text" x-model="crudModal.formData.namaToko" @blur="formatCrudStoreName()" required
                 class="w-full h-9 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
             </div>
 
@@ -8274,18 +8389,18 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <script src="./js/firebase-config.js?v=20260918_2130"></script>
+  <script src="./js/firebase-config.js?v=20260920_1120"></script>
 
   <!-- Master Database Personil Lapangan (75 MDS Nasional Lengkap) -->
   <script src="../05_simulasi_rute/js/geo_data.js"></script>
 
   <!-- Modular Scripts with Cache-Buster -->
-  <script src="./js/config.js?v=20260919_0950"></script>
-  <script src="./js/db.js?v=20260919_0950"></script>
-  <script src="./js/api.js?v=20260920_0258"></script>
-  <script src="./js/charts.js?v=20260919_0950"></script>
-  <script src="./js/map.js?v=20260920_0258"></script>
-  <script src="./js/app.js?v=20260920_0258"></script>
+  <script src="./js/config.js?v=20260920_1700"></script>
+  <script src="./js/db.js?v=20260920_1700"></script>
+  <script src="./js/api.js?v=20260920_1700"></script>
+  <script src="./js/charts.js?v=20260920_1700"></script>
+  <script src="./js/map.js?v=20260920_1700"></script>
+  <script src="./js/app.js?v=20260920_1700"></script>
 
   <!-- Failsafe preloader auto-dismiss (only as emergency fallback) -->
   <script>

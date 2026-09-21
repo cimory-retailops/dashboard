@@ -12,6 +12,7 @@ const CONFIG = {
   SUPABASE_URL: 'https://lzvxxcnubtcvdiwfnjmh.supabase.co/rest/v1',
   SUPABASE_KEY: 'sb_publishable_Yrqw13m5rQQKNF0XnWtlOg_JvZZ2_AE',
   USE_SUPABASE: true,
+  MASTER_STORE_VERSION: 'v2026-09-20-standardized',
   
   // Available Modules
   MODULES: [

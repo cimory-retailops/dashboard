@@ -19,7 +19,7 @@ const ApiService = {
           }
         });
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         const res = await fetch(url.toString(), {
           headers: {
             'apikey': CONFIG.SUPABASE_KEY,
@@ -33,33 +33,56 @@ const ApiService = {
       }
 
       const numBatches = Math.min(Math.ceil(requestedLimit / 1000), 20);
-      const batchPromises = [];
-      for (let i = 0; i < numBatches; i++) {
-        batchPromises.push((async () => {
-          const url = new URL(`${CONFIG.SUPABASE_URL}/${table}`);
-          Object.entries(queryParams).forEach(([k, v]) => {
-            if (k !== 'limit' && k !== 'offset' && v !== undefined && v !== null && v !== '') {
-              url.searchParams.append(k, String(v));
+      const allResults = [];
+      const CHUNK_SIZE = 4; // Max 4 concurrent requests to prevent Supabase connection pool exhaustion
+
+      for (let i = 0; i < numBatches; i += CHUNK_SIZE) {
+        const chunkPromises = [];
+        const currentBatchEnd = Math.min(i + CHUNK_SIZE, numBatches);
+
+        for (let b = i; b < currentBatchEnd; b++) {
+          chunkPromises.push((async (batchIdx) => {
+            const url = new URL(`${CONFIG.SUPABASE_URL}/${table}`);
+            Object.entries(queryParams).forEach(([k, v]) => {
+              if (k !== 'limit' && k !== 'offset' && v !== undefined && v !== null && v !== '') {
+                url.searchParams.append(k, String(v));
+              }
+            });
+            url.searchParams.append('limit', '1000');
+            url.searchParams.append('offset', String(batchIdx * 1000));
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            try {
+              const res = await fetch(url.toString(), {
+                headers: {
+                  'apikey': CONFIG.SUPABASE_KEY,
+                  'Authorization': `Bearer ${CONFIG.SUPABASE_KEY}`
+                },
+                signal: controller.signal
+              });
+              clearTimeout(timeoutId);
+              if (res.ok) return await res.json();
+            } catch (err) {
+              clearTimeout(timeoutId);
             }
-          });
-          url.searchParams.append('limit', '1000');
-          url.searchParams.append('offset', String(i * 1000));
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 8000);
-          const res = await fetch(url.toString(), {
-            headers: {
-              'apikey': CONFIG.SUPABASE_KEY,
-              'Authorization': `Bearer ${CONFIG.SUPABASE_KEY}`
-            },
-            signal: controller.signal
-          });
-          clearTimeout(timeoutId);
-          if (res.ok) return await res.json();
-          return [];
-        })());
+            return [];
+          })(b));
+        }
+
+        const chunkResults = await Promise.all(chunkPromises);
+        let reachedEof = false;
+        for (const rows of chunkResults) {
+          if (Array.isArray(rows) && rows.length > 0) {
+            allResults.push(...rows);
+            if (rows.length < 1000) reachedEof = true;
+          } else {
+            reachedEof = true;
+          }
+        }
+        if (reachedEof) break;
       }
-      const results = await Promise.all(batchPromises);
-      return results.flat();
+
+      return allResults;
     } catch (e) {
       console.warn(`Supabase [${table}] fetch failed:`, e);
       return null;
@@ -260,7 +283,8 @@ const ApiService = {
         if (typeof onProgress === 'function') onProgress(15, 100, 'Supabase Cloud');
 
         const auditQuery = {
-          order: 'tanggal.desc,waktu.desc',
+          select: 'detail_visit,id_visit,modul,tanggal,waktu,brand,kategori,barcode,nama_barang,packsize,osa,qty_osa,qty_soh,harga_normal,harga_promo,jenis_promo,mulai_promo,akhir_promo,aktif_promo,apakah_ada_expiry,keterangan_expiry',
+          order: 'detail_visit.desc',
           limit: params.limit || 15000
         };
 
@@ -277,7 +301,8 @@ const ApiService = {
         }
 
         const visitsQuery = {
-          select: 'id_visit,account,kode_toko,nama_toko,tipe_toko,idcrew,nama_crew,tanggal,waktu,modul',
+          select: 'id_visit,account,kode_toko,nama_toko,idcrew,nama_crew,tanggal,waktu,modul',
+          order: 'id_visit.desc',
           limit: 10000
         };
         if (modUpper && modUpper !== 'ALL' && modUpper !== 'NASIONAL') {
@@ -295,6 +320,13 @@ const ApiService = {
         ]);
 
         if (auditRows && Array.isArray(auditRows) && auditRows.length > 0) {
+          // Sort client-side secara instan (<5ms) agar selalu terurut tanggal & waktu terbaru
+          auditRows.sort((a, b) => {
+            const tA = (a.tanggal || '') + ' ' + (a.waktu || '');
+            const tB = (b.tanggal || '') + ' ' + (b.waktu || '');
+            return tB.localeCompare(tA);
+          });
+
           if (typeof onProgress === 'function') onProgress(80, 100, 'Menghubungkan Data Toko');
           const visitsMap = new Map();
           (visitRows || []).forEach(v => {

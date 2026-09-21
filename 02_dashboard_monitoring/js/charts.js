@@ -14,19 +14,27 @@ const ChartService = {
    */
   renderTrendChart(canvasEl, visits, isDark = false) {
     if (!canvasEl) return;
-    if (this.trendChartInstance) {
-      this.trendChartInstance.destroy();
-    }
 
     // Group visits by date (YYYY-MM-DD or date string)
     const dateCounts = {};
-    visits.forEach(v => {
+    (visits || []).forEach(v => {
       const d = v.dateIso || v.date || 'Unknown';
       dateCounts[d] = (dateCounts[d] || 0) + 1;
     });
 
     const sortedDates = Object.keys(dateCounts).sort().slice(-14); // Last 14 days
     const counts = sortedDates.map(d => dateCounts[d]);
+    const labels = sortedDates.map(d => {
+      const parts = d.split('-');
+      return parts.length === 3 ? `${parts[2]}/${parts[1]}` : d;
+    });
+
+    if (this.trendChartInstance) {
+      this.trendChartInstance.data.labels = labels;
+      this.trendChartInstance.data.datasets[0].data = counts;
+      this.trendChartInstance.update('none');
+      return;
+    }
 
     const ctx = canvasEl.getContext('2d');
     const gradient = ctx.createLinearGradient(0, 0, 0, 300);
@@ -89,10 +97,6 @@ const ChartService = {
    */
   renderModulComparisonChart(canvasEl, visits, isDark = false) {
     if (!canvasEl) return;
-    if (this.modulChartInstance) {
-      this.modulChartInstance.destroy();
-    }
-
     const modulCounts = { DK: 0, LK: 0, LP: 0 };
     visits.forEach(v => {
       const p = v.prefix || (v.modul ? v.modul.substring(0, 2) : 'DK');
@@ -100,6 +104,12 @@ const ChartService = {
         modulCounts[p]++;
       }
     });
+
+    if (this.modulChartInstance) {
+      this.modulChartInstance.data.datasets[0].data = [modulCounts.DK, modulCounts.LK, modulCounts.LP];
+      this.modulChartInstance.update('none');
+      return;
+    }
 
     const ctx = canvasEl.getContext('2d');
     this.modulChartInstance = new Chart(ctx, {
@@ -139,12 +149,9 @@ const ChartService = {
    */
   renderAccountShareChart(canvasEl, visits, isDark = false) {
     if (!canvasEl) return;
-    if (this.accountChartInstance) {
-      this.accountChartInstance.destroy();
-    }
 
     const accCounts = {};
-    visits.forEach(v => {
+    (visits || []).forEach(v => {
       const a = (v.account || 'LAINNYA').toUpperCase().trim();
       accCounts[a] = (accCounts[a] || 0) + 1;
     });
@@ -152,8 +159,15 @@ const ChartService = {
     const sortedAccs = Object.entries(accCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
     const labels = sortedAccs.map(x => x[0]);
     const data = sortedAccs.map(x => x[1]);
-
     const colors = ['#6366f1', '#38bdf8', '#10b981', '#f59e0b', '#ec4899'];
+
+    if (this.accountChartInstance) {
+      this.accountChartInstance.data.labels = labels;
+      this.accountChartInstance.data.datasets[0].data = data;
+      this.accountChartInstance.data.datasets[0].backgroundColor = colors.slice(0, labels.length);
+      this.accountChartInstance.update('none');
+      return;
+    }
 
     const ctx = canvasEl.getContext('2d');
     this.accountChartInstance = new Chart(ctx, {

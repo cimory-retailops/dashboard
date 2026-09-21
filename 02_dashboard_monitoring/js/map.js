@@ -372,8 +372,8 @@ const MapService = {
             <span class="px-1.5 py-0.5 rounded text-[10px] font-black text-white" style="background:#4f46e5;">Urutan #${st._seq}</span>
             <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white" style="background:${brandColor};">${st.account || 'TOKO'}</span>
           </div>
-          <p class="font-bold text-slate-900 leading-snug">${st.namaToko || 'Toko'}</p>
-          <p class="text-slate-500 text-[11px] mt-0.5 font-mono">${st.kodeToko ? `Kode: ${st.kodeToko}` : ''}</p>
+          <p class="font-bold text-slate-900 dark:text-white leading-snug">${st.namaToko || 'Toko'}</p>
+          <p class="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5 font-mono">${st.kodeToko ? `Kode: ${st.kodeToko}` : ''}</p>
           <div class="mt-2 pt-1.5 border-t border-slate-200 text-[11px] space-y-0.5">
             <div class="text-slate-700 font-semibold flex items-center justify-between">
               <span>👤 ${crewName || st.namaCrew || 'MDS'}</span>
@@ -480,10 +480,10 @@ const MapService = {
           <span class="px-1.5 py-0.5 rounded text-[10px] font-black bg-amber-500 text-white">TOKO UTAMA</span>
           <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white" style="background:${cBrandColor};">${centerStore.account || 'TOKO'}</span>
         </div>
-        <p class="font-bold text-slate-900 leading-snug">${centerStore.namaToko}</p>
-        <p class="text-slate-500 text-[11px] font-mono mt-0.5">Kode: ${centerStore.kodeToko || '-'}</p>
-        <div class="mt-2 pt-1.5 border-t border-slate-200 text-[11px] space-y-1">
-          <div class="text-slate-600">${[centerStore.branchName, centerStore.kecamatan, centerStore.kabKota].filter(Boolean).join(' • ')}</div>
+        <p class="font-bold text-slate-900 dark:text-white text-sm leading-snug">${centerStore.namaToko}</p>
+        <p class="text-slate-500 dark:text-slate-400 text-[11px] font-mono mt-0.5">Kode: <strong class="text-slate-700 dark:text-slate-200">${centerStore.kodeToko || '-'}</strong></p>
+        <div class="mt-2 pt-1.5 border-t border-slate-200 dark:border-slate-700 text-[11px] space-y-1">
+          <div class="text-slate-600 dark:text-slate-300 font-medium">${[centerStore.branchName, centerStore.kecamatan, centerStore.kabKota].filter(Boolean).join(' • ')}</div>
           <button id="btn-assign-center-store" class="w-full mt-1.5 py-1.5 px-2.5 rounded-lg bg-emerald-600 text-white font-bold text-xs shadow-sm hover:bg-emerald-500 transition-all cursor-pointer text-center">
             🎯 Jadwalkan Toko Ini ke MDS
           </button>
@@ -532,14 +532,14 @@ const MapService = {
             <span class="px-1.5 py-0.5 rounded text-[10px] font-black bg-indigo-600 text-white">Terdekat #${idx + 1}</span>
             <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white" style="background:${nBrandColor};">${nst.account || 'TOKO'}</span>
           </div>
-          <p class="font-bold text-slate-900 leading-snug">${nst.namaToko}</p>
-          <p class="text-slate-500 text-[11px] font-mono">Kode: ${nst.kodeToko || '-'}</p>
-          <div class="mt-2 pt-1 border-t border-slate-200 text-[11px] space-y-1">
-            <div class="font-bold text-amber-600 flex items-center justify-between">
+          <p class="font-bold text-slate-900 dark:text-white leading-snug">${nst.namaToko}</p>
+          <p class="text-slate-500 dark:text-slate-400 text-[11px] font-mono">Kode: <strong class="text-slate-700 dark:text-slate-200">${nst.kodeToko || '-'}</strong></p>
+          <div class="mt-2 pt-1 border-t border-slate-200 dark:border-slate-700 text-[11px] space-y-1">
+            <div class="font-bold text-amber-500 flex items-center justify-between">
               <span>Jarak Radius:</span>
               <span>📍 ${distText}</span>
             </div>
-            <div class="text-slate-500">${[nst.branchName, nst.kecamatan].filter(Boolean).join(' • ')}</div>
+            <div class="text-slate-600 dark:text-slate-300">${[nst.branchName, nst.kecamatan].filter(Boolean).join(' • ')}</div>
             <button class="btn-assign-nearest-store w-full mt-1.5 py-1 px-2 rounded-lg bg-slate-900 text-white font-bold text-[11px] hover:bg-slate-800 transition-all cursor-pointer text-center" data-store-code="${nst.kodeToko}">
               🎯 Jadwalkan #${idx + 1} ke MDS
             </button>

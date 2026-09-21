@@ -715,19 +715,22 @@ const ApiService = {
         }
         const data = await this.fetchFromSupabase('tbl_jadwal_rps', query);
         if (data && Array.isArray(data) && data.length > 0) {
-          const mapped = data.map(r => ({
-            modul: r.modul || '',
-            account: (r.account || 'ALFAMART').toUpperCase(),
-            kodeToko: r.kode_toko || '',
-            namaToko: r.nama_toko || '',
-            kodeCrew: r.kode_crew || '',
-            namaCrew: r.nama_crew || '',
-            rute: r.rute || '1',
-            tipeToko: r.tipe_toko || '-',
-            alamat: '-',
-            noTelp: '-',
-            status: 'AKTIF'
-          }));
+          const mapped = data.map(r => {
+            const acc = (r.account || 'ALFAMART').toUpperCase();
+            return {
+              modul: r.modul || '',
+              account: acc,
+              kodeToko: r.kode_toko || '',
+              namaToko: this.standardizeStoreName(r.nama_toko || '', acc),
+              kodeCrew: r.kode_crew || '',
+              namaCrew: r.nama_crew || '',
+              rute: r.rute || '1',
+              tipeToko: r.tipe_toko || '-',
+              alamat: '-',
+              noTelp: '-',
+              status: 'AKTIF'
+            };
+          });
           this.memoryCache.set(cacheKey, { timestamp: Date.now(), data: mapped });
           if (window.DashboardDB) DashboardDB.set('master_toko', mapped, 7 * 24 * 60 * 60 * 1000);
           return mapped;
@@ -864,11 +867,12 @@ const ApiService = {
       const nCrew = String(r[idxNamaCrew] || '').trim();
       const kCrew = String(r[idxKodeCrew] || '').trim();
 
-      list.push({
-        modul: mod,
-        account: String(r[idxAccount] || 'ALFAMART').trim().toUpperCase(),
-        kodeToko: kode,
-        namaToko: nama,
+        const acc = String(r[idxAccount] || 'ALFAMART').trim().toUpperCase();
+        list.push({
+          modul: mod,
+          account: acc,
+          kodeToko: kode,
+          namaToko: this.standardizeStoreName(nama, acc),
         kodeCrew: kCrew,
         namaCrew: nCrew,
         rute: rute,
@@ -1031,11 +1035,42 @@ const ApiService = {
    * High-Speed Direct Sync of Master Database 49k from Google Sheets to IndexedDB
    */
   async syncMasterStores49kFromSheet(onProgress) {
-    // 0. FAST PATH: SUPABASE CLOUD (< 300ms)
+    // 0. ULTRA-FAST PATH: Local Reconciled Live Data (< 50ms)
+    try {
+      if (onProgress) onProgress('Memuat Master Toko Nasional dari database...');
+      const localResp = await fetch('./data/master_toko_nasional.json');
+      if (localResp.ok) {
+        const localStores = await localResp.json();
+        if (localStores && Array.isArray(localStores) && localStores.length > 0) {
+          const mapped = localStores.map(r => ({
+            kodeToko: r.store_code || r.kodeToko || '',
+            namaToko: r.store_name || r.namaToko || '',
+            account: (r.account || '').toUpperCase(),
+            branchName: r.branch_name || r.branchName || '',
+            kecamatan: r.kecamatan || '',
+            kabKota: r.kab_kota || r.kabKota || '',
+            lat: r.latitude || r.lat || null,
+            lon: r.longitude || r.lon || null
+          }));
+          if (window.DashboardDB) {
+            await DashboardDB.set('stores_49k', mapped);
+            await DashboardDB.set('stores_49k_synced_at', Date.now());
+            if (typeof CONFIG !== 'undefined' && CONFIG.MASTER_STORE_VERSION) {
+              await DashboardDB.set('stores_49k_version', CONFIG.MASTER_STORE_VERSION);
+            }
+          }
+          return mapped;
+        }
+      }
+    } catch (e) {
+      console.warn('Local master_toko_nasional.json fallback ke Supabase:', e);
+    }
+
+    // 1. FAST PATH: SUPABASE CLOUD
     if (CONFIG.USE_SUPABASE && CONFIG.SUPABASE_URL) {
-      if (onProgress) onProgress('Mengunduh Master Database 49k dari Supabase Cloud...');
+      if (onProgress) onProgress('Mengunduh Master Database dari Supabase Cloud...');
       try {
-        const cloudStores = await this.fetchFromSupabase('tbl_master_toko', { limit: 50000 });
+        const cloudStores = await this.fetchFromSupabase('tbl_master_toko', { limit: 60000 });
         if (cloudStores && Array.isArray(cloudStores) && cloudStores.length > 0) {
           const mapped = cloudStores.map(r => ({
             kodeToko: r.store_code || '',
@@ -1050,6 +1085,9 @@ const ApiService = {
           if (window.DashboardDB) {
             await DashboardDB.set('stores_49k', mapped);
             await DashboardDB.set('stores_49k_synced_at', Date.now());
+            if (typeof CONFIG !== 'undefined' && CONFIG.MASTER_STORE_VERSION) {
+              await DashboardDB.set('stores_49k_version', CONFIG.MASTER_STORE_VERSION);
+            }
           }
           return mapped;
         }
@@ -1228,8 +1266,8 @@ const ApiService = {
             if (oldKode) {
               const mPatch = {};
               if (newData.kodeToko) mPatch.store_code = (newData.kodeToko).toUpperCase().trim();
-              if (newData.namaToko) mPatch.store_name = (newData.namaToko).trim();
               if (newData.account) mPatch.account = (newData.account).toUpperCase().trim();
+              if (newData.namaToko) mPatch.store_name = this.standardizeStoreName(newData.namaToko, newData.account || oldData.account);
               if (Object.keys(mPatch).length > 0) {
                 await this.patchSupabase('tbl_master_toko', { store_code: `eq.${oldKode}` }, mPatch);
                 console.log(`🏬 [Master Toko Sync] Berhasil update master nasional tbl_master_toko untuk kode ${oldKode}`);
@@ -1252,8 +1290,9 @@ const ApiService = {
         } else if (action === 'create_or_update_master_store') {
           const st = payload.store || payload;
           const kTok = (st.kodeToko || st.store_code || '').toUpperCase().trim();
-          const nTok = (st.namaToko || st.store_name || '').trim();
-          const acc = (st.account || 'ALFAMART').toUpperCase().trim();
+          let acc = (st.account || 'ALFAMART').toUpperCase().trim();
+          if (acc === 'FAMILY MART' || acc === 'FMI') acc = 'FAMILYMART';
+          const nTok = this.standardizeStoreName(st.namaToko || st.store_name || '', acc);
           if (kTok && nTok) {
             const existing = await this.fetchFromSupabase('tbl_master_toko', { store_code: `eq.${kTok}` });
             if (existing && existing.length > 0) {
@@ -1432,5 +1471,49 @@ const ApiService = {
       console.groupEnd();
       return data;
     }
+  },
+
+  /**
+   * Standardisasi format nama toko berdasarkan akun retail
+   * Contoh: ALFAMART -> SAT [Nama], INDOMARET -> IDM [Nama], dll.
+   */
+  standardizeStoreName(rawName, account) {
+    if (!rawName) return '';
+    let acc = (account || 'ALFAMART').toUpperCase().trim();
+    if (acc === 'FAMILY MART' || acc === 'FMI') acc = 'FAMILYMART';
+    const prefixMap = {
+      'ALFAMART': 'SAT',
+      'INDOMARET': 'IDM',
+      'ALFAMIDI': 'Midi',
+      'LAWSON': 'LAW',
+      'CIRCLE K': 'CK',
+      'FAMILYMART': 'FM',
+      'YOMART': 'YMT'
+    };
+    const targetPrefix = prefixMap[acc] || 'SAT';
+    let s = String(rawName).trim();
+
+    // Pola nama brand (termasuk variasi singkatan)
+    const brandPatterns = 'ALFAMART|ALFA|SAT|INDOMARET|INDO|IDM|ALFAMIDI|SUPER\\s*MIDI|MIDI|LAWSON|LAW|CIRCLE\\s*K|CIRCLEK|CK|FAMILY\\s*MART|FAMILYMART|FMI|FM|YOMART|YMT';
+
+    // 1. Bersihkan tag brand dalam kurung: (ALFAMART), [INDOMARET], dll.
+    s = s.replace(new RegExp(`[\\(\\[\\{]\\s*(?:${brandPatterns})\\s*[\\)\\]\\}]`, 'gi'), ' ');
+
+    // 2. Bersihkan awalan brand dengan pemisah apapun: spasi, garis bawah (_), strip (-), titik (.), titik dua (:), slash (/)
+    s = s.replace(new RegExp(`^\\s*(?:${brandPatterns})[\\s\\-_.:/]+`, 'gi'), '');
+
+    // 3. Bersihkan akhiran brand dengan pemisah apapun
+    s = s.replace(new RegExp(`[\\s\\-_.:/]+(?:${brandPatterns})\\s*$`, 'gi'), '');
+
+    // 4. Bersihkan brand di awalan jika hanya dipisah spasi
+    s = s.replace(new RegExp(`^\\s*(?:${brandPatterns})\\s+`, 'gi'), '');
+
+    // 5. Bersihkan kurung kosong, tanda baca liar di awal/akhir, dan spasi ganda
+    s = s.replace(/[\(\[\{]\s*[\)\]\}]/g, ' ');
+    s = s.replace(/^[\s\-_.:/,]+/, '').replace(/[\s\-_.:/,]+$/, '');
+    s = s.replace(/\s+/g, ' ').trim();
+    if (!s || s.length < 2) s = String(rawName).trim();
+    return `${targetPrefix} ${s}`;
   }
 };
+

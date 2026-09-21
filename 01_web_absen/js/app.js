@@ -746,6 +746,17 @@ function renderProfileUI() {
  */
 async function checkDatabaseStatus() {
   try {
+    // 🔥 AUTO CACHE BUSTER: Jika versi master toko belum seragam, bersihkan cache lokal IndexedDB agar query selalu fresh ke Supabase
+    const currentVer = localStorage.getItem("mds_master_store_ver");
+    if (currentVer !== "v2026-09-20-standardized") {
+      localStorage.setItem("mds_master_store_ver", "v2026-09-20-standardized");
+      try {
+        const db = await initDB();
+        const tx = db.transaction("stores", "readwrite");
+        tx.objectStore("stores").clear();
+      } catch (e) {}
+    }
+
     // Sinkronisasi data crew & rute aktif secara cepat
     const freshCrews = await syncMasterCrewFromSheet();
     if (freshCrews && freshCrews.length > 0 && state.profile && state.profile.nama) {
@@ -2271,6 +2282,39 @@ function copyScheduleViewWA() {
 }
 
 /**
+ * Standardisasi format nama toko berdasarkan akun retail
+ * Contoh: ALFAMART -> SAT [Nama], INDOMARET -> IDM [Nama], dll.
+ */
+function standardizeStoreName(rawName, account) {
+  if (!rawName) return '';
+  let acc = (account || 'ALFAMART').toUpperCase().trim();
+  if (acc === 'FAMILY MART' || acc === 'FMI') acc = 'FAMILYMART';
+  const prefixMap = {
+    'ALFAMART': 'SAT',
+    'INDOMARET': 'IDM',
+    'ALFAMIDI': 'Midi',
+    'LAWSON': 'LAW',
+    'CIRCLE K': 'CK',
+    'FAMILYMART': 'FM',
+    'YOMART': 'YMT'
+  };
+  const targetPrefix = prefixMap[acc] || 'SAT';
+  let s = String(rawName).trim();
+  const brandRegex = /\b(ALFAMART|ALFA|SAT|INDOMARET|INDO|IDM|ALFAMIDI|SUPER\s*MIDI|MIDI|LAWSON|LAW|CIRCLE\s*K|CIRCLEK|CK|FAMILY\s*MART|FAMILYMART|FMI|FM|YOMART|YMT)\b/gi;
+  
+  s = s.replace(new RegExp(`[\\(\\[\\{]\\s*${brandRegex.source}\\s*[\\)\\]\\}]`, 'gi'), ' ');
+  s = s.replace(new RegExp(`^\\s*${brandRegex.source}[\\s\\-\\.\\:\\/]*`, 'gi'), ' ');
+  s = s.replace(new RegExp(`[\\s\\-\\.\\:\\/]+${brandRegex.source}\\s*$`, 'gi'), ' ');
+  s = s.replace(new RegExp(`^\\s*${brandRegex.source}[\\s\\-\\.\\:\\/]*`, 'gi'), ' ');
+  s = s.replace(/[\(\[\{]\s*[\)\]\}]/g, ' ');
+  s = s.replace(/^[\s\-\\.\\:\\/\\,]+/, '').replace(/[\s\-\\.\\:\\/\\,]+$/, '');
+  s = s.replace(/\s+/g, ' ').trim();
+  s = s.replace(/^\((.*?)\)$/, '$1').trim();
+  if (!s || s.length < 2) s = String(rawName).trim();
+  return `${targetPrefix} ${s}`;
+}
+
+/**
  * Modal Tambah / Edit Toko Handlers
  */
 function openCustomStoreModal(initialData = null) {
@@ -2303,6 +2347,16 @@ function openCustomStoreModal(initialData = null) {
       lonInput.value = state.userLocation[1].toFixed(6);
     }
   }
+
+  // Auto-prefix penamaan saat akun dipilih atau nama toko diinput
+  const autoFormatName = () => {
+    if (nameInput && nameInput.value.trim()) {
+      const acc = accountInput ? accountInput.value : 'ALFAMART';
+      nameInput.value = standardizeStoreName(nameInput.value, acc);
+    }
+  };
+  if (accountInput) accountInput.onchange = autoFormatName;
+  if (nameInput) nameInput.onblur = autoFormatName;
 
   // Auto-detect jika user mengetik kode toko yang sudah ada
   if (codeInput) {
@@ -2339,38 +2393,38 @@ function handleAutofillGps() {
   showToast("Mengambil titik koordinat GPS Anda...", "warning");
   navigator.geolocation.getCurrentPosition(
     (pos) => {
-      const { latitude, longitude } = pos.coords;
       const latInput = document.getElementById("customStoreLat");
       const lonInput = document.getElementById("customStoreLon");
-
-      if (latInput) latInput.value = latitude.toFixed(6);
-      if (lonInput) lonInput.value = longitude.toFixed(6);
-
-      showToast("Titik GPS berhasil disalin ke form!", "success");
+      if (latInput) latInput.value = pos.coords.latitude.toFixed(6);
+      if (lonInput) lonInput.value = pos.coords.longitude.toFixed(6);
+      showToast("Titik GPS berhasil diperbarui sesuai lokasi Anda!", "success");
     },
     (err) => {
       showToast(`Gagal membaca GPS: ${err.message}`, "error");
     },
-    { enableHighAccuracy: true, timeout: 8000 }
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
   );
 }
 
 async function handleCustomStoreSave(e) {
-  e.preventDefault();
+  if (e) e.preventDefault();
 
   const account = document.getElementById("customStoreAccount").value.trim();
   const kodeToko = document.getElementById("customStoreCode").value.trim().toUpperCase();
-  const namaToko = document.getElementById("customStoreName").value.trim();
+  const rawNamaToko = document.getElementById("customStoreName").value.trim();
   const kota = document.getElementById("customStoreCity").value.trim();
   const kecamatan = document.getElementById("customStoreDistrict").value.trim();
   const latVal = document.getElementById("customStoreLat").value.trim();
   const lonVal = document.getElementById("customStoreLon").value.trim();
   const autoAdd = document.getElementById("customStoreAutoAdd").checked;
 
-  if (!kodeToko || !namaToko) {
+  if (!kodeToko || !rawNamaToko) {
     showToast("Kode Toko dan Nama Toko wajib diisi!", "warning");
     return;
   }
+
+  // Terapkan standardisasi prefix otomatis (SAT, IDM, Midi, LAW, CK, FM, YMT)
+  const namaToko = standardizeStoreName(rawNamaToko, account);
 
   // Proteksi Simulasi Tutorial (Tidak simpan ke DB server)
   if (state.isTourMode) {
@@ -3536,32 +3590,7 @@ async function getCrewPhoneFromFirestore(targetCrewName, targetCrewCode) {
     if (normCode && cacheMap[normCode]) return cacheMap[normCode];
     if (normName && cacheMap[normName]) return cacheMap[normName];
 
-    // B. Tarik dari Firestore SDK jika tersedia
-    if (window.firebase && typeof firebase.firestore === 'function') {
-      try {
-        const db = firebase.firestore();
-        const snap = await db.collection('portal_users').get();
-        if (!snap.empty) {
-          snap.forEach(doc => {
-            const d = doc.data() || {};
-            const p = d.noWa || d.phone || d.wa || d.nomorWa || d.noHp || d.telp || d.telepon || d.kontak || '';
-            if (p) {
-              const nameKey = (d.name || d.nama || '').toLowerCase().trim();
-              const codeKey = (d.id || d.linkedCrew || d.crewCode || '').toUpperCase().trim();
-              if (nameKey) cacheMap[nameKey] = p;
-              if (codeKey) cacheMap[codeKey] = p;
-            }
-          });
-          localStorage.setItem('mds_firestore_crew_phones', JSON.stringify(cacheMap));
-          if (normCode && cacheMap[normCode]) return cacheMap[normCode];
-          if (normName && cacheMap[normName]) return cacheMap[normName];
-        }
-      } catch (sdkErr) {
-        console.warn("Firestore SDK check fallback ke REST:", sdkErr.message);
-      }
-    }
-
-    // C. Tarik langsung lewat REST API Firestore (koleksi portal_users & users)
+    // B. Tarik langsung lewat REST API Firestore (koleksi portal_users & users) - Bebas error WebChannel 400
     const collectionsToQuery = ['portal_users', 'users'];
     for (const col of collectionsToQuery) {
       const restUrl = `https://firestore.googleapis.com/v1/projects/dashboard-portal-cimory/databases/(default)/documents/${col}`;

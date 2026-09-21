@@ -107,6 +107,7 @@ function dashboardApp() {
     dateFilter: 'LATEST_DAY', // 'LATEST_DAY' | 'TODAY' | '7_DAYS' | 'THIS_MONTH' | 'CUSTOM'
     isCustomDateOpen: false, // Lightweight state for custom date picker box (Zero reactivity spike)
     dateDropdownOpen: false, // Custom popover state (Instant 0ms opening matching MDS dropdown)
+    isDateFilterLoading: false, // Smooth UI feedback while calculating metrics & charts
     dateOptions: [
       { value: 'LATEST_DAY', label: '⚡ Hari Terakhir Aktif (Auto)' },
       { value: 'YESTERDAY', label: '🕒 Kemarin / H-1 (Evaluasi)' },
@@ -130,6 +131,18 @@ function dashboardApp() {
     crewDropdownSearch: '', // Search text inside the crew dropdown popover
     expandedCrews: {}, // State map for expandable cards: { crewKey: true/false }
     viewModeTab1: 'CARDS', // 'CARDS' | 'TABLE' (Switchable view mode)
+    crewCardPage: 1,
+    crewCardPageSize: '10', // '10' | '20' | '50' | 'ALL'
+
+    // Applied Filters for Tab 1 (Activated on "Terapkan Filter")
+    appliedModul: 'ALL',
+    appliedDateFilter: 'LATEST_DAY',
+    appliedStartDate: '',
+    appliedEndDate: '',
+    appliedAccount: 'ALL',
+    appliedSelectedCrews: [],
+    appliedSelectedCrew: '',
+    appliedSearchQuery: '',
 
     // 2. Filters Tab 2: Absensi Tim (Independent Scoped Filter)
     filterAbsensi: {
@@ -245,7 +258,7 @@ function dashboardApp() {
       { code: 'LP', name: 'LP (Luar Pulau) - Siti Pasikha', spvName: 'Siti Pasikha', prefix: 'LP', modules: ['LP1','LP2','LP3','LP4','LP'] }
     ],
 
-    // Raw Data Stores
+    // Raw Data Stores (Frozen arrays in V8 memory - Zero deep Proxy creation, 100% Alpine reactive)
     visits: [],
     absensi: [],
     masterToko: [],
@@ -420,7 +433,7 @@ function dashboardApp() {
           this.selectedModul = state.selectedModul || 'ALL';
           this.selectedAccount = state.selectedAccount || 'ALL';
           this.selectedPeriod = state.selectedPeriod || 'LIVE';
-          this.dateFilter = state.dateFilter || 'LATEST_DAY';
+          this.dateFilter = 'LATEST_DAY'; // Always start on latest active date with actual data
           this.startDate = state.startDate || '';
           this.endDate = state.endDate || '';
         }
@@ -443,17 +456,20 @@ function dashboardApp() {
           this.tokonasionalSubTab = savedSubTab;
         }
 
-        if (cachedMaster && cachedMaster.length > 0) this.masterToko = cachedMaster;
-        if (cachedUsers && cachedUsers.length > 0) this.masterUser = cachedUsers;
-        if (cachedAbsensi && cachedAbsensi.length > 0) this.absensi = cachedAbsensi;
+        if (cachedMaster && cachedMaster.length > 0) {
+          this.masterToko = Object.freeze(cachedMaster);
+        }
+        if (cachedUsers && cachedUsers.length > 0) this.masterUser = Object.freeze(cachedUsers);
+        if (cachedAbsensi && cachedAbsensi.length > 0) this.absensi = Object.freeze(cachedAbsensi);
         if (cachedArchives && cachedArchives.length > 0) this.archiveList = cachedArchives;
 
         if (cachedVisits && cachedVisits.length > 0) {
-          this.visits = cachedVisits;
+          this.visits = Object.freeze(cachedVisits);
           this.updateCrewModulMap();
           this.indexDataStore();
           this.updateActiveDateLabel(this.visits);
           this.lastSyncTime = (state && state.timestamp) ? state.timestamp : Date.now();
+          this.enrichStoreNamesForVisits(this.visits);
           console.log(`%c⚡ [0ms Instant Boot]%c Berhasil memuat ${this.visits.length} data kunjungan dari IndexedDB tanpa request jaringan!`, 'background:#059669;color:white;padding:2px 6px;border-radius:4px;font-weight:bold;', 'color:#34d399;font-weight:bold;');
           return true;
         }
@@ -470,7 +486,7 @@ function dashboardApp() {
         preloader.classList.add('opacity-0', 'pointer-events-none');
         setTimeout(() => {
           if (preloader.parentNode) preloader.parentNode.removeChild(preloader);
-        }, 300);
+        }, 500);
       }
     },
 
@@ -488,10 +504,7 @@ function dashboardApp() {
       try { await this.initRbac(); } catch(e) {}
 
       // Tampilkan status pemulihan memori lokal yang jelas
-      this.isLoading = true;
-      this.loadingStage = 3;
-      this.loadingMessage = CONFIG.USE_SUPABASE ? '⚡ Menghubungkan ke Supabase Cloud REST API...' : '⚡ Membaca data lokal dari memori perangkat...';
-      this.dismissPreloader(); // Transisi dari splash screen statis ke dynamic loading overlay
+      this.isLoading = false;
 
       // 1. Coba pulihkan sesi secara instan dari IndexedDB lokal (< 20ms)
       console.time('⏱️ [1/3] Waktu Baca IndexedDB');
@@ -500,12 +513,11 @@ function dashboardApp() {
 
       if (restored && this.visits && this.visits.length > 0) {
         this.currentPage = 1;
-        this.loadingMessage = `⚡ Menyiapkan tampilan & grafik (${this.visits.length} Kunjungan)...`;
         console.log(`%c[Cache Status]%c ✅ CACHE HIT (${this.visits.length} Kunjungan, ${this.absensi?.length || 0} Absen)`, 'background:#059669;color:white;font-weight:bold;padding:1px 6px;border-radius:3px;', 'color:#34d399;');
 
-        // Render visual grafik & peta, lalu buka overlay saat UI 100% siap
+        // Render visual grafik & peta secara non-blocking di frame berikutnya
         console.time('⏱️ [2/3] Waktu Rendering DOM, Chart & Map');
-        this.$nextTick(() => {
+        requestAnimationFrame(() => {
           this.refreshCharts();
           if (window.lucide) lucide.createIcons();
           if (this.activeTab === 'kunjungan' && document.getElementById('visits-map')) {
@@ -518,36 +530,33 @@ function dashboardApp() {
           console.log(`%c✨ [TOTAL BOOT TIME]%c ${bootTotal} ms (Mode: INSTANT CACHE HIT - 0 Request Network)`, 'background:#059669;color:white;font-weight:bold;padding:2px 8px;border-radius:4px;', 'color:#34d399;font-weight:bold;');
           console.groupEnd();
 
-          // Matikan loading overlay secara mulus saat seluruh tabel, chart, dan peta 100% terpasang
+          // Tunggu seluruh elemen DOM, grafik Chart.js & peta Leaflet 100% siap
           setTimeout(() => {
-            this.isLoading = false;
-          }, 100);
+            this.dismissPreloader();
+          }, 400);
         });
 
         this.loadArchiveMonths();
-
-        // ⚡ SILENT BACKGROUND SYNC: Sinkronkan Master Jadwal Toko langsung dari Supabase (< 100ms)
-        if (CONFIG.USE_SUPABASE) {
-          setTimeout(async () => {
-            try {
-              const freshMaster = await ApiService.getMasterToko({ modul: 'ALL', forceRefresh: true });
-              if (freshMaster && Array.isArray(freshMaster)) {
-                this.masterToko = freshMaster;
-                if (window.DashboardDB) DashboardDB.set('master_toko', freshMaster);
-                console.log(`⚡ [Silent Background Sync] Jadwal Supabase terbaru tersinkronisasi (${freshMaster.length} baris)`);
-              }
-            } catch (syncErr) {
-              console.warn('⚠️ Silent background sync Supabase warning:', syncErr);
-            }
-          }, 300);
-        }
       } else {
         // Cold start pertama kali atau mode Supabase live
         console.log('%c[Cache Status]%c ⚡ Inisialisasi Data Live dari Cloud...', 'background:#2563eb;color:white;font-weight:bold;padding:1px 6px;border-radius:3px;', 'color:#60a5fa;');
         console.groupEnd();
         await this.refreshAllData(true, true);
         this.loadArchiveMonths();
+        setTimeout(() => {
+          this.dismissPreloader();
+        }, 400);
       }
+
+      // Sinkronkan filter applied awal dengan state aktif
+      this.appliedModul = this.selectedModul || 'ALL';
+      this.appliedDateFilter = this.dateFilter || 'LATEST_DAY';
+      this.appliedStartDate = this.startDate || '';
+      this.appliedEndDate = this.endDate || '';
+      this.appliedAccount = this.selectedAccount || 'ALL';
+      this.appliedSelectedCrews = [...(this.selectedCrews || [])];
+      this.appliedSelectedCrew = this.selectedCrew || '';
+      this.appliedSearchQuery = this.searchQuery || '';
 
       // Inisialisasi onResume & Lifecycle Event Listeners
       this.initLifecycleListeners();
@@ -574,6 +583,10 @@ function dashboardApp() {
             if (window.lucide) lucide.createIcons();
             if (newTab === 'evaluasi') {
               setTimeout(() => this.refreshSpvCharts(), 80);
+            } else if (newTab === 'jadwal') {
+              if (!this.masterToko || this.masterToko.length === 0) {
+                this.initMasterJadwal();
+              }
             } else if (newTab === 'tokonasional') {
               if (!this.stores49k || this.stores49k.length === 0) {
                 this.initStores49k();
@@ -589,6 +602,23 @@ function dashboardApp() {
           });
         });
       }
+
+      // Auto-load Toko Nasional jika tab saat boot adalah tokonasional
+      if (this.activeTab === 'tokonasional') {
+        this.$nextTick(() => {
+          if (!this.stores49k || this.stores49k.length === 0) {
+            this.initStores49k();
+          }
+        });
+      }
+
+      // Sinkronkan tab jika user klik link hash navigasi
+      window.addEventListener('hashchange', () => {
+        const hashTab = (window.location.hash || '').replace('#', '');
+        if (hashTab && hashTab !== this.activeTab) {
+          this.activeTab = hashTab;
+        }
+      });
 
       // Real-time inter-tab sync listener (Web Absen <-> Dashboard Monitoring)
       try {
@@ -1120,22 +1150,10 @@ function dashboardApp() {
     },
 
     /**
-     * Handle Modul Filter Change (Instant 0ms in-memory filter, Zero Download)
+     * Handle Modul Filter Change (Staged instantly - Applied on "Terapkan Filter")
      */
     onModulChange() {
       this.currentPage = 1;
-      this.saveSessionState();
-
-      requestAnimationFrame(() => {
-        if (window.lucide) lucide.createIcons();
-        if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
-          MapService.renderVisitsOnMap(this.filteredVisits);
-        }
-        if (this.initCharts) this.initCharts();
-        if (this.activeTab === 'evaluasi') {
-          this.refreshSpvCharts();
-        }
-      });
     },
 
     /**
@@ -1193,13 +1211,17 @@ function dashboardApp() {
 
           console.timeEnd('⏱️ Waktu Download Data (Visits, Absen, Toko, User)');
 
-          this.visits = visitsData || [];
-          this.absensi = absensiData || [];
+          this.visits = Object.freeze(visitsData || []);
+          this.absensi = Object.freeze(absensiData || []);
+          this.enrichStoreNamesForVisits(this.visits);
           if (masterTokoData && masterTokoData.length > 0) {
-            this.masterToko = masterTokoData;
+            this.masterToko = Object.freeze(masterTokoData.map(t => ({
+              ...t,
+              namaToko: (window.ApiService && ApiService.standardizeStoreName) ? ApiService.standardizeStoreName(t.namaToko, t.account) : t.namaToko
+            })));
           }
           if (masterUserData && masterUserData.length > 0) {
-            this.masterUser = masterUserData;
+            this.masterUser = Object.freeze(masterUserData);
           }
 
           this.lastSyncTime = Date.now();
@@ -1318,19 +1340,6 @@ function dashboardApp() {
       this.endDate = eDate;
       this.dateFilter = val;
       this.currentPage = 1;
-      this.updateActiveDateLabel(this.visits);
-      this.saveSessionState();
-
-      requestAnimationFrame(() => {
-        this.refreshCharts();
-        if (window.lucide) lucide.createIcons();
-        if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
-          MapService.renderVisitsOnMap(this.filteredVisits);
-        }
-        if (this.activeTab === 'evaluasi') {
-          this.refreshSpvCharts();
-        }
-      });
     },
 
     getDateFilterLabel(val) {
@@ -1345,25 +1354,89 @@ function dashboardApp() {
       return map[val] || val || 'Pilih Periode';
     },
 
+    toggleDateDropdown() {
+      const t0 = performance.now();
+      this.dateDropdownOpen = !this.dateDropdownOpen;
+      console.log(`%c[UI Action] Dropdown Periode diklik -> Sekarang: ${this.dateDropdownOpen ? 'TERBUKA 📂' : 'TERTUTUP 📁'} (Durasi: ${(performance.now() - t0).toFixed(2)}ms)`, 'color:#38bdf8;font-weight:bold;');
+    },
+
     selectDateOption(val) {
+      const t0 = performance.now();
       this.dateDropdownOpen = false;
+      console.log(`%c[UI Action] Opsi Periode Dipilih: '${val}' ('${this.getDateFilterLabel(val)}')`, 'color:#f59e0b;font-weight:bold;');
       this.handleDateSelectChange({ target: { value: val } });
+      console.log(`%c[UI Action] Opsi diproses, penutupan selesai dalam: ${(performance.now() - t0).toFixed(2)}ms`, 'color:#f59e0b;');
     },
 
     /**
-     * Handle Account Filter Change (Instant & Non-Blocking)
+     * Handle Account Filter Change (Staged instantly - Applied on "Terapkan Filter")
      */
     onAccountChange() {
+      console.log(`%c[UI Action] Opsi Account Dipilih: '${this.selectedAccount}'`, 'color:#a855f7;font-weight:bold;');
       this.currentPage = 1;
-      this.saveSessionState();
+    },
+
+    /**
+     * Terapkan Filter Tab 1: Kunjungan Lapangan & KPI (Non-Blocking 60fps)
+     */
+    applyKunjunganFilter() {
+      const tStart = performance.now();
+      console.log('%c[Filter] 🚀 Tombol "Terapkan Filter" diklik!', 'background:#2563eb;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;');
+
+      this.isDateFilterLoading = true;
+
+      // Invalidate memoization cache for fresh calculation
+      this._memoComplianceKey = null;
+      this._memoCrewCardsKey = null;
+
+      this.appliedModul = this.selectedModul || 'ALL';
+      this.appliedDateFilter = this.dateFilter || 'LATEST_DAY';
+      this.appliedStartDate = this.startDate;
+      this.appliedEndDate = this.endDate;
+      this.appliedAccount = this.selectedAccount || 'ALL';
+      this.appliedSelectedCrews = [...(this.selectedCrews || [])];
+      this.appliedSelectedCrew = this.selectedCrew || '';
+      this.appliedSearchQuery = (this.searchInputText || this.searchQuery || '').trim();
+      this.searchQuery = this.appliedSearchQuery;
+      this.currentPage = 1;
+      this.crewCardPage = 1;
+
+      console.log(`%c[Filter Params] Modul: ${this.appliedModul} | Periode: ${this.appliedDateFilter} (${this.appliedStartDate || '-'} s/d ${this.appliedEndDate || '-'}) | Account: ${this.appliedAccount}`, 'color:#60a5fa;');
 
       requestAnimationFrame(() => {
-        if (window.lucide) lucide.createIcons();
-        if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
-          MapService.renderVisitsOnMap(this.filteredVisits);
+        const tCompute = performance.now();
+        try {
+          this.updateActiveDateLabel(this.visits);
+          this.saveSessionState();
+          this.refreshCharts();
+          if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
+            MapService.renderVisitsOnMap(this.filteredVisits);
+          }
+          if (this.activeTab === 'evaluasi') {
+            this.refreshSpvCharts();
+          }
+          console.log(`%c[Kalkulasi] Data & Grafik selesai diproses dalam: ${(performance.now() - tCompute).toFixed(2)}ms`, 'color:#10b981;font-weight:bold;');
+        } finally {
+          this.$nextTick(() => {
+            if (window.lucide) lucide.createIcons();
+            this.isDateFilterLoading = false;
+            console.log(`%c[Filter] ✅ Selesai! Total waktu: ${(performance.now() - tStart).toFixed(2)}ms`, 'background:#059669;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;');
+          });
         }
-        if (this.initCharts) this.initCharts();
       });
+    },
+
+    resetKunjunganFilter() {
+      console.log('%c[Filter] 🔄 Tombol Reset diklik. Mengembalikan filter ke default...', 'color:#ec4899;font-weight:bold;');
+      this.selectedModul = 'ALL';
+      this.dateFilter = 'LATEST_DAY';
+      this.selectedAccount = 'ALL';
+      this.selectedCrew = '';
+      this.selectedCrews = [];
+      this.searchInputText = '';
+      this.searchQuery = '';
+      this.isCustomDateOpen = false;
+      this.applyKunjunganFilter();
     },
 
     /**
@@ -1385,20 +1458,7 @@ function dashboardApp() {
       this.isCustomDateOpen = true;
       this.startDate = this.customStartInput;
       this.endDate = this.customEndInput;
-      this.currentPage = 1;
-      this.updateActiveDateLabel(this.visits);
-      this.saveSessionState();
-
-      this.$nextTick(() => {
-        this.refreshCharts();
-        if (window.lucide) lucide.createIcons();
-        if (document.getElementById('visits-map') && this.activeTab === 'kunjungan') {
-          MapService.renderVisitsOnMap(this.filteredVisits);
-        }
-        if (this.activeTab === 'evaluasi') {
-          this.refreshSpvCharts();
-        }
-      });
+      this.applyKunjunganFilter();
     },
 
     onPeriodChange() {
@@ -1581,14 +1641,19 @@ function dashboardApp() {
       this.crewDayVisitsMap = new Map();
 
       if (this.visits && this.visits.length > 0) {
-        this.visits = this.visits.filter(v => v && typeof v === 'object');
-        this.visits.forEach(v => {
+        const rawVisits = Array.from(this.visits).filter(v => v && typeof v === 'object');
+        rawVisits.forEach(v => {
           if (!v) return;
           const iso = this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
           v._iso = iso;
           v._officialModul = this.getCrewOfficialModul(v.namaCrew || v.kodeCrew, v.modul || v.prefix);
           v._accUpper = (v.account || '').toUpperCase();
           v._searchStr = `${v.namaToko || ''} ${v.kodeToko || ''} ${v.namaCrew || ''} ${v.kodeCrew || ''} ${v.account || ''}`.toUpperCase();
+
+          const sec = this.parseTimeToSeconds(v.time || v.waktu || v.jam);
+          v._sec = sec;
+          const cleanDate = (iso || '').replace(/\D/g, '');
+          v._ts = (parseInt(cleanDate, 10) || 0) * 100000 + sec;
 
           const cName = (v.namaCrew || '').trim().toUpperCase();
           if (iso && cName) {
@@ -1600,42 +1665,30 @@ function dashboardApp() {
           }
         });
 
-        // Sort each crew's day visits chronologically (earliest to latest in morning/afternoon) accurately by seconds
+        // Sort each crew's day visits chronologically (earliest to latest in morning/afternoon)
         for (const list of this.crewDayVisitsMap.values()) {
-          list.sort((a, b) => {
-            const secA = this.parseTimeToSeconds(a && (a.time || a.waktu || a.jam));
-            const secB = this.parseTimeToSeconds(b && (b.time || b.waktu || b.jam));
-            return secA - secB;
-          });
+          list.sort((a, b) => (a._sec || 0) - (b._sec || 0));
         }
 
-        // Sort visits newest first (Date descending, Time descending)
-        this.visits.sort((a, b) => {
-          const isoA = (a && a._iso) || '';
-          const isoB = (b && b._iso) || '';
-          if (isoA !== isoB) return isoB.localeCompare(isoA);
-          const secA = this.parseTimeToSeconds(a && (a.time || a.waktu || a.jam));
-          const secB = this.parseTimeToSeconds(b && (b.time || b.waktu || b.jam));
-          return secB - secA;
-        });
+        // Sort visits newest first via ultra-fast integer comparison (1ms)
+        rawVisits.sort((a, b) => (b._ts || 0) - (a._ts || 0));
+        this.visits = Object.freeze(rawVisits);
       }
 
       if (this.absensi && this.absensi.length > 0) {
-        this.absensi = this.absensi.filter(a => a && typeof a === 'object');
-        this.absensi.forEach(a => {
+        const rawAbsensi = Array.from(this.absensi).filter(a => a && typeof a === 'object');
+        rawAbsensi.forEach(a => {
           if (!a) return;
-          a._iso = this.normalizeIsoDate(a.dateIso || a.date || a.tanggal);
+          const iso = this.normalizeIsoDate(a.dateIso || a.date || a.tanggal);
+          a._iso = iso;
           a._officialModul = this.getCrewOfficialModul(a.namaCrew || a.kodeCrew, a.modul);
+          const aSec = this.parseTimeToSeconds(a.waktu || a.time);
+          const aCleanDate = (iso || '').replace(/\D/g, '');
+          a._ts = (parseInt(aCleanDate, 10) || 0) * 100000 + aSec;
         });
 
-        this.absensi.sort((a, b) => {
-          const isoA = (a && a._iso) || '';
-          const isoB = (b && b._iso) || '';
-          if (isoA !== isoB) return isoB.localeCompare(isoA);
-          const timeA = (a && (a.waktu || a.time)) || '';
-          const timeB = (b && (b.waktu || b.time)) || '';
-          return timeB.localeCompare(timeA);
-        });
+        rawAbsensi.sort((a, b) => (b._ts || 0) - (a._ts || 0));
+        this.absensi = Object.freeze(rawAbsensi);
       }
 
       // Log summary date distribution for quick developer console verification
@@ -1695,6 +1748,41 @@ function dashboardApp() {
     },
 
     /**
+     * Getter indikator pending filter Tab 1: Kunjungan Lapangan
+     */
+    get hasPendingKunjunganFilter() {
+      const curMod = this.selectedModul || 'ALL';
+      const appMod = this.appliedModul || 'ALL';
+      if (curMod !== appMod) return true;
+
+      const curDate = this.dateFilter || 'LATEST_DAY';
+      const appDate = this.appliedDateFilter || 'LATEST_DAY';
+      if (curDate !== appDate) return true;
+
+      if (curDate === 'CUSTOM') {
+        if (this.startDate !== (this.appliedStartDate || '') || this.endDate !== (this.appliedEndDate || '')) return true;
+      }
+
+      const curAcc = this.selectedAccount || 'ALL';
+      const appAcc = this.appliedAccount || 'ALL';
+      if (curAcc !== appAcc) return true;
+
+      const curCrew = (this.selectedCrew || '').trim();
+      const appCrew = (this.appliedSelectedCrew || '').trim();
+      if (curCrew !== appCrew) return true;
+
+      const curCrews = (this.selectedCrews || []).slice().sort().join(',');
+      const appCrews = (this.appliedSelectedCrews || []).slice().sort().join(',');
+      if (curCrews !== appCrews) return true;
+
+      const curQ = (this.searchInputText || this.searchQuery || '').trim();
+      const appQ = (this.appliedSearchQuery || '').trim();
+      if (curQ !== appQ) return true;
+
+      return false;
+    },
+
+    /**
      * Computed / Filtered Visits (Pure, Zero Mutation, High Speed)
      */
     get filteredVisits() {
@@ -1734,31 +1822,35 @@ function dashboardApp() {
 
       if (!data || data.length === 0) return [];
 
-      // 1. Smart Date Filtering
-      if (this.dateFilter === 'LATEST_DAY') {
+      // 1. Smart Date Filtering (Menggunakan Applied Date State)
+      const curDateFilter = this.appliedDateFilter || this.dateFilter;
+      const curStartDate = this.appliedStartDate !== undefined ? this.appliedStartDate : this.startDate;
+      const curEndDate = this.appliedEndDate !== undefined ? this.appliedEndDate : this.endDate;
+
+      if (curDateFilter === 'LATEST_DAY') {
         const first = data[0];
         const latestIso = first ? (first._iso || this.normalizeIsoDate(first.dateIso || first.date || first.tanggal)) : null;
         if (latestIso) {
           data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === latestIso);
         }
-      } else if (this.dateFilter === 'TODAY') {
+      } else if (curDateFilter === 'TODAY') {
         const now = new Date();
         const y = now.getFullYear();
         const m = String(now.getMonth() + 1).padStart(2, '0');
         const d = String(now.getDate()).padStart(2, '0');
         const todayIso = `${y}-${m}-${d}`;
         data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === todayIso);
-      } else if (this.dateFilter === 'YESTERDAY') {
+      } else if (curDateFilter === 'YESTERDAY') {
         const yDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const y_y = yDate.getFullYear();
         const y_m = String(yDate.getMonth() + 1).padStart(2, '0');
         const y_d = String(yDate.getDate()).padStart(2, '0');
         const yIso = `${y_y}-${y_m}-${y_d}`;
         data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === yIso);
-      } else if (this.dateFilter === 'CUSTOM') {
-        if (this.startDate && this.endDate) {
-          const start = this.startDate;
-          const end = this.endDate;
+      } else if (curDateFilter === 'CUSTOM') {
+        if (curStartDate && curEndDate) {
+          const start = curStartDate;
+          const end = curEndDate;
           data = data.filter(v => {
             if (!v) return false;
             const vIso = v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
@@ -1772,17 +1864,17 @@ function dashboardApp() {
             data = data.filter(v => v && (v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal)) === latestIso);
           }
         }
-      } else if (this.dateFilter === '7_DAYS' && this.startDate && this.endDate) {
-        const start = this.startDate;
-        const end = this.endDate;
+      } else if (curDateFilter === '7_DAYS' && curStartDate && curEndDate) {
+        const start = curStartDate;
+        const end = curEndDate;
         data = data.filter(v => {
           if (!v) return false;
           const vIso = v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
           return vIso && vIso >= start && vIso <= end;
         });
-      } else if (this.dateFilter === 'THIS_MONTH' && this.startDate && this.endDate) {
-        const start = this.startDate;
-        const end = this.endDate;
+      } else if (curDateFilter === 'THIS_MONTH' && curStartDate && curEndDate) {
+        const start = curStartDate;
+        const end = curEndDate;
         data = data.filter(v => {
           if (!v) return false;
           const vIso = v._iso || this.normalizeIsoDate(v.dateIso || v.date || v.tanggal);
@@ -1791,38 +1883,42 @@ function dashboardApp() {
       }
 
       // 2. Filter by Modul (Using Official Module Mapping)
-      if (this.selectedModul && this.selectedModul !== 'ALL' && this.selectedModul.toUpperCase() !== 'NASIONAL') {
-        const selMod = this.selectedModul;
-        if (selMod.length === 2) {
-          data = data.filter(v => (v._officialModul || this.getCrewOfficialModul(v.namaCrew || v.kodeCrew, v.modul)).startsWith(selMod));
+      const curModul = this.appliedModul || this.selectedModul;
+      if (curModul && curModul !== 'ALL' && curModul.toUpperCase() !== 'NASIONAL') {
+        if (curModul.length === 2) {
+          data = data.filter(v => (v._officialModul || this.getCrewOfficialModul(v.namaCrew || v.kodeCrew, v.modul)).startsWith(curModul));
         } else {
-          data = data.filter(v => (v._officialModul || this.getCrewOfficialModul(v.namaCrew || v.kodeCrew, v.modul)) === selMod);
+          data = data.filter(v => (v._officialModul || this.getCrewOfficialModul(v.namaCrew || v.kodeCrew, v.modul)) === curModul);
         }
       }
 
       // 3. Filter by Account
-      if (this.selectedAccount !== 'ALL') {
-        const selAcc = this.selectedAccount;
-        data = data.filter(v => (v._accUpper || (v.account || '').toUpperCase()).includes(selAcc));
+      const curAccount = this.appliedAccount || this.selectedAccount;
+      if (curAccount !== 'ALL') {
+        data = data.filter(v => (v._accUpper || (v.account || '').toUpperCase()).includes(curAccount));
       }
 
       // 4. Filter by Selected Crew / Multi-Selected Crews / Search Query
-      if (this.selectedCrews && this.selectedCrews.length > 0) {
-        const selCrewsUpper = new Set(this.selectedCrews.map(c => String(c).toUpperCase().trim()));
+      const curCrews = this.appliedSelectedCrews !== undefined ? this.appliedSelectedCrews : this.selectedCrews;
+      const curCrew = this.appliedSelectedCrew !== undefined ? this.appliedSelectedCrew : this.selectedCrew;
+      const curSearch = this.appliedSearchQuery !== undefined ? this.appliedSearchQuery : this.searchQuery;
+
+      if (curCrews && curCrews.length > 0) {
+        const selCrewsUpper = new Set(curCrews.map(c => String(c).toUpperCase().trim()));
         data = data.filter(v => {
           const cName = (v.namaCrew || '').toUpperCase().trim();
           const cCode = (v.kodeCrew || '').toUpperCase().trim();
           return selCrewsUpper.has(cName) || selCrewsUpper.has(cCode);
         });
-      } else if (this.selectedCrew) {
-        const selCrew = this.selectedCrew.toUpperCase().trim();
+      } else if (curCrew) {
+        const selCrew = curCrew.toUpperCase().trim();
         data = data.filter(v => {
           const cName = (v.namaCrew || '').toUpperCase().trim();
           const cCode = (v.kodeCrew || '').toUpperCase().trim();
           return cName === selCrew || cCode === selCrew;
         });
-      } else if (this.searchQuery && this.searchQuery.trim()) {
-        const q = this.searchQuery.toUpperCase().trim();
+      } else if (curSearch && curSearch.trim()) {
+        const q = curSearch.toUpperCase().trim();
         data = data.filter(v => (v._searchStr || `${v.namaToko || ''} ${v.kodeToko || ''} ${v.namaCrew || ''} ${v.kodeCrew || ''} ${v.account || ''}`).toUpperCase().includes(q));
       }
 
@@ -2338,21 +2434,130 @@ function dashboardApp() {
     },
 
     /**
+     * Lazy Load Master Jadwal Toko (22k baris) ONLY when Tab Jadwal is accessed
+     */
+    async initMasterJadwal(force = false) {
+      if (!force && this.masterToko && this.masterToko.length > 0) return;
+      try {
+        console.log('%c[Lazy Load] Memuat Master Jadwal Toko untuk Tab Jadwal...', 'color:#f59e0b;font-weight:bold;');
+        if (window.DashboardDB) {
+          const cached = await DashboardDB.get('master_toko', true);
+          if (cached && Array.isArray(cached) && cached.length > 0) {
+            this.masterToko = Object.freeze(cached.map(t => ({
+              ...t,
+              namaToko: (window.ApiService && ApiService.standardizeStoreName) ? ApiService.standardizeStoreName(t.namaToko, t.account) : t.namaToko
+            })));
+            console.log(`%c[Lazy Load] ✅ Master Jadwal Toko (${this.masterToko.length} baris) siap!`, 'color:#10b981;');
+            return;
+          }
+        }
+        const fresh = await ApiService.getMasterToko({ modul: 'ALL', forceRefresh: true });
+        if (fresh && Array.isArray(fresh) && fresh.length > 0) {
+          this.masterToko = Object.freeze(fresh);
+          if (window.DashboardDB) DashboardDB.set('master_toko', fresh);
+          console.log(`%c[Lazy Load] ✅ Master Jadwal Toko (${fresh.length} baris) tersinkronisasi!`, 'color:#10b981;');
+        }
+      } catch (e) {
+        console.warn('initMasterJadwal Error:', e);
+      }
+    },
+
+    /**
+     * Nama Toko Standard & Resmi untuk Tampilan UI (Lookup Master Database & Auto-Prefix)
+     */
+    getDisplayStoreName(item, card = null) {
+      if (!item) return '-';
+      const code = (item.kodeToko || item.kode || item.store_code || '').trim().toUpperCase();
+      const rawName = (item.namaToko || item.nama_toko || item.name || '').trim();
+      const acc = (item.account || 'ALFAMART').toUpperCase().trim();
+
+      // 1. Cek apakah ada master store lookup global yang sudah ter-resolve
+      if (code && this._storeNameByCode && this._storeNameByCode.has(code)) {
+        return this._storeNameByCode.get(code);
+      }
+
+      // 2. Cek apakah ada target store di kartu personil yang bersangkutan dengan nama deskriptif
+      if (card && card.targetStoresList) {
+        const found = card.targetStoresList.find(st => (st.kodeToko || '').trim().toUpperCase() === code);
+        if (found && found.namaToko && !found.namaToko.includes('Tidak Tersedia')) {
+          const uT = found.namaToko.toUpperCase();
+          if (!uT.startsWith('INDOMARET_') && !uT.startsWith('ALFAMART_')) {
+            return ApiService.standardizeStoreName(found.namaToko, found.account || acc);
+          }
+        }
+      }
+
+      // 3. Standardisasi nama mentah (misal INDOMARET_TAWK -> IDM TAWK)
+      if (window.ApiService && ApiService.standardizeStoreName) {
+        return ApiService.standardizeStoreName(rawName, acc);
+      }
+      return rawName;
+    },
+
+    /**
+     * Resolusi Asinkron Nama Resmi Toko dari Supabase tbl_master_toko untuk kode toko kunjungan
+     */
+    async enrichStoreNamesForVisits(visitsList) {
+      if (!visitsList || visitsList.length === 0 || !CONFIG.USE_SUPABASE) return;
+      if (!this._storeNameByCode) this._storeNameByCode = new Map();
+
+      // Kumpulkan kode unik yang belum ada di map
+      const missingCodes = new Set();
+      visitsList.forEach(v => {
+        const c = (v.kodeToko || '').trim().toUpperCase();
+        if (c && !this._storeNameByCode.has(c)) missingCodes.add(c);
+      });
+
+      if (missingCodes.size === 0) return;
+
+      const codeArr = Array.from(missingCodes);
+      // Batch lookup per 50 kode toko (sangat ringan < 50ms)
+      for (let i = 0; i < codeArr.length; i += 50) {
+        const chunk = codeArr.slice(i, i + 50);
+        try {
+          const res = await ApiService.fetchFromSupabase('tbl_master_toko', {
+            store_code: `in.(${chunk.join(',')})`,
+            select: 'store_code,store_name,account'
+          });
+          if (res && Array.isArray(res)) {
+            res.forEach(item => {
+              if (item.store_code && item.store_name) {
+                const stdName = ApiService.standardizeStoreName(item.store_name, item.account);
+                this._storeNameByCode.set(item.store_code.toUpperCase().trim(), stdName);
+              }
+            });
+          }
+        } catch (e) {
+          break;
+        }
+      }
+    },
+
+    /**
      * Initialize Master Database 49k Cache from IndexedDB (< 15ms)
+     * Otomatis auto-sync jika versi cache lama atau data basi
      */
     async initStores49k() {
       try {
         if (window.DashboardDB) {
           const cached = await DashboardDB.get('stores_49k', true);
           const lastSync = await DashboardDB.get('stores_49k_synced_at', true);
-          if (cached && Array.isArray(cached) && cached.length > 0) {
+          const cachedVer = await DashboardDB.get('stores_49k_version', true);
+          const targetVer = (typeof CONFIG !== 'undefined' && CONFIG.MASTER_STORE_VERSION) ? CONFIG.MASTER_STORE_VERSION : 'v2';
+
+          // 🔥 AUTO CACHE BUSTER: Jika versi cache user berbeda, paksa fresh sync dari Supabase
+          if (cached && Array.isArray(cached) && cached.length > 0 && cachedVer === targetVer) {
             this.stores49k = Object.freeze(cached);
             this.stores49kLastSynced = lastSync;
+            // Background revalidation jika data lebih dari 6 jam
+            if (!lastSync || (Date.now() - lastSync > 6 * 3600 * 1000)) {
+              this.syncStores49k(false);
+            }
             return;
           }
         }
-        // If not in DB yet, trigger initial load
-        this.syncStores49k(false);
+        // Versi cache beda atau belum ada cache -> auto-sync fresh dari Supabase Cloud
+        await this.syncStores49k(false);
       } catch (e) {
         console.warn('initStores49k Error:', e);
       }
@@ -2958,6 +3163,7 @@ function dashboardApp() {
         totalScheduledCrews: scheduled,
         inactiveCrewsCount: inactiveCrewsCount,
         totalTarget: totalTarget || 0,
+        totalVisitedStores: totalVisitedStores || 0,
         achievementRate: achievementRate || 0,
         hadirCount: hadirCount || 0,
         totalAbsensi: aData.length || 0
@@ -2969,6 +3175,11 @@ function dashboardApp() {
      * Maps active date (Supports Weekly Pattern 1..6 & Monthly Pattern 1..31)
      */
     get complianceList() {
+      const cacheKey = `${this.appliedModul}_${this.appliedDateFilter}_${this.appliedStartDate}_${this.appliedEndDate}_${this.appliedAccount}_${this.appliedSelectedCrew}_${(this.appliedSelectedCrews||[]).join(',')}_${(this.visits||[]).length}`;
+      if (this._memoComplianceKey === cacheKey && this._memoComplianceList) {
+        return this._memoComplianceList;
+      }
+
       const routeMatchSet = this.getActiveRouteMatchList();
       const normKey = (str) => {
         if (!str) return '';
@@ -3232,11 +3443,14 @@ function dashboardApp() {
         }
       }
 
-      return finalResults.sort((a, b) => {
+      const sortedCompliance = finalResults.sort((a, b) => {
         if (b.rate !== a.rate) return b.rate - a.rate;
         if (b.visitedCount !== a.visitedCount) return b.visitedCount - a.visitedCount;
         return a.namaCrew.localeCompare(b.namaCrew);
       });
+      this._memoComplianceKey = cacheKey;
+      this._memoComplianceList = sortedCompliance;
+      return sortedCompliance;
     },
 
     /**
@@ -3615,11 +3829,19 @@ function dashboardApp() {
 
     toggleCrewCardExpand(crewKey) {
       this.expandedCrews[crewKey] = !this.expandedCrews[crewKey];
+      if (this.expandedCrews[crewKey]) {
+        this.$nextTick(() => {
+          if (window.lucide) lucide.createIcons();
+        });
+      }
     },
 
     expandAllCrewCards() {
       (this.crewMonitoringCards || []).forEach(c => {
         this.expandedCrews[c.key] = true;
+      });
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
       });
     },
 
@@ -3631,6 +3853,11 @@ function dashboardApp() {
      * Detailed Real-time Monitoring Cards Data Structure (Expandable per MDS) - Ultra-Fast O(1) Pre-Indexed
      */
     get crewMonitoringCards() {
+      const cacheKey = `${this.appliedModul}_${this.appliedDateFilter}_${this.appliedStartDate}_${this.appliedEndDate}_${this.appliedAccount}_${this.appliedSelectedCrew}_${(this.appliedSelectedCrews||[]).join(',')}_${(this.visits||[]).length}_${this.currentPage}`;
+      if (this._memoCrewCardsKey === cacheKey && this._memoCrewCards) {
+        return this._memoCrewCards;
+      }
+
       const compList = this.filteredComplianceList || [];
       const normKey = (str) => {
         if (!str) return '';
@@ -3698,7 +3925,7 @@ function dashboardApp() {
 
       const masterStoreMap = this.crewMasterStoresMap || new Map();
 
-      return compList.map(c => {
+      const rawCrewCards = compList.map(c => {
         const cKey = normKey(c.namaCrew);
         const baseKey = cleanCrewToken(c.namaCrew);
         
@@ -3890,18 +4117,69 @@ function dashboardApp() {
             catatan: crewAbsen.catatan || ''
           } : null
         };
-      }).sort((a, b) => {
-        // 1. Sort by rate descending (100% down to 0%)
-        if (b.rate !== a.rate) {
-          return b.rate - a.rate;
-        }
-        // 2. If rate is equal, sort by visited count descending
-        if (b.visitedCount !== a.visitedCount) {
-          return b.visitedCount - a.visitedCount;
-        }
-        // 3. If still equal, sort alphabetically by name
+      });
+
+      const sortedCrewCards = rawCrewCards.sort((a, b) => {
+        if (b.rate !== a.rate) return b.rate - a.rate;
+        if (b.visitedCount !== a.visitedCount) return b.visitedCount - a.visitedCount;
         return (a.namaCrew || '').localeCompare(b.namaCrew || '');
       });
+      this._memoCrewCardsKey = cacheKey;
+      this._memoCrewCards = sortedCrewCards;
+      return sortedCrewCards;
+    },
+
+    get totalCrewCardsCount() {
+      return (this.crewMonitoringCards || []).length;
+    },
+
+    get totalCrewCardsPages() {
+      if (this.crewCardPageSize === 'ALL') return 1;
+      const size = parseInt(this.crewCardPageSize) || 10;
+      return Math.max(1, Math.ceil(this.totalCrewCardsCount / size));
+    },
+
+    get paginatedCrewCards() {
+      const all = this.crewMonitoringCards || [];
+      if (this.crewCardPageSize === 'ALL') return all;
+      const size = parseInt(this.crewCardPageSize) || 10;
+      const start = (this.crewCardPage - 1) * size;
+      return all.slice(start, start + size);
+    },
+
+    get crewCardsPaginationWindow() {
+      const current = this.crewCardPage;
+      const total = this.totalCrewCardsPages;
+      if (total <= 7) {
+        return Array.from({ length: total }, (_, i) => i + 1);
+      }
+      if (current <= 4) {
+        return [1, 2, 3, 4, 5, '...', total];
+      }
+      if (current >= total - 3) {
+        return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+      }
+      return [1, '...', current - 1, current, current + 1, '...', total];
+    },
+
+    setCrewCardPage(p) {
+      if (p === '...') return;
+      this.crewCardPage = Math.max(1, Math.min(this.totalCrewCardsPages, p));
+      this.$nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+
+    prevCrewCardPage() {
+      if (this.crewCardPage > 1) {
+        this.setCrewCardPage(this.crewCardPage - 1);
+      }
+    },
+
+    nextCrewCardPage() {
+      if (this.crewCardPage < this.totalCrewCardsPages) {
+        this.setCrewCardPage(this.crewCardPage + 1);
+      }
     },
 
     // WhatsApp Regional Operational Groups (Automated Module Mapping)
@@ -7628,6 +7906,14 @@ function dashboardApp() {
       this.crudModal.auditResult = null;
     },
 
+    formatCrudStoreName() {
+      if (!this.crudModal.formData || !this.crudModal.formData.namaToko) return;
+      this.crudModal.formData.namaToko = ApiService.standardizeStoreName(
+        this.crudModal.formData.namaToko,
+        this.crudModal.formData.account
+      );
+    },
+
     async executeCrudSubmit() {
       const mode = this.crudModal.mode;
       const f = this.crudModal.formData;
@@ -7640,6 +7926,7 @@ function dashboardApp() {
       try {
         if (mode === 'edit') {
           if (!f.kodeToko || !f.namaToko) throw new Error('Kode Toko dan Nama Toko wajib diisi.');
+          f.namaToko = ApiService.standardizeStoreName(f.namaToko, f.account);
 
           const payload = {
             oldData: {
@@ -7759,6 +8046,7 @@ function dashboardApp() {
 
         } else if (mode === 'create_master') {
           if (!f.kodeToko || !f.namaToko) throw new Error('Kode Toko dan Nama Toko wajib diisi.');
+          f.namaToko = ApiService.standardizeStoreName(f.namaToko, f.account);
 
           this.crudModal.statusMsg = 'Mendaftarkan toko ke Master Database Toko Nasional...';
           const res = await ApiService.postAction('create_or_update_master_store', { store: f });
@@ -7804,6 +8092,7 @@ function dashboardApp() {
 
         } else if (mode === 'edit_master') {
           if (!f.kodeToko || !f.namaToko) throw new Error('Kode Toko dan Nama Toko wajib diisi.');
+          f.namaToko = ApiService.standardizeStoreName(f.namaToko, f.account);
           this.crudModal.statusMsg = 'Menyimpan perubahan toko di Master Database Toko Nasional...';
           const res = await ApiService.postAction('create_or_update_master_store', { store: f });
 
@@ -10254,6 +10543,97 @@ function dashboardApp() {
         alert(`❌ Gagal menyimpan: ${err.message || err}`);
       } finally {
         this.isSavingCompareBatch = false;
+      }
+    },
+
+    /**
+     * EXPORT DATA AUDIT & KOMPARASI TOKO KE EXCEL (.XLSX)
+     */
+    exportCompareToExcel() {
+      if (typeof XLSX === 'undefined') {
+        alert('Library XLSX belum siap, silakan refresh halaman.');
+        return;
+      }
+
+      const list = this.filteredStoreComparisonList || [];
+      if (list.length === 0) {
+        alert('Tidak ada data komparasi toko yang dapat diekspor sesuai filter aktif.');
+        return;
+      }
+
+      const rows = list.map((item, idx) => {
+        let statusAudit = 'Akurat (<50m)';
+        if (item.isNotInMaster) {
+          statusAudit = 'Belum Ada di Master';
+        } else if (item.isFieldGpsZero) {
+          statusAudit = 'GPS Lapangan 0.0 (Error)';
+        } else if (item.distMeters !== null && item.distMeters > 100) {
+          statusAudit = 'Beda Jauh (>100m)';
+        } else if (item.distMeters !== null && item.distMeters >= 50) {
+          statusAudit = 'Selisih Sedang (50-100m)';
+        }
+
+        return {
+          'No': idx + 1,
+          'Kode Toko': item.kodeToko,
+          'Account / Ritel': item.dbStore?.account || item.fieldVisit?.account || '-',
+          'Nama Toko (Master DB)': item.dbStore?.namaToko || '-',
+          'Nama Toko (Riil Lapangan)': item.fieldVisit?.namaToko || '-',
+          'Status Nama': item.isNameDiff ? 'Beda Nama' : 'Nama Sama',
+          'Status Audit Lokasi': statusAudit,
+          'Selisih Jarak (Meter)': item.distMeters !== null ? item.distMeters : '-',
+          'Lat (Master)': item.dbStore?.lat !== null && item.dbStore?.lat !== undefined ? item.dbStore.lat : '-',
+          'Lon (Master)': item.dbStore?.lon !== null && item.dbStore?.lon !== undefined ? item.dbStore.lon : '-',
+          'Lat (Lapangan)': item.fieldVisit?.lat !== null && item.fieldVisit?.lat !== undefined ? item.fieldVisit.lat : '-',
+          'Lon (Lapangan)': item.fieldVisit?.lon !== null && item.fieldVisit?.lon !== undefined ? item.fieldVisit.lon : '-',
+          'Personil MDS (Kunjungan)': item.fieldVisit?.namaCrew || '-',
+          'Kode MDS': item.fieldVisit?.kodeCrew || '-',
+          'Modul': item.fieldVisit?.modul || '-',
+          'Tgl Kunjungan Terakhir': item.fieldVisit?.date || '-',
+          'Jam Kunjungan Terakhir': item.fieldVisit?.time || '-',
+          'Kecamatan': item.dbStore?.kecamatan || '-',
+          'Kab / Kota': item.dbStore?.kabKota || '-',
+          'Terdaftar di Master': item.isNotInMaster ? 'TIDAK' : 'YA',
+          'Status Antrean Draft': item.isDrafted ? 'ADA DI DRAFT' : 'BELUM'
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+
+      // Set lebar kolom otomatis agar rapi saat dibuka di Excel
+      ws['!cols'] = [
+        { wch: 6 },  // No
+        { wch: 14 }, // Kode Toko
+        { wch: 16 }, // Account
+        { wch: 32 }, // Nama Toko DB
+        { wch: 32 }, // Nama Toko Lapangan
+        { wch: 14 }, // Status Nama
+        { wch: 26 }, // Status Audit Lokasi
+        { wch: 20 }, // Selisih Jarak
+        { wch: 14 }, // Lat Master
+        { wch: 14 }, // Lon Master
+        { wch: 14 }, // Lat Lapangan
+        { wch: 14 }, // Lon Lapangan
+        { wch: 28 }, // Personil MDS
+        { wch: 12 }, // Kode MDS
+        { wch: 10 }, // Modul
+        { wch: 14 }, // Tgl
+        { wch: 12 }, // Jam
+        { wch: 20 }, // Kecamatan
+        { wch: 22 }, // Kab/Kota
+        { wch: 18 }, // Terdaftar di Master
+        { wch: 20 }  // Status Draft
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Audit Toko Nasional');
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const filename = `Audit_Komparasi_Toko_Nasional_${dateStr}.xlsx`;
+      XLSX.writeFile(wb, filename);
+
+      if (typeof this.showToast === 'function') {
+        this.showToast(`Berhasil mengekspor ${rows.length} data audit toko ke Excel!`, 'success');
       }
     }
   };
