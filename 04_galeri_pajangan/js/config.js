@@ -76,17 +76,15 @@ const CONFIG = {
     'ALL',
     'ALFAMART',
     'INDOMARET',
-    'YOMART',
     'ALFAMIDI',
+    'FAMILYMART',
+    'LAWSON',
+    'CIRCLE K',
+    'YOMART',
     'SUPERINDO',
     'HYPERMART',
     'LOTTE',
-    'FARMERS',
-    'HERO',
-    'NAGA',
-    'GRIYA',
-    'BORMA',
-    'LOKAL / LAINNYA'
+    'OTHER'
   ],
 
   // Cache settings

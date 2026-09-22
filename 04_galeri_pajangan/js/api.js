@@ -137,6 +137,25 @@ const ApiService = {
   },
 
   /**
+   * Standarisasi nama Account Retail (gabungkan duplikasi seperti FAMILY MART & FAMILYMART)
+   */
+  normalizeAccount(rawAcc) {
+    if (!rawAcc) return 'OTHER';
+    const s = String(rawAcc).toUpperCase().trim().replace(/\s+/g, ' ');
+    if (s === 'FAMILY MART' || s === 'FAMILY_MART' || s === 'FAMILYMART' || s === 'FMI' || s === 'FM') return 'FAMILYMART';
+    if (s === 'CIRCLE K' || s === 'CIRCLEK' || s === 'CIRCLE_K' || s === 'CK') return 'CIRCLE K';
+    if (s === 'INDOMARET' || s === 'INDO MARET' || s === 'IDM') return 'INDOMARET';
+    if (s === 'ALFAMIDI' || s === 'ALFA MIDI' || s === 'SUPER MIDI' || s === 'SUPERMIDI' || s === 'MIDI') return 'ALFAMIDI';
+    if (s === 'ALFAMART' || s === 'ALFA MART' || s === 'ALFA' || s === 'SAT') return 'ALFAMART';
+    if (s === 'LAWSON' || s === 'LAW') return 'LAWSON';
+    if (s === 'YOMART' || s === 'YO MART' || s === 'YMT') return 'YOMART';
+    if (s === 'SUPERINDO' || s === 'SUPER INDO') return 'SUPERINDO';
+    if (s === 'HYPERMART' || s === 'HYPER MART') return 'HYPERMART';
+    if (s === 'OTHER' || s === '-' || s === 'LOKAL' || s === 'LAINNYA') return 'OTHER';
+    return s;
+  },
+
+  /**
    * Extract Google Drive File ID from various URL formats
    */
   extractDriveId(url) {
@@ -152,7 +171,7 @@ const ApiService = {
   /**
    * Get Ultra-Lightweight Smart Web Thumbnail (~30KB) from Google Drive
    */
-  getThumbnailUrl(url, size = 400) {
+  getThumbnailUrl(url, size = 250) {
     if (!url) return '';
     const clean = String(url).trim();
     if (!clean.startsWith('http')) return ''; // Relative path will be resolved asynchronously
@@ -224,10 +243,11 @@ const ApiService = {
         this.memoryCache.set(cacheKey, directUrl);
         resolve(directUrl);
       } else {
+        this.memoryCache.set(cacheKey, '');
         resolve('');
       }
     } catch (e) {
-      console.warn('Resolve error:', cleanPath, e);
+      this.memoryCache.set(cacheKey, '');
       resolve('');
     } finally {
       this.activeWorkers--;
@@ -239,6 +259,40 @@ const ApiService = {
 
   async loadMasterTokoTypes() {
     if (this.masterTokoTypeMap.size > 0) return this.masterTokoTypeMap;
+
+    // 0. Prioritas Utama: Kamus Master Chiller Nasional (8,300+ Toko Lengkap)
+    if (window.MASTER_CHILLER_TYPES && typeof window.MASTER_CHILLER_TYPES === 'object') {
+      Object.entries(window.MASTER_CHILLER_TYPES).forEach(([k, v]) => {
+        const code = String(k || '').trim().toUpperCase();
+        const tipe = String(v || '').trim();
+        if (code && tipe && tipe !== '-') {
+          this.masterTokoTypeMap.set(code, tipe);
+        }
+      });
+    }
+
+    // 1. Ambil dari Supabase tbl_jadwal_rps jika aktif
+    if (CONFIG.USE_SUPABASE && CONFIG.SUPABASE_URL) {
+      try {
+        const rpsRows = await this.fetchFromSupabase('tbl_jadwal_rps', {
+          select: 'kode_toko,tipe_toko',
+          limit: 10000
+        });
+        if (Array.isArray(rpsRows)) {
+          rpsRows.forEach(r => {
+            const code = String(r.kode_toko || '').trim().toUpperCase();
+            const tipe = String(r.tipe_toko || '').trim();
+            if (code && tipe && tipe !== '-' && !this.masterTokoTypeMap.has(code)) {
+              this.masterTokoTypeMap.set(code, tipe);
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Supabase load master tipe notice:', e);
+      }
+    }
+
+    // 2. Fallback baca dari list_toko.csv
     try {
       const resp = await fetch('../01_web_absen/list_toko.csv');
       if (resp.ok) {
@@ -248,8 +302,10 @@ const ApiService = {
           rows.slice(1).forEach(r => {
             const storeCode = String(r[0] || '').trim().toUpperCase();
             const storeType = String(r[9] || '').trim();
-            if (storeCode && storeType) {
-              this.masterTokoTypeMap.set(storeCode, storeType);
+            if (storeCode && storeType && storeType !== '-') {
+              if (!this.masterTokoTypeMap.has(storeCode)) {
+                this.masterTokoTypeMap.set(storeCode, storeType);
+              }
             }
           });
         }
@@ -267,6 +323,9 @@ const ApiService = {
     // 0. FAST PATH: SUPABASE CLOUD (< 100ms Query)
     if (CONFIG.USE_SUPABASE && CONFIG.SUPABASE_URL) {
       try {
+        await this.loadMasterTokoTypes();
+        const masterMap = this.masterTokoTypeMap || new Map();
+
         const query = {
           order: 'tanggal.desc,waktu.desc',
           limit: params.limit || 5000
@@ -296,6 +355,12 @@ const ApiService = {
 
             if (beforeList.length === 0 && afterList.length === 0 && !selfie) continue;
 
+            const kodeToko = (r.kode_toko || '').toUpperCase().trim();
+            let tipeToko = String(r.tipe_toko || '').trim();
+            if ((!tipeToko || tipeToko === '-' || tipeToko.toLowerCase() === 'null') && kodeToko && masterMap.has(kodeToko)) {
+              tipeToko = masterMap.get(kodeToko);
+            }
+
             visits.push({
               idVisit: r.id_visit || '',
               time: cleanTime(r.waktu),
@@ -304,10 +369,10 @@ const ApiService = {
               hariKe: r.rute || '',
               kodeCrew: r.idcrew || '',
               namaCrew: r.nama_crew || '',
-              account: (r.account || 'ALFAMART').toUpperCase().trim(),
-              kodeToko: (r.kode_toko || '').toUpperCase().trim(),
+              account: this.normalizeAccount(r.account),
+              kodeToko: kodeToko,
               namaToko: r.nama_toko || '',
-              tipeToko: r.tipe_toko || '-',
+              tipeToko: tipeToko || '-',
               fotoSelfie: selfie,
               fotoBefore: beforeList,
               fotoAfter: afterList,
@@ -315,6 +380,7 @@ const ApiService = {
               prefix: (r.modul || '').substring(0, 2)
             });
           }
+          await this.enrichStoreNames(visits);
           return visits;
         }
       } catch (e) {
@@ -356,7 +422,60 @@ const ApiService = {
     });
 
     const results = await Promise.all(promises);
-    return results.flat();
+    const flatVisits = results.flat();
+    await this.enrichStoreNames(flatVisits);
+    return flatVisits;
+  },
+
+  masterStoreNameMap: new Map(),
+
+  /**
+   * Resolusi Asinkron Nama Resmi Toko dari Supabase tbl_master_toko
+   * Menggantikan nama toko yang masih berupa format placeholder akun_kode (misal: ALFAMART_R678)
+   */
+  async enrichStoreNames(visits) {
+    if (!visits || visits.length === 0 || !CONFIG.USE_SUPABASE) return;
+
+    const missingCodes = new Set();
+    visits.forEach(v => {
+      const code = (v.kodeToko || '').trim().toUpperCase();
+      const name = (v.namaToko || '').trim();
+      const isPlaceholder = !name || name.toUpperCase() === `${v.account}_${code}` || /^(ALFAMART|INDOMARET|ALFAMIDI|LAWSON|CIRCLE\s*K|FAMILYMART|YOMART|SAT|IDM|CK|FM)_[A-Z0-9]+$/i.test(name);
+      if (code && (isPlaceholder || !this.masterStoreNameMap.has(code))) {
+        missingCodes.add(code);
+      }
+    });
+
+    if (missingCodes.size === 0) return;
+
+    const codeArr = Array.from(missingCodes);
+    for (let i = 0; i < codeArr.length; i += 50) {
+      const chunk = codeArr.slice(i, i + 50);
+      try {
+        const res = await this.fetchFromSupabase('tbl_master_toko', {
+          store_code: `in.(${chunk.join(',')})`,
+          select: 'store_code,store_name,account'
+        });
+        if (res && Array.isArray(res)) {
+          res.forEach(item => {
+            if (item.store_code && item.store_name) {
+              const cleanCode = item.store_code.toUpperCase().trim();
+              this.masterStoreNameMap.set(cleanCode, item.store_name.trim());
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('enrichStoreNames lookup warning:', e);
+      }
+    }
+
+    // Perbarui namaToko pada setiap kunjungan
+    visits.forEach(v => {
+      const code = (v.kodeToko || '').trim().toUpperCase();
+      if (code && this.masterStoreNameMap.has(code)) {
+        v.namaToko = this.masterStoreNameMap.get(code);
+      }
+    });
   },
 
   parseVisitsRows(csvText, defaultModul) {
@@ -422,7 +541,7 @@ const ApiService = {
         hariKe: r[idxHariKe] || '',
         kodeCrew: r[idxKodeCrew] || '',
         namaCrew: r[idxNamaCrew] || '',
-        account: (r[idxAccount] || '').toUpperCase().trim(),
+        account: this.normalizeAccount(r[idxAccount]),
         kodeToko: kodeToko,
         namaToko: r[idxNamaToko] || '',
         tipeToko: tipeToko,
@@ -437,9 +556,42 @@ const ApiService = {
   },
 
   /**
-   * 2. Get All Planogram Reviews from Dedicated Review Spreadsheet
+   * 2. Get All Planogram Reviews from Supabase Cloud (Instant Sub-100ms) with Sheet Fallback
    */
   async getReviews() {
+    // A. Priority 1: Supabase Cloud Database
+    if (CONFIG.USE_SUPABASE && CONFIG.SUPABASE_URL) {
+      try {
+        const data = await this.fetchFromSupabase('tbl_penilaian_display', {
+          select: '*',
+          order: 'updated_at.desc',
+          limit: 10000
+        });
+
+        if (Array.isArray(data)) {
+          return data.map(r => ({
+            timestamp: r.updated_at || r.created_at || '',
+            idVisit: String(r.id_visit || '').trim(),
+            tanggal: r.tanggal || '',
+            modul: r.modul || '',
+            account: this.normalizeAccount(r.account),
+            kodeToko: r.kode_toko || '',
+            namaToko: r.nama_toko || '',
+            tipeFoto: (r.tipe_foto || 'BEFORE').toUpperCase().trim(),
+            urlFoto: r.url_foto || '',
+            skorPlanogram: parseInt(r.skor_planogram, 10) === 1 ? 1 : 0,
+            ceklisPricetag: Boolean(r.ceklis_pricetag),
+            ceklisPosm: Boolean(r.ceklis_posm),
+            reviewer: r.reviewer || '',
+            catatan: r.catatan || ''
+          }));
+        }
+      } catch (err) {
+        console.warn('Supabase getReviews fallback to sheet:', err);
+      }
+    }
+
+    // B. Priority 2: Google Spreadsheet Fallback
     try {
       const url = `https://docs.google.com/spreadsheets/d/${CONFIG.REVIEW_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${CONFIG.REVIEW_SHEET_NAME}`;
       const res = await fetch(url);
@@ -451,13 +603,13 @@ const ApiService = {
       const reviews = [];
       for (let i = 1; i < rows.length; i++) {
         const r = rows[i];
-        if (!r[1]) continue; // Must have ID_VISIT
+        if (!r[1]) continue;
         reviews.push({
           timestamp: r[0] || '',
           idVisit: String(r[1]).trim(),
           tanggal: r[2] || '',
           modul: r[3] || '',
-          account: r[4] || '',
+          account: this.normalizeAccount(r[4]),
           kodeToko: r[5] || '',
           namaToko: r[6] || '',
           tipeFoto: (r[7] || 'BEFORE').toUpperCase().trim(),
@@ -477,49 +629,47 @@ const ApiService = {
   },
 
   /**
-   * 3. Submit / Save Review to Dedicated Google Spreadsheet via Apps Script Web App
+   * 3. Submit / Save Review Directly to Supabase Cloud Database (Sub-100ms Realtime Upsert)
    */
   async saveReview(reviewData) {
-    try {
-      // 1. Try Direct JSONP / Fetch to Apps Script
-      const params = new URLSearchParams({
-        action: 'saveReview',
-        ...reviewData
-      });
+    const idReview = `${reviewData.idVisit}_${reviewData.tipeFoto}`;
+    const payload = [{
+      id_review: idReview,
+      id_visit: String(reviewData.idVisit || '').trim(),
+      tanggal: reviewData.tanggal || null,
+      modul: reviewData.modul || '',
+      account: reviewData.account || '',
+      kode_toko: reviewData.kodeToko || '',
+      nama_toko: reviewData.namaToko || '',
+      tipe_foto: reviewData.tipeFoto,
+      url_foto: reviewData.urlFoto || '',
+      skor_planogram: parseInt(reviewData.skorPlanogram, 10) === 1 ? 1 : 0,
+      ceklis_pricetag: reviewData.ceklisPricetag === 'YA' || reviewData.ceklisPricetag === true,
+      ceklis_posm: reviewData.ceklisPosm === 'YA' || reviewData.ceklisPosm === true,
+      reviewer: reviewData.reviewer || 'SPV',
+      catatan: reviewData.catatan || '',
+      updated_at: new Date().toISOString()
+    }];
 
-      const scriptUrl = `${CONFIG.API_URL}?${params.toString()}`;
-      
-      // Use JSONP to ensure zero CORS blocking
-      return new Promise((resolve, reject) => {
-        const cbName = 'review_cb_' + Math.random().toString(36).substring(2, 9);
-        const script = document.createElement('script');
-        script.src = `${scriptUrl}&callback=${cbName}`;
-        
-        const timer = setTimeout(() => {
-          if (script.parentNode) script.parentNode.removeChild(script);
-          resolve({ status: 'success', note: 'Sent via timeout-safe trigger' });
-        }, 6000);
+    const url = new URL(`${CONFIG.SUPABASE_URL}/tbl_penilaian_display`);
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'apikey': CONFIG.SUPABASE_KEY,
+        'Authorization': `Bearer ${CONFIG.SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=representation'
+      },
+      body: JSON.stringify(payload)
+    });
 
-        window[cbName] = function(res) {
-          clearTimeout(timer);
-          if (script.parentNode) script.parentNode.removeChild(script);
-          delete window[cbName];
-          resolve(res || { status: 'success' });
-        };
-
-        script.onerror = function() {
-          clearTimeout(timer);
-          if (script.parentNode) script.parentNode.removeChild(script);
-          delete window[cbName];
-          resolve({ status: 'success', note: 'Queued locally' });
-        };
-
-        document.head.appendChild(script);
-      });
-    } catch (err) {
-      console.error('Error save review:', err);
-      return { status: 'error', message: err.toString() };
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('Supabase saveReview error:', errText);
+      throw new Error(`Gagal simpan ke Supabase (${res.status}): ${errText}`);
     }
+
+    return { status: 'success', data: await res.json() };
   }
 };
 
