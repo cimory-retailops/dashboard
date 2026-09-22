@@ -127,12 +127,13 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
 
   <!-- Modular Stylesheet -->
-  <link rel="stylesheet" href="./css/dashboard.css?v=20260919_perf2">
+  <link rel="stylesheet" href="./css/dashboard.css?v=20260922_1025">
   
   <style>
     [x-cloak] { display: none !important; }
@@ -306,7 +307,7 @@
                 class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex-shrink-0 cursor-pointer"
                 :class="activeMegaCategory === 'master' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'">
                 <span>🏬</span>
-                <span>49k Toko</span>
+                <span>Toko Nasional</span>
               </button>
 
               <button type="button" x-show="canAccessTab('laporan')" @click="activeMegaCategory = 'laporan'"
@@ -314,6 +315,13 @@
                 :class="activeMegaCategory === 'laporan' ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'">
                 <span>📑</span>
                 <span>Laporan</span>
+              </button>
+
+              <button type="button" x-show="canAccessTab('audit_sku')" @click="activeMegaCategory = 'audit_sku'"
+                class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex-shrink-0 cursor-pointer"
+                :class="activeMegaCategory === 'audit_sku' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/25' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'">
+                <span>📦</span>
+                <span>Audit SKU</span>
               </button>
 
               <button type="button" x-show="canAccessTab('galeri') || canAccessTab('simulasi')" @click="activeMegaCategory = 'modul'"
@@ -384,7 +392,7 @@
                     <div class="w-6 h-6 rounded-lg flex items-center justify-center text-xs" :class="activeMegaCategory === 'operasional' ? 'bg-white/20 text-white' : 'bg-brand-500/10 text-brand-600 dark:text-brand-400'">
                       🚀
                     </div>
-                    <span>Operasional & Live</span>
+                    <span>Operasional MDS</span>
                   </div>
                   <i data-lucide="chevron-right" class="w-3.5 h-3.5 opacity-60"></i>
                 </button>
@@ -397,7 +405,7 @@
                     <div class="w-6 h-6 rounded-lg flex items-center justify-center text-xs" :class="activeMegaCategory === 'evaluasi' ? 'bg-white/20 text-white' : 'bg-sky-500/10 text-sky-600 dark:text-sky-400'">
                       🎖️
                     </div>
-                    <span>Performa & Scorecard</span>
+                    <span>Performa SPV & MDS</span>
                   </div>
                   <i data-lucide="chevron-right" class="w-3.5 h-3.5 opacity-60"></i>
                 </button>
@@ -410,7 +418,7 @@
                     <div class="w-6 h-6 rounded-lg flex items-center justify-center text-xs" :class="activeMegaCategory === 'master' ? 'bg-white/20 text-white' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'">
                       🏬
                     </div>
-                    <span>Master Data 49k Toko</span>
+                    <span>Database Toko Nasional</span>
                   </div>
                   <i data-lucide="chevron-right" class="w-3.5 h-3.5 opacity-60"></i>
                 </button>
@@ -534,6 +542,14 @@
                       <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
                         Jam masuk, jam pulang, foto selfie, status kehadiran & radius check-in.
                       </p>
+                      <div class="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center gap-1.5" @click.stop>
+                        <button type="button" @click="navigateToTab('absensi', 'log')" class="px-2 py-1 rounded-lg text-[10.5px] font-bold bg-white dark:bg-slate-700 hover:bg-brand-500 hover:text-white text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all">
+                          📋 Log Harian
+                        </button>
+                        <button type="button" @click="navigateToTab('absensi', 'timesheet')" class="px-2 py-1 rounded-lg text-[10.5px] font-bold bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/40 transition-all">
+                          ⏱️ Timesheet HR
+                        </button>
+                      </div>
                     </div>
 
                     <!-- Target Jadwal Rute -->
@@ -613,11 +629,19 @@
                           <div class="text-[10px] text-slate-400">Indomaret, Alfamart, Supermarket, Hypermarket</div>
                         </div>
                       </div>
-                      <span class="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-500 text-white" x-text="stores49k.length ? stores49k.length.toLocaleString('id-ID') + ' Toko' : '49.861 Toko'"></span>
+                      <span class="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-500 text-white" x-text="(stores49k || []).length ? (stores49k || []).length.toLocaleString('id-ID') + ' Toko' : 'Toko Nasional'"></span>
                     </div>
                     <p class="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed mt-2">
                       Pencarian instan kode toko, nama toko, alamat, region DK/LK/LP, koordinat latitude/longitude, dan mapping MDS terdaftar.
                     </p>
+                    <div class="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center gap-2" @click.stop>
+                      <button type="button" @click="navigateToTab('tokonasional', 'catalog')" class="px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-white dark:bg-slate-700 hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all">
+                        🏬 Katalog Toko
+                      </button>
+                      <button type="button" @click="navigateToTab('tokonasional', 'compare')" class="px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-600 hover:text-white text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/40 transition-all">
+                        ⚖️ Komparasi & Audit Toko
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1848,6 +1872,28 @@
     <!-- ============================================================================== -->
     <div x-show="activeTab === 'absensi'" class="space-y-6 min-w-0">
       
+      <!-- SUB-TAB NAVIGATION SWITCHER -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-slate-900/90 p-2 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div class="flex items-center gap-2">
+          <button type="button" @click="absensiSubTab = 'log'"
+            class="px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
+            :class="absensiSubTab === 'log' ? 'bg-brand-600 text-white shadow-md shadow-brand-600/25' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'">
+            <i data-lucide="list-checks" class="w-4 h-4"></i>
+            <span>Log Harian Presensi</span>
+          </button>
+          <button type="button" @click="absensiSubTab = 'timesheet'; initTimesheet()"
+            class="px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
+            :class="absensiSubTab === 'timesheet' ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'">
+            <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-300"></i>
+            <span>📋 Laporan Timesheet HR (Bulanan)</span>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-black bg-amber-400 text-slate-950 uppercase tracking-wider">Format HR</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- SUB-TAB 1: LOG HARIAN PRESENSI -->
+      <div x-show="absensiSubTab === 'log'" class="space-y-6">
+
       <!-- TAB 2: DEDICATED FILTER & ACTION BAR -->
       <div class="glass-card rounded-2xl p-3.5 sm:p-4 shadow-sm border border-slate-200/80 dark:border-slate-800/80 space-y-3 relative z-20">
         
@@ -2280,7 +2326,428 @@
           </table>
         </div>
       </div>
+      </div>
+      <!-- /SUB-TAB 1: LOG HARIAN PRESENSI -->
 
+      <!-- ============================================================================== -->
+      <!-- SUB-TAB 2: LAPORAN TIMESHEET HR (BULANAN) -->
+      <!-- ============================================================================== -->
+      <div x-show="absensiSubTab === 'timesheet'" class="space-y-6" x-cloak>
+
+        <!-- PANEL KONTROL & FILTER TIMESHEET -->
+        <div class="glass-card rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200 dark:border-slate-800 space-y-4 relative z-30">
+          
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-slate-800 pb-3">
+            <div>
+              <h3 class="font-display font-extrabold text-base sm:text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                <span>📋 Laporan Absensi Bulanan (Timesheet HR)</span>
+                <span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">Siap Ekspor</span>
+              </h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Kroscek dan perbaiki jam masuk, pulang, serta hari libur sebelum diekspor ke Excel / PDF resmi HR.
+              </p>
+            </div>
+
+            <!-- Tombol Action Ekspor -->
+            <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              <button type="button" @click="printTimesheetPdf()" :disabled="!(timesheetState.rows && timesheetState.rows.length)"
+                class="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-extrabold shadow-sm flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50">
+                <i data-lucide="printer" class="w-4 h-4 text-slate-500"></i>
+                <span>Cetak / Simpan PDF</span>
+              </button>
+
+              <button type="button" @click="exportTimesheetToExcel()" :disabled="timesheetState.isExporting || !(timesheetState.rows && timesheetState.rows.length)"
+                class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-md shadow-emerald-600/30 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50">
+                <template x-if="timesheetState.isExporting">
+                  <i data-lucide="refresh-cw" class="w-4 h-4 animate-spin"></i>
+                </template>
+                <template x-if="!timesheetState.isExporting">
+                  <i data-lucide="download" class="w-4 h-4"></i>
+                </template>
+                <span x-text="timesheetState.isExporting ? 'Mengompresi...' : 'Unduh Excel (.xlsx)'"></span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Parameter Input -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-1">
+            
+            <!-- 1. Personil MDS (Uniform Dropdown) -->
+            <div class="relative z-40" @click.outside="timesheetState.crewDropdownOpen = false">
+              <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider flex items-center justify-between">
+                <span>NAMA CREW / MDS</span>
+                <span x-show="currentUser && currentUser.role === 'MDS'" class="text-emerald-500 font-extrabold text-[10px]">Terkunci Otomatis</span>
+              </label>
+
+              <!-- Trigger Container -->
+              <div role="button" tabindex="0" 
+                @click="(currentUser && currentUser.role === 'MDS') ? null : (timesheetState.crewDropdownOpen ? (timesheetState.crewDropdownOpen = false) : openTimesheetCrewDropdown())"
+                :class="(currentUser && currentUser.role === 'MDS') ? 'cursor-not-allowed bg-slate-200/50 dark:bg-slate-800/50 border-emerald-500/40' : 'cursor-pointer hover:border-amber-400'"
+                class="w-full h-10 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 flex items-center justify-between gap-2 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all shadow-sm select-none">
+                <div class="flex items-center gap-2 truncate">
+                  <i :data-lucide="(currentUser && currentUser.role === 'MDS') ? 'lock' : 'users'" 
+                     :class="(currentUser && currentUser.role === 'MDS') ? 'text-emerald-500' : 'text-amber-500'" 
+                     class="w-3.5 h-3.5 flex-shrink-0"></i>
+                  <span class="truncate" x-text="(currentUser && currentUser.role === 'MDS') ? (`🔒 ${getCurrentMdsCrewName() || 'Data Personil Anda'}`) : (timesheetState.selectedCrew ? timesheetState.selectedCrew : 'Pilih Nama Crew / MDS')"></span>
+                </div>
+                <div class="flex items-center gap-1.5 flex-shrink-0" x-show="!currentUser || currentUser.role !== 'MDS'">
+                  <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" :class="timesheetState.crewDropdownOpen ? 'rotate-180 text-amber-500' : ''"></i>
+                </div>
+              </div>
+
+              <!-- DROPDOWN POPOVER -->
+              <div x-show="timesheetState.crewDropdownOpen" x-cloak x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95 -translate-y-2" x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+                @click.stop
+                class="absolute left-0 w-full sm:w-80 max-w-[calc(100vw-2rem)] top-full mt-1.5 z-50 p-4 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                
+                <!-- Popover Header -->
+                <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                  <h4 class="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">PILIH NAMA CREW</h4>
+                  <span class="text-[10px] font-bold text-amber-500" x-text="`${(filteredTimesheetDropdownCrews || []).length} Personil`"></span>
+                </div>
+
+                <!-- Inner Search Box with Amber Outline -->
+                <div class="relative border-2 border-amber-500 rounded-xl p-1.5 bg-white dark:bg-slate-950 focus-within:ring-2 focus-within:ring-amber-400/50 transition-all" @click.stop>
+                  <span class="absolute -top-2.5 left-2.5 bg-white dark:bg-slate-900 px-1 text-[10px] font-bold text-amber-500">Search</span>
+                  <input type="text" x-model="timesheetState.crewDropdownSearch" placeholder="Ketik nama MDS..."
+                    class="w-full text-xs font-semibold bg-transparent border-0 focus:outline-none text-slate-800 dark:text-slate-100 pl-1.5 py-0.5 placeholder-slate-400">
+                </div>
+
+                <!-- Scrollable Crew List with Circular Selection Checkboxes -->
+                <div class="space-y-1 max-h-56 overflow-y-auto pr-1 touch-scroll no-scrollbar">
+                  <template x-for="c in filteredTimesheetDropdownCrews" :key="c.namaCrew + (c.kodeCrew || '')">
+                    <div @click.stop="selectTimesheetCrew(c.namaCrew)"
+                      class="flex items-center space-x-2.5 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer transition-colors group">
+                      <div class="w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0"
+                        :class="timesheetState.selectedCrew === c.namaCrew ? 'border-amber-500 bg-amber-500 shadow-sm shadow-amber-500/30' : 'border-slate-400 dark:border-slate-600 group-hover:border-amber-400'">
+                        <div x-show="timesheetState.selectedCrew === c.namaCrew" class="w-1.5 h-1.5 rounded-full bg-white"></div>
+                      </div>
+                      <span class="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase flex-1 truncate" x-text="c.namaCrew"></span>
+                      <span class="px-1.5 py-0.5 rounded text-[9.5px] font-extrabold bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 flex-shrink-0" x-text="c.modul || '-'"></span>
+                    </div>
+                  </template>
+
+                  <div x-show="(filteredTimesheetDropdownCrews || []).length === 0" class="text-center py-6 text-xs text-slate-400">
+                    Tidak ada nama MDS yang cocok
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. Input NIK Personil -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  NIK Personil
+                </label>
+                <span class="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold" x-show="timesheetState.nik">✓ Tersimpan</span>
+              </div>
+              <input type="text" x-model="timesheetState.nik" @input="saveTimesheetNik()" placeholder="Contoh: 03.5808"
+                class="w-full h-10 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500" />
+            </div>
+
+            <!-- 3. Format Periode -->
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">
+                Model Periode
+              </label>
+              <select x-model="timesheetState.periodType" @change="onTimesheetPeriodChange()"
+                class="w-full h-10 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
+                <option value="CALENDAR">Bulan Kalender (Tgl 1 s/d Akhir)</option>
+                <option value="CUTOFF">Cut-Off HR (Tgl 13 s/d 12)</option>
+                <option value="CUSTOM">Rentang Bebas (Custom)</option>
+              </select>
+            </div>
+
+            <!-- 4. Bulan & Tahun -->
+            <div x-show="timesheetState.periodType !== 'CUSTOM'" class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Bulan</label>
+                <select x-model="timesheetState.month" @change="onTimesheetPeriodChange()"
+                  class="w-full h-10 text-xs font-semibold px-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
+                  <option value="1">Januari</option>
+                  <option value="2">Februari</option>
+                  <option value="3">Maret</option>
+                  <option value="4">April</option>
+                  <option value="5">Mei</option>
+                  <option value="6">Juni</option>
+                  <option value="7">Juli</option>
+                  <option value="8">Agustus</option>
+                  <option value="9">September</option>
+                  <option value="10">Oktober</option>
+                  <option value="11">November</option>
+                  <option value="12">Desember</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Tahun</label>
+                <select x-model="timesheetState.year" @change="onTimesheetPeriodChange()"
+                  class="w-full h-10 text-xs font-semibold px-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
+                  <option value="2027">2027</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 4b. Custom Date Range -->
+            <div x-show="timesheetState.periodType === 'CUSTOM'" class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Dari Tgl</label>
+                <input type="date" x-model="timesheetState.customStart" @change="onTimesheetPeriodChange()"
+                  class="w-full h-10 text-xs font-semibold px-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Sampai Tgl</label>
+                <input type="date" x-model="timesheetState.customEnd" @change="onTimesheetPeriodChange()"
+                  class="w-full h-10 text-xs font-semibold px-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200" />
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Pengaturan Tanda Tangan -->
+          <div class="pt-2 border-t border-slate-200/60 dark:border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">
+                Supervisor Penandatangan (Diperiksa)
+              </label>
+              <div class="flex items-center gap-2">
+                <select x-model="timesheetState.selectedSpv" @change="onTimesheetSpvChange()"
+                  class="w-full h-10 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-brand-500 cursor-pointer">
+                  <option value="MAS_IBNU">IBNU FAZARIAL</option>
+                  <option value="PAK_DWI">DWI AMANTO</option>
+                  <option value="BU_SITI">SITI PARISKHA</option>
+                  <option value="CUSTOM">Lainnya (Ketik Manual)</option>
+                </select>
+                <input x-show="timesheetState.selectedSpv === 'CUSTOM'" type="text" x-model="timesheetState.customSpvName" placeholder="Nama SPV..."
+                  class="w-44 h-10 text-xs font-semibold px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">
+                Manager Penandatangan (Disetujui)
+              </label>
+              <input type="text" x-model="timesheetState.managerName" readonly
+                class="w-full h-10 text-xs font-bold px-3 rounded-xl bg-slate-200/60 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 cursor-not-allowed" />
+            </div>
+          </div>
+
+        </div>
+
+        <!-- DIALOG INFORMASI TIM BU SITI -->
+        <div x-show="timesheetState.sitiInfoModalOpen" x-cloak
+          class="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          x-transition:enter="transition ease-out duration-200"
+          x-transition:enter-start="opacity-0"
+          x-transition:enter-end="opacity-100"
+          x-transition:leave="transition ease-in duration-150"
+          x-transition:leave-start="opacity-100"
+          x-transition:leave-end="opacity-0">
+          
+          <div @click.outside="timesheetState.sitiInfoModalOpen = false"
+            class="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 text-center transform transition-all"
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="opacity-0 scale-95 translate-y-4"
+            x-transition:enter-end="opacity-100 scale-100 translate-y-0">
+            
+            <div class="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center justify-center">
+              <i data-lucide="info" class="w-7 h-7"></i>
+            </div>
+
+            <div>
+              <h3 class="font-display font-black text-lg text-slate-900 dark:text-white">Pilih Personil Terlebih Dahulu</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                Pengaturan tim bawahan untuk <strong>Bu Siti</strong> belum disetting secara otomatis di sistem. Silakan pilih personil MDS yang ingin dibuatkan laporan timesheet-nya.
+              </p>
+            </div>
+
+            <div class="flex items-center justify-center gap-3 pt-2">
+              <button type="button" @click="timesheetState.sitiInfoModalOpen = false"
+                class="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer">
+                Tutup
+              </button>
+              <button type="button" @click="closeSitiModalAndPickCrew()"
+                class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs shadow-lg shadow-amber-500/25 transition-all flex items-center gap-2 cursor-pointer">
+                <i data-lucide="users" class="w-4 h-4"></i>
+                <span>Pilih Personil MDS</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TABEL INTERAKTIF TIMESHEET EDITOR -->
+        <div class="glass-card rounded-2xl shadow-sm overflow-hidden border border-slate-200 dark:border-slate-800">
+          <div class="p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <h4 class="font-bold text-xs sm:text-sm text-slate-800 dark:text-white">
+                Review & Koreksi Baris Tanggal (<span x-text="(timesheetState.rows || []).length"></span> Hari)
+              </h4>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400">| Anda dapat mengedit jam IN, OUT, atau menambahkan keterangan langsung di tabel</span>
+            </div>
+            <div class="flex items-center gap-2 text-[11px]">
+              <span class="inline-flex items-center gap-1 text-rose-600 dark:text-rose-400 font-semibold">
+                <span class="w-2 h-2 rounded-full bg-rose-500"></span> Hari Minggu (Libur)
+              </span>
+              <span class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold ml-2">
+                <span class="w-2 h-2 rounded-full bg-amber-500"></span> Perlu Kroscek (Kosong)
+              </span>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto w-full max-w-full touch-scroll">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-amber-400/90 text-slate-950 font-extrabold border-b border-amber-500/30">
+                  <th class="py-2.5 px-3 text-center w-12">No</th>
+                  <th class="py-2.5 px-3 text-center w-28">Tanggal</th>
+                  <th class="py-2.5 px-3 text-center w-20">Hari</th>
+                  <th class="py-2.5 px-3 text-center w-24">NIK</th>
+                  <th class="py-2.5 px-3 text-left w-48">Nama Personil</th>
+                  <th class="py-2.5 px-3 text-center w-36">IN TOKO PERTAMA</th>
+                  <th class="py-2.5 px-3 text-center w-36">OUT TOKO TERAKHIR</th>
+                  <th class="py-2.5 px-3 text-left w-64">Keterangan</th>
+                  <th class="py-2.5 px-3 text-center w-44">Aksi Cepat</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+                <template x-for="r in timesheetState.rows" :key="r.iso">
+                  <tr class="transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
+                    :class="r.isSunday ? 'bg-rose-50/40 dark:bg-rose-950/20' : (!r.inTime && !r.outTime ? 'bg-amber-50/30 dark:bg-amber-950/15' : '')">
+                    
+                    <td class="py-2 px-3 text-center font-bold text-slate-400" x-text="r.no"></td>
+                    <td class="py-2 px-3 text-center font-mono font-semibold text-slate-700 dark:text-slate-300" x-text="r.displayDate"></td>
+                    <td class="py-2 px-3 text-center font-bold"
+                      :class="r.isSunday ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-400'"
+                      x-text="r.dayName"></td>
+                    <td class="py-2 px-3 text-center font-mono text-slate-500 dark:text-slate-400" x-text="timesheetState.nik || '-'"></td>
+                    <td class="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[180px]" x-text="timesheetState.selectedCrew"></td>
+                    
+                    <!-- Input IN -->
+                    <td class="py-2 px-3 text-center">
+                      <input type="text" x-model="r.inTime" placeholder="--:--"
+                        class="w-full h-7 text-center text-xs font-mono font-bold rounded-lg border px-1.5 transition-all"
+                        :class="r.inTime === 'LIBUR' ? 'border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400' : (!r.inTime ? 'border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-700' : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100')" />
+                    </td>
+
+                    <!-- Input OUT -->
+                    <td class="py-2 px-3 text-center">
+                      <input type="text" x-model="r.outTime" placeholder="--:--"
+                        class="w-full h-7 text-center text-xs font-mono font-bold rounded-lg border px-1.5 transition-all"
+                        :class="r.outTime === 'LIBUR' ? 'border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400' : (!r.outTime ? 'border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-700' : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100')" />
+                    </td>
+
+                    <!-- Input Keterangan -->
+                    <td class="py-2 px-3">
+                      <input type="text" x-model="r.keterangan" placeholder="Contoh: Izin, Sakit, Hari Libur..."
+                        class="w-full h-7 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-slate-700 dark:text-slate-200" />
+                    </td>
+
+                    <!-- Quick Actions -->
+                    <td class="py-2 px-3 text-center whitespace-nowrap">
+                      <div class="inline-flex items-center gap-1">
+                        <button type="button" @click="setTimesheetRowLibur(r)" title="Tandai Libur"
+                          class="px-1.5 py-0.5 rounded bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 text-[10px] font-bold border border-rose-200 dark:border-rose-800/60 cursor-pointer">
+                          Libur
+                        </button>
+                        <button type="button" @click="setTimesheetRowNormal(r)" title="Set Masuk Normal 08:00 - 17:00"
+                          class="px-1.5 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold border border-emerald-200 dark:border-emerald-800/60 cursor-pointer">
+                          Normal
+                        </button>
+                        <button type="button" @click="resetTimesheetRow(r)" title="Kembalikan ke data awal"
+                          class="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 text-[10px] font-semibold border border-slate-300 dark:border-slate-700 cursor-pointer">
+                          Reset
+                        </button>
+                      </div>
+                    </td>
+
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+
+      </div>
+      <!-- /SUB-TAB 2: LAPORAN TIMESHEET HR (BULANAN) -->
+
+      <!-- PRINTABLE AREA (A4 FORMAL HR TIMESHEET) -->
+      <div id="timesheet-print-area" style="display: none;">
+        <div style="font-family: Arial, Helvetica, sans-serif; color: #000; width: 100%; max-width: 100%; margin: 0 auto;">
+          <!-- TITLE -->
+          <div style="font-size: 13pt; font-weight: bold; text-align: center; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+            LAPORAN ABSENSI BULANAN
+          </div>
+          
+          <!-- MAIN TABLE -->
+          <table style="width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-bottom: 8px;">
+            <thead>
+              <tr style="background-color: #FFFF00;">
+                <th style="border: 1px solid #000; padding: 4px 2px; text-align: center; width: 13%; font-weight: bold;">TANGGAL</th>
+                <th style="border: 1px solid #000; padding: 4px 2px; text-align: center; width: 11%; font-weight: bold;">NIK</th>
+                <th style="border: 1px solid #000; padding: 4px 4px; text-align: center; width: 25%; font-weight: bold;">NAMA</th>
+                <th style="border: 1px solid #000; padding: 4px 2px; text-align: center; width: 17%; font-weight: bold;">IN TOKO PERTAMA</th>
+                <th style="border: 1px solid #000; padding: 4px 2px; text-align: center; width: 17%; font-weight: bold;">OUT TOKO TERAKHIR</th>
+                <th style="border: 1px solid #000; padding: 4px 4px; text-align: center; width: 17%; font-weight: bold;">KETERANGAN</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="r in timesheetState.rows" :key="'p_'+r.iso">
+                <tr>
+                  <td style="border: 1px solid #000; padding: 2.5px 3px; text-align: center;" x-text="formatTimesheetDate(r.dateObj || r.iso)"></td>
+                  <td style="border: 1px solid #000; padding: 2.5px 3px; text-align: center;" x-text="timesheetState.nik || ''"></td>
+                  <td style="border: 1px solid #000; padding: 2.5px 4px; text-align: left; text-transform: uppercase;" x-text="timesheetState.selectedCrew"></td>
+                  <td style="border: 1px solid #000; padding: 2.5px 3px; text-align: center;" x-text="r.inTime || ''"></td>
+                  <td style="border: 1px solid #000; padding: 2.5px 3px; text-align: center;" x-text="r.outTime || ''"></td>
+                  <td style="border: 1px solid #000; padding: 2.5px 4px; text-align: left;" x-text="r.keterangan || ''"></td>
+                </tr>
+              </template>
+              <!-- 2 Baris Kosong Bergaris Seperti Template Excel -->
+              <tr>
+                <td style="border: 1px solid #000; height: 16px;">&nbsp;</td>
+                <td style="border: 1px solid #000;">&nbsp;</td>
+                <td style="border: 1px solid #000;">&nbsp;</td>
+                <td style="border: 1px solid #000;">&nbsp;</td>
+                <td style="border: 1px solid #000;">&nbsp;</td>
+                <td style="border: 1px solid #000;">&nbsp;</td>
+              </tr>
+              <tr>
+                <td style="border: 1px solid #000; height: 16px;">&nbsp;</td>
+                <td style="border: 1px solid #000;">&nbsp;</td>
+                <td style="border: 1px solid #000;">&nbsp;</td>
+                <td style="border: 1px solid #000;">&nbsp;</td>
+                <td style="border: 1px solid #000;">&nbsp;</td>
+                <td style="border: 1px solid #000;">&nbsp;</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- KOTAK TANDA TANGAN (PERSIS SEPERTI EXCEL) -->
+          <table style="width: 44%; border-collapse: collapse; border: 2px solid #000; margin-top: 6px; font-size: 8.5pt;">
+            <thead>
+              <tr style="background-color: #b2b2b2;">
+                <th style="border: 1.5px solid #000; padding: 4px; text-align: center; width: 50%; font-weight: bold; color: #000;">Diperiksa</th>
+                <th style="border: 1.5px solid #000; padding: 4px; text-align: center; width: 50%; font-weight: bold; color: #000;">Disetujui</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="border: 1.5px solid #000; height: 110px; vertical-align: bottom; text-align: center; padding: 0 4px 4px 4px;">
+                  <div style="font-weight: bold; font-size: 8.5pt; text-transform: uppercase;" x-text="getSpvDisplayName()"></div>
+                  <div style="font-size: 8pt; margin-top: 1px;">Supervisor</div>
+                </td>
+                <td style="border: 1.5px solid #000; height: 110px; vertical-align: bottom; text-align: center; padding: 0 4px 4px 4px;">
+                  <div style="font-weight: bold; font-size: 8.5pt; text-transform: uppercase;" x-text="timesheetState.managerName"></div>
+                  <div style="font-size: 8pt; margin-top: 1px;">Manager</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- ============================================================================== -->
@@ -2532,7 +2999,7 @@
           
           <div class="flex items-center gap-2 flex-wrap ml-auto">
             <!-- ➕ Tambah Toko Baru ke Master Database -->
-            <button @click="openCreateMasterStoreModal()" title="Tambah Toko Baru ke Master Database 49k"
+            <button @click="openCreateMasterStoreModal()" title="Tambah Toko Baru ke Master Database Toko Nasional"
               class="h-8 px-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-sm shadow-brand-600/20 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer">
               <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
               <span>+ Toko Master</span>
@@ -2776,7 +3243,7 @@
     </div>
 
     <!-- ============================================================================== -->
-    <!-- 6. TAB 4: DATABASE TOKO NASIONAL (49K MASTER CATALOG) -->
+    <!-- 6. TAB 4: DATABASE TOKO NASIONAL -->
     <!-- ============================================================================== -->
     <div x-show="activeTab === 'tokonasional'" class="space-y-6 min-w-0">
       
@@ -2808,7 +3275,7 @@
         </div>
       </div>
 
-      <!-- VIEW 1: KATALOG MASTER 49K -->
+      <!-- VIEW 1: KATALOG TOKO NASIONAL -->
       <div x-show="tokonasionalSubTab === 'catalog'" class="space-y-6">
 
       <!-- TAB 4: FILTER & ACTION CONTROLS -->
@@ -2913,7 +3380,7 @@
             <template x-if="!isStores49kLoading">
               <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
                 <i data-lucide="database" class="w-3 h-3"></i>
-                <span x-text="`${stores49k.length.toLocaleString('id-ID')} Toko Tersedia (IndexedDB)`"></span>
+                <span x-text="`${(stores49k || []).length.toLocaleString('id-ID')} Toko Nasional Tersedia (IndexedDB)`"></span>
               </span>
             </template>
             <template x-if="filterTokoNasional.searchQuery || filterTokoNasional.account !== 'ALL'">
@@ -2924,7 +3391,7 @@
 
           <div class="flex items-center gap-2 flex-wrap ml-auto">
             <!-- ➕ Tambah Toko Baru ke Master Database -->
-            <button @click="openCreateMasterStoreModal()" title="Tambah Toko Baru ke Master Database Toko"
+            <button @click="openCreateMasterStoreModal()" title="Tambah Toko Baru ke Master Database Toko Nasional"
               class="h-8 px-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-sm shadow-brand-600/20 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer">
               <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
               <span>+ Tambah Toko Master</span>
@@ -3100,7 +3567,7 @@
                 </template>
               </template>
 
-              <!-- 49k Stores Row Template -->
+              <!-- Toko Nasional Stores Row Template -->
               <template x-if="!isStores49kLoading">
                 <template x-for="(st, idx) in filteredTokoNasional" :key="st.kodeToko || idx">
                 <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group">
@@ -3184,7 +3651,7 @@
                       </button>
 
                       <!-- ✏️ Edit Master Store (Sky) -->
-                      <button type="button" @click="openEditMasterStoreModal(st)" title="Edit Toko di Master 49k"
+                      <button type="button" @click="openEditMasterStoreModal(st)" title="Edit Toko di Master Toko Nasional"
                         class="w-7 h-7 rounded-lg bg-sky-500/10 hover:bg-sky-600 text-sky-600 hover:text-white dark:bg-sky-500/20 dark:text-sky-400 dark:hover:text-white border border-sky-500/20 transition-all flex items-center justify-center cursor-pointer active:scale-90">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
                           <path d="M12 20h9"></path>
@@ -3193,7 +3660,7 @@
                       </button>
 
                       <!-- 🗑️ Hapus / Flag Tutup (Rose) -->
-                      <button type="button" @click="openDeleteMasterStoreModal(st)" title="Hapus / Tutup Toko di Master 49k"
+                      <button type="button" @click="openDeleteMasterStoreModal(st)" title="Hapus / Tutup Toko di Master Toko Nasional"
                         class="w-7 h-7 rounded-lg bg-rose-500/10 hover:bg-rose-600 text-rose-600 hover:text-white dark:bg-rose-500/20 dark:text-rose-400 dark:hover:text-white border border-rose-500/20 transition-all flex items-center justify-center cursor-pointer active:scale-90">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
                           <polyline points="3 6 5 6 21 6"></polyline>
@@ -6858,7 +7325,7 @@
         <span x-show="activeTab === 'jadwal'" class="absolute -bottom-0.5 w-1 h-1 rounded-full bg-emerald-500"></span>
       </button>
 
-      <!-- 4. Toko 49k -->
+      <!-- 4. Toko Nasional -->
       <button type="button" @click="navigateToTab('tokonasional')"
         class="flex-1 flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all cursor-pointer relative"
         :class="activeTab === 'tokonasional' ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 font-black' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-semibold'">
@@ -7743,7 +8210,7 @@
           </div>
         </template>
 
-        <!-- 4. MODE: TAMBAH TOKO BARU KE MASTER 49K -->
+        <!-- 4. MODE: TAMBAH TOKO BARU KE MASTER TOKO NASIONAL -->
         <template x-if="crudModal.mode === 'create_master'">
           <div class="space-y-3">
             <div class="grid grid-cols-2 gap-3">
@@ -7877,7 +8344,7 @@
           </div>
         </template>
 
-        <!-- 7. MODE: EDIT MASTER STORE (49K) -->
+        <!-- 7. MODE: EDIT MASTER STORE (TOKO NASIONAL) -->
         <template x-if="crudModal.mode === 'edit_master'">
           <div class="space-y-3">
             <div class="grid grid-cols-2 gap-3">
@@ -7937,7 +8404,7 @@
           </div>
         </template>
 
-        <!-- 8. MODE: HAPUS TOKO DARI MASTER 49K -->
+        <!-- 8. MODE: HAPUS TOKO DARI MASTER TOKO NASIONAL -->
         <template x-if="crudModal.mode === 'delete_master'">
           <div class="space-y-3">
             <div class="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs space-y-2 text-rose-800 dark:text-rose-300">
@@ -7945,7 +8412,7 @@
                 <i data-lucide="alert-octagon" class="w-4 h-4 text-rose-500"></i>
                 <span>Konfirmasi Hapus Toko Master</span>
               </div>
-              <p>Toko berikut akan dihapus dari Database Master Nasional 49k (Spreadsheet master_toko):</p>
+              <p>Toko berikut akan dihapus dari Database Master Toko Nasional (Spreadsheet master_toko):</p>
               <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 font-semibold space-y-1 text-slate-800 dark:text-slate-200 border border-rose-500/20">
                 <div class="font-bold text-sm" x-text="crudModal.formData.namaToko"></div>
                 <div class="text-[11px] text-slate-500" x-text="`Kode: ${crudModal.formData.kodeToko} • Account: ${crudModal.formData.account}`"></div>
@@ -8292,7 +8759,7 @@
             </label>
             <label class="flex items-center space-x-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
               <input type="checkbox" x-model="newUserForm.permissions.tokonasional" class="rounded text-purple-600">
-              <span>🏬 49k Toko</span>
+              <span>🏬 Toko Nasional</span>
             </label>
             <label class="flex items-center space-x-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
               <input type="checkbox" x-model="newUserForm.permissions.laporan" class="rounded text-purple-600">
@@ -8389,7 +8856,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <script src="./js/firebase-config.js?v=20260920_1120"></script>
+  <script src="./js/firebase-config.js?v=20260922_1036"></script>
 
   <!-- Master Database Personil Lapangan (75 MDS Nasional Lengkap) -->
   <script src="../05_simulasi_rute/js/geo_data.js"></script>
@@ -8400,7 +8867,7 @@
   <script src="./js/api.js?v=20260920_1700"></script>
   <script src="./js/charts.js?v=20260920_1700"></script>
   <script src="./js/map.js?v=20260920_1700"></script>
-  <script src="./js/app.js?v=20260920_1700"></script>
+  <script src="./js/app.js?v=20260922_1052"></script>
 
   <!-- Failsafe preloader auto-dismiss (only as emergency fallback) -->
   <script>

@@ -147,7 +147,7 @@ class FirebaseRbacService {
           this.db = firebase.firestore();
           try {
             this.db.settings({
-              experimentalForceLongPolling: true,
+              experimentalAutoDetectLongPolling: true,
               merge: true
             });
           } catch (settingErr) {}

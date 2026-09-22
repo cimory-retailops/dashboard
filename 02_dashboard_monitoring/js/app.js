@@ -162,6 +162,27 @@ function dashboardApp() {
       crewDropdownSearch: ''
     },
 
+    // Sub-Tab Switcher & State untuk Tab 2: Laporan Timesheet Bulanan HR
+    absensiSubTab: 'log', // 'log' | 'timesheet'
+    timesheetState: {
+      selectedCrew: '',
+      crewDropdownOpen: false,
+      crewDropdownSearch: '',
+      nik: '',
+      periodType: 'CALENDAR', // 'CALENDAR' | 'CUTOFF' | 'CUSTOM'
+      year: new Date().getFullYear(),
+      month: new Date().getMonth() + 1,
+      customStart: '',
+      customEnd: '',
+      selectedSpv: 'MAS_IBNU',
+      customSpvName: '',
+      managerName: 'TOSITA SARI',
+      sitiInfoModalOpen: false,
+      rows: [],
+      isExporting: false,
+      nikMap: {}
+    },
+
     // 3. Filters Tab 3: Target Jadwal Rute (Independent Scoped Filter - On Demand)
     filterJadwal: {
       modul: 'ALL',
@@ -7769,6 +7790,476 @@ function dashboardApp() {
     },
 
     // ==============================================================================
+    // LAPORAN BULANAN HR: TIMESHEET PRESENSI MDS
+    // ==============================================================================
+
+    get filteredTimesheetDropdownCrews() {
+      if (this.currentUser && this.currentUser.role === 'MDS') {
+        const mdsName = (this.getCurrentMdsCrewName() || this.currentUser.name || '').toUpperCase().trim();
+        return (this.allAvailableCrews || []).filter(c => (c.namaCrew || '').toUpperCase().trim() === mdsName);
+      }
+      const q = (this.timesheetState.crewDropdownSearch || '').toUpperCase().trim();
+      let list = this.allAvailableCrews || [];
+      if (q) {
+        list = list.filter(c => (c.upper || '').includes(q) || (c.kodeCrew || '').toUpperCase().includes(q) || (c.modul || '').includes(q));
+      }
+      return list;
+    },
+
+    openTimesheetCrewDropdown() {
+      this.timesheetState.crewDropdownSearch = '';
+      this.timesheetState.crewDropdownOpen = true;
+      this.$nextTick(() => {
+        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      });
+    },
+
+    selectTimesheetCrew(crewName) {
+      if (!crewName) return;
+      this.timesheetState.selectedCrew = crewName;
+      this.timesheetState.crewDropdownOpen = false;
+      this.onTimesheetCrewChange();
+    },
+
+    initTimesheet() {
+      try {
+        const rawNik = localStorage.getItem('cimory_mds_nik_map');
+        this.timesheetState.nikMap = rawNik ? JSON.parse(rawNik) : {};
+      } catch (e) {
+        this.timesheetState.nikMap = {};
+      }
+
+      if (!this.timesheetState.selectedCrew) {
+        if (this.currentUser && this.currentUser.role === 'MDS') {
+          this.timesheetState.selectedCrew = this.getCurrentMdsCrewName() || this.currentUser.name || '';
+        } else if (this.filterAbsensi.selectedCrews.length > 0) {
+          this.timesheetState.selectedCrew = this.filterAbsensi.selectedCrews[0];
+        } else if (this.allAvailableCrews && this.allAvailableCrews.length > 0) {
+          this.timesheetState.selectedCrew = this.allAvailableCrews[0].namaCrew || '';
+        }
+      }
+
+      this.onTimesheetCrewChange();
+    },
+
+    onTimesheetCrewChange() {
+      const crewName = (this.timesheetState.selectedCrew || '').trim().toUpperCase();
+      this.timesheetState.nik = this.timesheetState.nikMap[crewName] || '';
+
+      const foundCrew = (this.allAvailableCrews || []).find(c => (c.namaCrew || '').toUpperCase() === crewName);
+      const mod = foundCrew?.modul || this.filterAbsensi.modul || '';
+      if (mod.startsWith('LK')) {
+        this.timesheetState.selectedSpv = 'PAK_DWI';
+      } else {
+        this.timesheetState.selectedSpv = 'MAS_IBNU';
+      }
+
+      this.generateTimesheetRows();
+    },
+
+    onTimesheetPeriodChange() {
+      this.generateTimesheetRows();
+    },
+
+    onTimesheetSpvChange() {
+      if (this.timesheetState.selectedSpv === 'BU_SITI') {
+        if (!this.timesheetState.selectedCrew || !this.timesheetState.rows || this.timesheetState.rows.length === 0) {
+          this.timesheetState.sitiInfoModalOpen = true;
+        }
+      }
+    },
+
+    closeSitiModalAndPickCrew() {
+      this.timesheetState.sitiInfoModalOpen = false;
+      this.$nextTick(() => {
+        this.openTimesheetCrewDropdown();
+      });
+    },
+
+    formatTimesheetDate(dateInput) {
+      if (!dateInput) return '';
+      const d = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
+      if (isNaN(d.getTime())) return String(dateInput);
+      const day = String(d.getDate()).padStart(2, '0');
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const mon = monthNames[d.getMonth()];
+      const yr = String(d.getFullYear()).slice(-2);
+      return `${day}-${mon}-${yr}`;
+    },
+
+    saveTimesheetNik() {
+      const crewName = (this.timesheetState.selectedCrew || '').trim().toUpperCase();
+      if (!crewName) return;
+      const cleanNik = (this.timesheetState.nik || '').trim();
+      this.timesheetState.nikMap[crewName] = cleanNik;
+      try {
+        localStorage.setItem('cimory_mds_nik_map', JSON.stringify(this.timesheetState.nikMap));
+      } catch (e) {}
+    },
+
+    generateTimesheetRows() {
+      const ts = this.timesheetState;
+      const crewName = (ts.selectedCrew || '').trim().toUpperCase();
+      if (!crewName) {
+        ts.rows = [];
+        return;
+      }
+
+      let startDate, endDate;
+      const yr = parseInt(ts.year, 10) || new Date().getFullYear();
+      const mo = parseInt(ts.month, 10) || (new Date().getMonth() + 1);
+
+      if (ts.periodType === 'CALENDAR') {
+        startDate = new Date(yr, mo - 1, 1);
+        endDate = new Date(yr, mo, 0);
+      } else if (ts.periodType === 'CUTOFF') {
+        startDate = new Date(yr, mo - 1, 13);
+        endDate = new Date(yr, mo, 12);
+      } else {
+        startDate = ts.customStart ? new Date(ts.customStart) : new Date(yr, mo - 1, 1);
+        endDate = ts.customEnd ? new Date(ts.customEnd) : new Date(yr, mo, 0);
+      }
+
+      // Kumpulkan data absensi personil dari state absensi yang sudah dimuat
+      const absMap = new Map();
+      const allAbs = this.absensi || [];
+      allAbs.forEach(a => {
+        const cName = (a.namaCrew || a.crew || '').trim().toUpperCase();
+        if (cName !== crewName) return;
+        const d = a.dateIso || a.tanggal || '';
+        if (!d) return;
+        if (!absMap.has(d)) {
+          absMap.set(d, { masuk: null, pulang: null, izin: null, catatan: '' });
+        }
+        const bucket = absMap.get(d);
+        const stUpper = (a.tipe || a.status || '').toUpperCase();
+        if (stUpper.includes('MASUK') || stUpper.includes('HADIR') || stUpper === 'IN') {
+          if (!bucket.masuk || (a.waktu && a.waktu < bucket.masuk)) {
+            bucket.masuk = a.waktu;
+          }
+        } else if (stUpper.includes('PULANG') || stUpper === 'OUT') {
+          if (!bucket.pulang || (a.waktu && a.waktu > bucket.pulang)) {
+            bucket.pulang = a.waktu;
+          }
+        } else if (stUpper.includes('IZIN') || stUpper.includes('SAKIT') || stUpper.includes('CUTI')) {
+          bucket.izin = a.status || a.tipe;
+        }
+        if (a.keterangan || a.catatan) {
+          bucket.catatan = (bucket.catatan ? bucket.catatan + '; ' : '') + (a.keterangan || a.catatan);
+        }
+      });
+
+      const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const rows = [];
+      const cur = new Date(startDate.getTime());
+
+      let rowNum = 1;
+      while (cur <= endDate) {
+        const iso = cur.toISOString().slice(0, 10);
+        const dayIdx = cur.getDay(); // 0 = Minggu
+        const isSunday = dayIdx === 0;
+        const dayName = dayNames[dayIdx];
+
+        const rec = absMap.get(iso) || null;
+
+        let inTime = '';
+        let outTime = '';
+        let keterangan = '';
+
+        if (isSunday) {
+          inTime = 'LIBUR';
+          outTime = 'LIBUR';
+        } else if (rec) {
+          inTime = rec.masuk || '';
+          outTime = rec.pulang || '';
+          keterangan = rec.izin || rec.catatan || '';
+        }
+
+        const dStr = String(cur.getDate()).padStart(2, '0');
+        const mStr = String(cur.getMonth() + 1).padStart(2, '0');
+        const yStr = cur.getFullYear();
+        const displayDate = `${dStr}/${mStr}/${yStr}`;
+
+        rows.push({
+          no: rowNum++,
+          iso: iso,
+          dateObj: new Date(cur.getTime()),
+          displayDate: displayDate,
+          dayName: dayName,
+          isSunday: isSunday,
+          inTime: inTime,
+          outTime: outTime,
+          keterangan: keterangan,
+          origInTime: inTime,
+          origOutTime: outTime,
+          origKeterangan: keterangan
+        });
+
+        cur.setDate(cur.getDate() + 1);
+      }
+
+      ts.rows = rows;
+    },
+
+    setTimesheetRowLibur(row) {
+      row.inTime = 'LIBUR';
+      row.outTime = 'LIBUR';
+      if (!row.keterangan) row.keterangan = 'Hari Libur';
+    },
+
+    setTimesheetRowNormal(row) {
+      row.inTime = '08:00';
+      row.outTime = '17:00';
+      if (row.keterangan === 'Hari Libur' || row.keterangan === 'Libur Mingguan') {
+        row.keterangan = '';
+      }
+    },
+
+    resetTimesheetRow(row) {
+      row.inTime = row.origInTime;
+      row.outTime = row.origOutTime;
+      row.keterangan = row.origKeterangan;
+    },
+
+    getSpvDisplayName() {
+      const spvKey = this.timesheetState.selectedSpv;
+      if (spvKey === 'MAS_IBNU') return 'IBNU FAZARIAL';
+      if (spvKey === 'PAK_DWI') return 'DWI AMANTO';
+      if (spvKey === 'BU_SITI') return 'SITI PARISKHA';
+      return (this.timesheetState.customSpvName || 'SUPERVISOR').toUpperCase();
+    },
+
+    async exportTimesheetToExcel() {
+      const ts = this.timesheetState;
+      if (!ts.rows || ts.rows.length === 0) {
+        alert('Tidak ada baris data timesheet untuk diexport.');
+        return;
+      }
+      if (typeof ExcelJS === 'undefined') {
+        alert('Library ExcelJS belum siap. Pastikan koneksi internet aktif lalu refresh.');
+        return;
+      }
+
+      this.saveTimesheetNik();
+      ts.isExporting = true;
+
+      try {
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'Cimory Retail Operations';
+        workbook.created = new Date();
+
+        const crewName = (ts.selectedCrew || 'CREW').trim().toUpperCase();
+        const sheetTitle = `MDO - ${crewName.substring(0, 24)}`;
+        const ws = workbook.addWorksheet(sheetTitle, { views: [{ showGridLines: true }] });
+
+        ws.columns = [
+          { key: 'tanggal', width: 14 },
+          { key: 'nik', width: 14 },
+          { key: 'nama', width: 28 },
+          { key: 'in', width: 18 },
+          { key: 'out', width: 18 },
+          { key: 'keterangan', width: 30 }
+        ];
+
+        // Row 1: Title
+        const titleRow = ws.getRow(1);
+        titleRow.getCell(1).value = 'LAPORAN ABSENSI BULANAN';
+        titleRow.getCell(1).font = { name: 'Calibri', size: 14, bold: true };
+
+        // Row 3: Table Header (Yellow Background FFFFFF00)
+        const headerRow = ws.getRow(3);
+        const headers = ['TANGGAL', 'NIK', 'NAMA', 'IN TOKO PERTAMA', 'OUT TOKO TERAKHIR', 'KETERANGAN'];
+        headers.forEach((h, idx) => {
+          const cell = headerRow.getCell(idx + 1);
+          cell.value = h;
+          cell.font = { name: 'Calibri', size: 11, bold: true };
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFFFF00' }
+          };
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          };
+        });
+
+        // Rows Data
+        const nikVal = String(ts.nik || '').trim();
+        ts.rows.forEach((r, idx) => {
+          const rowNum = idx + 4;
+          const row = ws.getRow(rowNum);
+
+          const cellTgl = row.getCell(1);
+          cellTgl.value = r.dateObj;
+          cellTgl.numFmt = 'yyyy-mm-dd';
+          cellTgl.alignment = { vertical: 'middle', horizontal: 'center' };
+
+          const cellNik = row.getCell(2);
+          cellNik.value = nikVal ? String(nikVal) : '';
+          cellNik.numFmt = '@';
+          cellNik.alignment = { vertical: 'middle', horizontal: 'center' };
+
+          const cellNama = row.getCell(3);
+          cellNama.value = crewName;
+          cellNama.alignment = { vertical: 'middle', horizontal: 'left' };
+
+          const cellIn = row.getCell(4);
+          cellIn.value = r.inTime || '';
+          cellIn.alignment = { vertical: 'middle', horizontal: 'center' };
+
+          const cellOut = row.getCell(5);
+          cellOut.value = r.outTime || '';
+          cellOut.alignment = { vertical: 'middle', horizontal: 'center' };
+
+          const cellKet = row.getCell(6);
+          cellKet.value = r.keterangan || '';
+          cellKet.alignment = { vertical: 'middle', horizontal: 'left' };
+
+          for (let c = 1; c <= 6; c++) {
+            row.getCell(c).border = {
+              top: { style: 'thin' },
+              left: { style: 'thin' },
+              bottom: { style: 'thin' },
+              right: { style: 'thin' }
+            };
+          }
+
+          if (r.isSunday) {
+            row.getCell(4).font = { color: { argb: 'FFDC2626' } };
+            row.getCell(5).font = { color: { argb: 'FFDC2626' } };
+          }
+        });
+
+        // 2 Baris Kosong Bergaris Tipis Seperti Template Excel Asli
+        const totalDataRows = ts.rows.length;
+        for (let extra = 1; extra <= 2; extra++) {
+          const emptyRow = ws.getRow(totalDataRows + 3 + extra);
+          for (let c = 1; c <= 6; c++) {
+            emptyRow.getCell(c).border = {
+              top: { style: 'thin' },
+              left: { style: 'thin' },
+              bottom: { style: 'thin' },
+              right: { style: 'thin' }
+            };
+          }
+        }
+
+        // Footer Tanda Tangan (Kotak Berbingkai Persis Template Excel)
+        const sigHeaderRowNum = totalDataRows + 7;
+        const sigNameRowNum = totalDataRows + 15;
+        const sigTitleRowNum = totalDataRows + 16;
+
+        const spvName = this.getSpvDisplayName();
+        const mgrName = String(ts.managerName || 'TOSITA SARI').toUpperCase();
+
+        // Merge kolom A-B untuk Diperiksa & C-D untuk Disetujui
+        try {
+          ws.mergeCells(sigHeaderRowNum, 1, sigHeaderRowNum, 2);
+          ws.mergeCells(sigHeaderRowNum, 3, sigHeaderRowNum, 4);
+          ws.mergeCells(sigNameRowNum, 1, sigNameRowNum, 2);
+          ws.mergeCells(sigNameRowNum, 3, sigNameRowNum, 4);
+          ws.mergeCells(sigTitleRowNum, 1, sigTitleRowNum, 2);
+          ws.mergeCells(sigTitleRowNum, 3, sigTitleRowNum, 4);
+        } catch (e) {}
+
+        // Header Tanda Tangan Abu-Abu
+        const sigHRow = ws.getRow(sigHeaderRowNum);
+        const cellDip = sigHRow.getCell(1);
+        cellDip.value = 'Diperiksa';
+        cellDip.font = { name: 'Calibri', size: 10, bold: true };
+        cellDip.alignment = { horizontal: 'center', vertical: 'middle' };
+        cellDip.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFA5A5A5' } };
+
+        const cellSet = sigHRow.getCell(3);
+        cellSet.value = 'Disetujui';
+        cellSet.font = { name: 'Calibri', size: 10, bold: true };
+        cellSet.alignment = { horizontal: 'center', vertical: 'middle' };
+        cellSet.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFA5A5A5' } };
+
+        // Nama di bagian bawah kotak
+        const sigNRow = ws.getRow(sigNameRowNum);
+        const cellNSpv = sigNRow.getCell(1);
+        cellNSpv.value = spvName;
+        cellNSpv.font = { name: 'Calibri', size: 10, bold: true };
+        cellNSpv.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        const cellNMgr = sigNRow.getCell(3);
+        cellNMgr.value = mgrName;
+        cellNMgr.font = { name: 'Calibri', size: 10, bold: true };
+        cellNMgr.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // Jabatan di bawah nama
+        const sigTRow = ws.getRow(sigTitleRowNum);
+        const cellTSpv = sigTRow.getCell(1);
+        cellTSpv.value = 'Supervisor';
+        cellTSpv.font = { name: 'Calibri', size: 9 };
+        cellTSpv.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        const cellTMgr = sigTRow.getCell(3);
+        cellTMgr.value = 'Manager';
+        cellTMgr.font = { name: 'Calibri', size: 9 };
+        cellTMgr.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // Garis bingkai luar kotak tanda tangan (A-B dan C-D dari baris sigHeaderRowNum s/d sigTitleRowNum)
+        for (let r = sigHeaderRowNum; r <= sigTitleRowNum; r++) {
+          const rowObj = ws.getRow(r);
+          // Box 1: Kolom A-B
+          rowObj.getCell(1).border = {
+            ...rowObj.getCell(1).border,
+            left: { style: 'medium' },
+            top: r === sigHeaderRowNum ? { style: 'medium' } : undefined,
+            bottom: r === sigTitleRowNum ? { style: 'medium' } : undefined
+          };
+          rowObj.getCell(2).border = {
+            ...rowObj.getCell(2).border,
+            right: { style: 'medium' },
+            top: r === sigHeaderRowNum ? { style: 'medium' } : undefined,
+            bottom: r === sigTitleRowNum ? { style: 'medium' } : undefined
+          };
+          // Box 2: Kolom C-D
+          rowObj.getCell(3).border = {
+            ...rowObj.getCell(3).border,
+            left: { style: 'medium' },
+            top: r === sigHeaderRowNum ? { style: 'medium' } : undefined,
+            bottom: r === sigTitleRowNum ? { style: 'medium' } : undefined
+          };
+          rowObj.getCell(4).border = {
+            ...rowObj.getCell(4).border,
+            right: { style: 'medium' },
+            top: r === sigHeaderRowNum ? { style: 'medium' } : undefined,
+            bottom: r === sigTitleRowNum ? { style: 'medium' } : undefined
+          };
+        }
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const cleanPeriod = ts.periodType === 'CUTOFF' ? `Cutoff_${ts.year}_${ts.month}` : `${ts.year}_${ts.month}`;
+        a.download = `Absen_${crewName.replace(/[^A-Z0-9]/g, '_')}_${cleanPeriod}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('Export timesheet gagal:', err);
+        alert('Gagal mengekspor timesheet: ' + err.message);
+      } finally {
+        ts.isExporting = false;
+      }
+    },
+
+    printTimesheetPdf() {
+      this.saveTimesheetNik();
+      window.print();
+    },
+
+    // ==============================================================================
     // MULTI-SPREADSHEET CRUD & SYNC METHODS
     // ==============================================================================
 
@@ -9842,6 +10333,19 @@ function dashboardApp() {
         this.reportTableSubTab = subTab;
         if (subTab === 'anomali' && this.anomalyModal) {
           this.anomalyModal.activeTab = 'absen_no_visit';
+        }
+      }
+      if (tabName === 'absensi' && subTab) {
+        this.absensiSubTab = subTab;
+        if (subTab === 'timesheet' && typeof this.initTimesheet === 'function') {
+          this.initTimesheet();
+        }
+      }
+      if (tabName === 'tokonasional' && subTab) {
+        if (typeof this.setTokoNasionalSubTab === 'function') {
+          this.setTokoNasionalSubTab(subTab);
+        } else {
+          this.tokonasionalSubTab = subTab;
         }
       }
       this.showCategoryMenu = false;
