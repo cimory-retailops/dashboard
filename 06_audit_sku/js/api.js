@@ -423,5 +423,85 @@ const ApiService = {
 
     const results = await Promise.all(promises);
     return results.flat();
+  },
+
+  async fetchCompetitorData(params = {}) {
+    try {
+      const q = {
+        select: 'detail_audit,id_audit,modul,tanggal,account,kode_toko,nama_toko,brand,nama_barang,kategori_produk,packsize,harga_normal,harga_promo',
+        limit: '5000'
+      };
+      if (params.modul && params.modul !== 'ALL') {
+        const m = params.modul.substring(0, 2);
+        q['modul'] = `eq.${m}`;
+      }
+      if (params.account && params.account !== 'ALL') {
+        q['account'] = `ilike.%${params.account}%`;
+      }
+      const data = await this.fetchFromSupabase('tbl_all_audit_kompetitor', q);
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.warn('Gagal fetch competitor data dari Supabase:', err);
+      return [];
+    }
+  },
+
+  async fetchMasterCbp() {
+    try {
+      const data = await this.fetchFromSupabase('tbl_master_cbp', {
+        select: 'key,nama_sku,kategori,comp_category,gramasi,cbp_minis,cbp_hysu,comp_ratio',
+        is_active: 'eq.true'
+      });
+      if (Array.isArray(data) && data.length > 0) {
+        return data.map(r => ({
+          key: r.key,
+          name: r.nama_sku,
+          category: r.kategori,
+          compCategory: r.comp_category,
+          gramasi: String(r.gramasi || ''),
+          minis: Number(r.cbp_minis || 0),
+          hysu: Number(r.cbp_hysu || 0),
+          compRatio: Number(r.comp_ratio || 1.0)
+        }));
+      }
+      return null;
+    } catch (e) {
+      console.warn('Gagal fetch master cbp dari Supabase:', e);
+      return null;
+    }
+  },
+
+  async updateMasterCbp(items) {
+    try {
+      const url = `${CONFIG.SUPABASE_URL}/tbl_master_cbp`;
+      const payload = items.map(item => ({
+        key: item.key,
+        nama_sku: item.name,
+        kategori: item.category,
+        comp_category: item.compCategory,
+        gramasi: Number(item.gramasi || 0),
+        cbp_minis: Number(item.minis || 0),
+        cbp_hysu: Number(item.hysu || 0),
+        comp_ratio: Number(item.compRatio || 1.0),
+        is_active: true,
+        updated_at: new Date().toISOString()
+      }));
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'apikey': CONFIG.SUPABASE_KEY,
+          'Authorization': `Bearer ${CONFIG.SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify(payload)
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Error updateMasterCbp:', err);
+      return false;
+    }
   }
 };
+

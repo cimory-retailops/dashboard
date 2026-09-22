@@ -30,6 +30,8 @@ function skuAuditApp() {
 
     // Raw & Computed Datasets
     rawItems: [],
+    competitorItems: [],
+    activeCbpCatalog: CONFIG.CBP_CATALOG || [],
     skuPriceBenchmarks: new Map(), // Key: namaBarang -> Median Normal Price
 
     // Pagination
@@ -48,6 +50,15 @@ function skuAuditApp() {
       await this.loadData();
     },
 
+    // Mega Menu State
+    showCategoryMenu: false,
+    activeMegaCategory: 'operasional',
+
+    toggleCategoryMenu() {
+      this.showCategoryMenu = !this.showCategoryMenu;
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
     toggleTheme() {
       this.theme = this.theme === 'dark' ? 'light' : 'dark';
       localStorage.setItem('sku_audit_theme', this.theme);
@@ -56,6 +67,130 @@ function skuAuditApp() {
       } else {
         document.documentElement.classList.remove('dark');
       }
+    },
+
+    // Tracking Non-Compliant Modal State
+    trackingModalOpen: false,
+    trackedSkuData: null,
+    trackingSearch: '',
+    trackingPage: 1,
+    trackingPageSize: 10,
+
+    openTrackingModal(item) {
+      this.trackedSkuData = item;
+      this.trackingSearch = '';
+      this.trackingPage = 1;
+      this.trackingModalOpen = true;
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
+    closeTrackingModal() {
+      this.trackingModalOpen = false;
+      this.trackedSkuData = null;
+    },
+
+    // CBP Master Edit Modal State
+    cbpModalOpen: false,
+    editingCbpList: [],
+    isSavingCbp: false,
+    saveCbpSuccess: false,
+
+    openCbpModal() {
+      this.editingCbpList = JSON.parse(JSON.stringify(this.activeCbpCatalog || CONFIG.CBP_CATALOG));
+      this.saveCbpSuccess = false;
+      this.cbpModalOpen = true;
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
+    closeCbpModal() {
+      this.cbpModalOpen = false;
+      this.editingCbpList = [];
+    },
+
+    async saveCbpChanges() {
+      this.isSavingCbp = true;
+      try {
+        const ok = await ApiService.updateMasterCbp(this.editingCbpList);
+        if (ok) {
+          this.activeCbpCatalog = JSON.parse(JSON.stringify(this.editingCbpList));
+          CONFIG.CBP_CATALOG = JSON.parse(JSON.stringify(this.editingCbpList));
+          this.applyFilters();
+          this.saveCbpSuccess = true;
+          setTimeout(() => {
+            this.closeCbpModal();
+          }, 800);
+        } else {
+          alert('Gagal menyimpan perubahan ke Supabase.');
+        }
+      } catch (e) {
+        console.error('Error saveCbpChanges:', e);
+        alert('Terjadi kesalahan saat menyimpan data CBP.');
+      } finally {
+        this.isSavingCbp = false;
+      }
+    },
+
+    findCbpMatch(skuName) {
+      const catalog = (this.activeCbpCatalog && this.activeCbpCatalog.length > 0) ? this.activeCbpCatalog : CONFIG.CBP_CATALOG;
+      if (!skuName || !catalog) return null;
+      const s = String(skuName).toUpperCase();
+
+      // 1. Exclude produk Non-Dairy (Sosis, Nugget, Baso, Meat, RTE/RTC Olahan Daging)
+      if (/\b(SOSIS|NUGGET|KANZLER|BAKSO|BASO|BURGER|BEEF|CHICKEN|SAUSAGE|CORNDOG|COCKTAIL|FIESTA|CHIKURO|KENTANG)\b/i.test(s)) {
+        return null;
+      }
+
+      // 2. Squeeze Produk (Utamakan Squeeze lebih dulu sebelum keyword lain)
+      if (s.includes('SQUEEZE')) {
+        if (s.includes('BITES') || s.includes('BITE')) return catalog.find(c => c.key === 'SQUEEZE BITES');
+        return catalog.find(c => c.key === 'SQUEEZE 120');
+      }
+
+      // 3. StickPack Yogurt (Cek utuh STICKPACK atau STICK PACK, jangan kena kata 'STICKY' atau 'NUGGET STICK')
+      if ((s.includes('STICKPACK') || s.includes('STICK PACK') || /\bSTICK\b/.test(s)) && !s.includes('STICKY')) {
+        return catalog.find(c => c.key === 'STICKPACK');
+      }
+
+      // 4. Greek Yogurt
+      if (s.includes('GREEK')) {
+        return catalog.find(c => c.key === 'GREEK YOGURT');
+      }
+
+      // 5. Zero Yogurt Drink
+      if (s.includes('ZERO')) {
+        if (s.includes('200') || s.includes('200ML')) return catalog.find(c => c.key === 'ZERO 200');
+        return catalog.find(c => c.key === 'ZERO 240');
+      }
+
+      // 6. Drink 65ml (Pack 4/5)
+      if (/\b65\s*(ML|GR)?\b/.test(s)) {
+        return catalog.find(c => c.key === 'DRINK 65');
+      }
+
+      // 7. Yogurt Drink 240ml
+      if ((s.includes('DRINK') || s.includes('YOGHURT') || s.includes('YOGURT')) && (s.includes('240') || s.includes('240ML'))) {
+        return catalog.find(c => c.key === 'DRINK 240');
+      }
+
+      // 8. Fresh Milk 950ml
+      if ((s.includes('FRESH') || s.includes('PASTEURISASI') || s.includes('PASTEUR')) && (s.includes('950') || s.includes('950ML') || s.includes('MILK') || s.includes('SUSU'))) {
+        return catalog.find(c => c.key === 'FRESH MILK 950');
+      }
+
+      // 9. UHT Milk (Wajib ada kata UHT atau SUSU atau MILK)
+      if (s.includes('UHT') || s.includes('MILK') || s.includes('SUSU')) {
+        if (s.includes('750') || s.includes('750ML')) return catalog.find(c => c.key === 'UHT 750');
+        if (s.includes('125') || s.includes('125ML')) return catalog.find(c => c.key === 'UHT 125');
+        if (s.includes('225') || s.includes('225ML')) return catalog.find(c => c.key === 'UHT 225');
+        if (s.includes('250') || s.includes('250ML')) return catalog.find(c => c.key === 'UHT 250');
+      }
+
+      // 10. Eat Milk / Dessert
+      if (s.includes('EAT MILK') || s.includes('EATMILK') || (s.includes('DESSERT') && s.includes('80'))) {
+        return catalog.find(c => c.key === 'EAT MILK');
+      }
+
+      return null;
     },
 
     setSubTab(tab) {
@@ -73,14 +208,23 @@ function skuAuditApp() {
         this.loadingMessage = `Menghubungkan ke database detail audit...`;
       }
       try {
-        const data = await ApiService.getAllDetailAudit(
-          { modul: this.selectedModul },
-          (done, total, mod) => {
-            this.loadingProgress = Math.round((done / total) * 100);
-            this.loadingMessage = `Memuat data cabang ${mod} (${done}/${total})...`;
-          }
-        );
+        const [data, compData, cbpDb] = await Promise.all([
+          ApiService.getAllDetailAudit(
+            { modul: this.selectedModul },
+            (done, total, mod) => {
+              this.loadingProgress = Math.round((done / total) * 100);
+              this.loadingMessage = `Memuat data cabang ${mod} (${done}/${total})...`;
+            }
+          ),
+          ApiService.fetchCompetitorData({ modul: this.selectedModul, account: this.selectedAccount }),
+          ApiService.fetchMasterCbp()
+        ]);
         this.rawItems = data || [];
+        this.competitorItems = compData || [];
+        if (cbpDb && cbpDb.length > 0) {
+          this.activeCbpCatalog = cbpDb;
+          CONFIG.CBP_CATALOG = cbpDb;
+        }
         this.calculatePriceBenchmarks();
       } catch (err) {
         console.error('Error loading detail audit data:', err);
@@ -315,6 +459,81 @@ function skuAuditApp() {
       totalExpiry: 0
     },
 
+    // Pagination Getters & Controls
+    get totalPages() {
+      const list = this.activeSubTab === 'HARGA' ? this.skuPriceComparisonList : this.skuStockMatrixList;
+      if (this.pageSize === 'ALL' || !this.pageSize) return 1;
+      return Math.max(1, Math.ceil((list.length || 0) / Number(this.pageSize)));
+    },
+
+    get paginatedPriceList() {
+      if (this.pageSize === 'ALL' || !this.pageSize) return this.skuPriceComparisonList;
+      const ps = Number(this.pageSize);
+      const start = (this.currentPage - 1) * ps;
+      return this.skuPriceComparisonList.slice(start, start + ps);
+    },
+
+    get paginatedStockList() {
+      if (this.pageSize === 'ALL' || !this.pageSize) return this.skuStockMatrixList;
+      const ps = Number(this.pageSize);
+      const start = (this.currentPage - 1) * ps;
+      return this.skuStockMatrixList.slice(start, start + ps);
+    },
+
+    nextPage() {
+      if (this.currentPage < this.totalPages) {
+        this.currentPage++;
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+      }
+    },
+
+    prevPage() {
+      if (this.currentPage > 1) {
+        this.currentPage--;
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+      }
+    },
+
+    goToPage(p) {
+      this.currentPage = Math.max(1, Math.min(p, this.totalPages));
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
+    onPageSizeChange() {
+      this.currentPage = 1;
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+
+    // Tracking Modal Pagination Getters
+    get filteredTrackingList() {
+      if (!this.trackedSkuData || !this.trackedSkuData.nonCompliantList) return [];
+      const q = (this.trackingSearch || '').toUpperCase().trim();
+      if (!q) return this.trackedSkuData.nonCompliantList;
+      return this.trackedSkuData.nonCompliantList.filter(st => {
+        const m = `${st.namaToko} ${st.kodeToko} ${st.namaCrew} ${st.account} ${st.modul}`.toUpperCase();
+        return m.includes(q);
+      });
+    },
+
+    get trackingTotalPages() {
+      const list = this.filteredTrackingList;
+      return Math.max(1, Math.ceil(list.length / this.trackingPageSize));
+    },
+
+    get paginatedTrackingList() {
+      const list = this.filteredTrackingList;
+      const start = (this.trackingPage - 1) * this.trackingPageSize;
+      return list.slice(start, start + this.trackingPageSize);
+    },
+
+    nextTrackingPage() {
+      if (this.trackingPage < this.trackingTotalPages) this.trackingPage++;
+    },
+
+    prevTrackingPage() {
+      if (this.trackingPage > 1) this.trackingPage--;
+    },
+
     /**
      * Single High-Speed Computation Pass
      */
@@ -402,6 +621,7 @@ function skuAuditApp() {
             packsize: item.packsize || '',
             medianPrice: this.skuPriceBenchmarks.get(sku) || 0,
             accountPrices: {},
+            observations: [],
             totalVisitsObserved: 0,
             hasActivePromo: false
           });
@@ -416,6 +636,15 @@ function skuAuditApp() {
         const sanitized = this.sanitizePrice(sku, item.hargaNormalRaw);
         if (sanitized.price > 0) {
           pEntry.accountPrices[acc].prices.push(sanitized.price);
+          pEntry.observations.push({
+            price: sanitized.price,
+            namaToko: item.namaToko || 'Toko Lapangan',
+            kodeToko: item.kodeToko || '-',
+            account: item.account || 'LAINNYA',
+            namaCrew: item.namaCrew || '-',
+            modul: item.modul || '-',
+            date: item.date || ''
+          });
         }
         if (item.isPromoAktif && item.hargaPromoRaw > 0) {
           pEntry.hasActivePromo = true;
@@ -471,69 +700,116 @@ function skuAuditApp() {
 
       this.expiryAlertsList = expiryAlerts;
 
-      // 2. Build Price Comparison Array
+      // 2. Build Price Comparison Array with CBP Compliance
       const priceResult = [];
+      const currentChannel = CONFIG.getChannelType(this.selectedAccount === 'ALL' ? '' : this.selectedAccount);
+
       priceSkuMap.forEach(entry => {
-        let alfamartAvg = 0;
-        let indomaretAvg = 0;
-        let alfamidiAvg = 0;
-        let lawsonAvg = 0;
-        let circleKAvg = 0;
-        let familyMartAvg = 0;
-        let yomartAvg = 0;
-        let superindoAvg = 0;
+        const cbpInfo = this.findCbpMatch(entry.sku);
+        const cbpTarget = cbpInfo ? (currentChannel === 'hysu' ? cbpInfo.hysu : cbpInfo.minis) : (entry.medianPrice || 0);
 
         const allObservedPrices = [];
+        const nonCompliantList = [];
+        let compliantCount = 0;
 
-        for (const [rawAcc, data] of Object.entries(entry.accountPrices)) {
-          if (data.prices.length > 0) {
-            const sum = data.prices.reduce((a, b) => a + b, 0);
-            const rawAvg = sum / data.prices.length;
-            const avgPrice = Math.round(rawAvg / 100) * 100;
-            allObservedPrices.push(...data.prices);
+        entry.observations.forEach(obs => {
+          allObservedPrices.push(obs.price);
+          const channel = CONFIG.getChannelType(obs.account);
+          const expectedCbp = cbpInfo ? (channel === 'hysu' ? cbpInfo.hysu : cbpInfo.minis) : (entry.medianPrice || obs.price);
+          const diff = obs.price - expectedCbp;
 
-            const acc = rawAcc.toUpperCase();
-            if (acc.includes('LAWSON')) {
-              lawsonAvg = avgPrice;
-            } else if (acc.includes('CIRCLE') || acc.includes(' CK') || acc.startsWith('CK')) {
-              circleKAvg = avgPrice;
-            } else if (acc.includes('FAMILY') || acc.includes('FM')) {
-              familyMartAvg = avgPrice;
-            } else if (acc.includes('YOMART') || acc.includes('YOGYA') || acc.includes('GRIYA')) {
-              yomartAvg = avgPrice;
-            } else if (acc.includes('ALFAMIDI') || acc.includes('MIDI')) {
-              alfamidiAvg = avgPrice;
-            } else if (acc.includes('ALFAMART') || acc.includes('SAT') || acc === 'ALFA') {
-              alfamartAvg = avgPrice;
-            } else if (acc.includes('INDOMARET') || acc.includes('IDM') || acc === 'INDO') {
-              indomaretAvg = avgPrice;
-            } else {
-              superindoAvg = avgPrice;
+          if (diff === 0) {
+            compliantCount++;
+          } else {
+            nonCompliantList.push({
+              ...obs,
+              expectedCbp,
+              gap: diff,
+              gapPct: expectedCbp ? Math.round((diff / expectedCbp) * 1000) / 10 : 0
+            });
+          }
+        });
+
+        // Urutkan non-compliant dari selisih terbesar
+        nonCompliantList.sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
+
+        const totalObs = allObservedPrices.length;
+        const sum = allObservedPrices.reduce((a, b) => a + b, 0);
+        const avgPrice = totalObs > 0 ? Math.round(sum / totalObs) : 0;
+        const cbpCompliancePct = totalObs > 0 ? Math.round((compliantCount / totalObs) * 100) : 100;
+        const gapRp = cbpTarget > 0 && avgPrice > 0 ? (avgPrice - cbpTarget) : 0;
+        const gapPct = cbpTarget > 0 && avgPrice > 0 ? Math.round((gapRp / cbpTarget) * 1000) / 10 : 0;
+
+        // Perbandingan harga kompetitor berdasarkan Kategori & Gramasi
+        let compPrice = 0;
+        let compMatchedCount = 0;
+        let compBrands = [];
+
+        if (cbpInfo && cbpInfo.gramasi && this.competitorItems && this.competitorItems.length > 0) {
+          const targetGram = parseInt(cbpInfo.gramasi, 10);
+          const targetCat = cbpInfo.compCategory || '';
+
+          const matchingComp = this.competitorItems.filter(ci => {
+            if (selAcc !== 'ALL' && ci.account && !ci.account.includes(selAcc)) return false;
+            const cCat = String(ci.kategori_produk || '').toUpperCase();
+            if (targetCat === 'MILK' && !cCat.includes('MILK')) return false;
+            if (targetCat === 'YOGURT' && !cCat.includes('YOGURT')) return false;
+            if (targetCat === 'DESSERT' && (!cCat.includes('DESSERT') && !cCat.includes('RTC') && !cCat.includes('RTE'))) return false;
+
+            const pNum = parseInt(String(ci.packsize || ci.nama_barang || '').replace(/[^0-9]/g, ''), 10);
+            if (!pNum) return false;
+            return Math.abs(pNum - targetGram) <= Math.max(20, targetGram * 0.15);
+          });
+
+          if (matchingComp.length > 0) {
+            const validCompPrices = matchingComp
+              .map(ci => ci.harga_normal || ci.harga_promo || 0)
+              .filter(p => p > 500 && p < 150000);
+
+            if (validCompPrices.length > 0) {
+              const compSum = validCompPrices.reduce((a, b) => a + b, 0);
+              compPrice = Math.round(compSum / validCompPrices.length);
+              compMatchedCount = validCompPrices.length;
+              compBrands = [...new Set(matchingComp.map(c => c.brand).filter(Boolean))];
             }
           }
         }
 
-        const minPrice = allObservedPrices.length > 0 ? Math.min(...allObservedPrices) : 0;
-        const maxPrice = allObservedPrices.length > 0 ? Math.max(...allObservedPrices) : 0;
-        const priceSpread = maxPrice - minPrice;
+        const compRatio = cbpInfo && cbpInfo.compRatio ? cbpInfo.compRatio : 1.0;
+        if (!compPrice) {
+          compPrice = Math.round((avgPrice || cbpTarget || 0) / compRatio);
+        }
+
+        const compDiffPct = compPrice > 0 ? Math.round(((avgPrice - compPrice) / compPrice) * 100) : 0;
+        const compRatioPct = compPrice > 0 ? Math.round((avgPrice / compPrice) * 100) : 100;
 
         priceResult.push({
           ...entry,
-          alfamartAvg,
-          indomaretAvg,
-          alfamidiAvg,
-          lawsonAvg,
-          circleKAvg,
-          familyMartAvg,
-          yomartAvg,
-          superindoAvg,
-          minPrice: Math.round(minPrice / 100) * 100,
-          maxPrice: Math.round(maxPrice / 100) * 100,
-          priceSpread: Math.round(priceSpread / 100) * 100
+          hasOfficialCbp: !!cbpInfo,
+          cbpCategory: cbpInfo ? cbpInfo.category : (entry.brand || 'Non-Dairy'),
+          cbpTarget: cbpTarget || entry.medianPrice || 0,
+          avgPrice: avgPrice,
+          totalObs: totalObs,
+          compliantCount: compliantCount,
+          cbpCompliancePct: cbpCompliancePct,
+          gapRp: gapRp,
+          gapPct: gapPct,
+          compPrice: compPrice,
+          compRatioPct: compRatioPct,
+          compDiffPct: compDiffPct,
+          compMatchedCount: compMatchedCount,
+          compBrands: compBrands,
+          nonCompliantList: nonCompliantList
         });
       });
 
-      this.skuPriceComparisonList = priceResult.sort((a, b) => b.totalVisitsObserved - a.totalVisitsObserved);
+      // Urutkan: Produk dengan compliance terendah muncul duluan agar mudah di-track
+      this.skuPriceComparisonList = priceResult.sort((a, b) => {
+        if (a.cbpCompliancePct !== b.cbpCompliancePct) {
+          return a.cbpCompliancePct - b.cbpCompliancePct;
+        }
+        return b.totalObs - a.totalObs;
+      });
 
       // 3. Build Stock Matrix Array
       const stockResult = [];
@@ -551,27 +827,25 @@ function skuAuditApp() {
 
     exportToCsv() {
       if (this.activeSubTab === 'HARGA') {
-        const headers = ['SKU', 'Brand', 'Barcode', 'Packsize', 'Median Acuan', 'Avg Alfamart', 'Avg Indomaret', 'Avg Alfamidi', 'Avg Lawson', 'Avg Circle K', 'Avg Family Mart', 'Avg Yomart', 'Avg Superindo/Lain', 'Min Price', 'Max Price', 'Spread', 'Total Observasi'];
+        const headers = ['SKU', 'Kategori', 'Brand', 'Barcode', 'Packsize', 'CBP Acuan (Rp)', 'Avg Price Lapangan (Rp)', 'CBP Compliance (%)', 'Toko Patuh', 'Total Observasi', 'Gap Nominal (Rp)', 'Gap (%)', 'Kompetitor (Rp)', 'Ratio vs Kompetitor (%)', 'Jml Toko Anomali'];
         const rows = this.skuPriceComparisonList.map(item => [
           `"${item.sku.replace(/"/g, '""')}"`,
+          `"${item.cbpCategory || ''}"`,
           `"${item.brand}"`,
           `"${item.barcode}"`,
           `"${item.packsize}"`,
-          item.medianPrice,
-          item.alfamartAvg,
-          item.indomaretAvg,
-          item.alfamidiAvg,
-          item.lawsonAvg,
-          item.circleKAvg,
-          item.familyMartAvg,
-          item.yomartAvg,
-          item.superindoAvg,
-          item.minPrice,
-          item.maxPrice,
-          item.priceSpread,
-          item.totalVisitsObserved
+          item.cbpTarget,
+          item.avgPrice,
+          `${item.cbpCompliancePct}%`,
+          item.compliantCount,
+          item.totalObs,
+          item.gapRp,
+          `${item.gapPct}%`,
+          item.compPrice,
+          `${item.compRatioPct}%`,
+          (item.nonCompliantList || []).length
         ]);
-        this.downloadCsv([headers.join(','), ...rows.map(r => r.join(','))].join('\n'), 'Komparasi_Harga_Multi_Account_SKU.csv');
+        this.downloadCsv([headers.join(','), ...rows.map(r => r.join(','))].join('\n'), 'Komparasi_Harga_CBP_Compliance_SKU.csv');
       } else {
         const headers = ['SKU', 'Brand', 'Barcode', 'OSA Rate (%)', 'Toko Tersedia', 'Toko OOS (Kosong)', 'Total SOH (Pcs)', 'Temuan Expired'];
         const rows = this.skuStockMatrixList.map(item => [

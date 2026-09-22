@@ -76,6 +76,39 @@ const CONFIG = {
     'LAINNYA'
   ],
 
+  // Master CBP Resmi (After Increase per Oct-26)
+  CBP_CATALOG: [
+    { key: 'STICKPACK', name: 'Cimory StickPack 40 gr', category: 'Thick Yogurt', compCategory: 'YOGURT', gramasi: '40', minis: 3000, hysu: 3000, compRatio: 1.05 },
+    { key: 'SQUEEZE 120', name: 'Cimory Yoghurt Squeeze 120 gr', category: 'Thick Yogurt', compCategory: 'YOGURT', gramasi: '120', minis: 10000, hysu: 10000, compRatio: 0.98 },
+    { key: 'SQUEEZE BITES', name: 'Cimory Yogurt Squeeze Bites 120Gr', category: 'Thick Yogurt', compCategory: 'YOGURT', gramasi: '120', minis: 10000, hysu: 10000, compRatio: 1.00 },
+    { key: 'GREEK YOGURT', name: 'Cimory Greek Yogurt 40g', category: 'Thick Yogurt', compCategory: 'YOGURT', gramasi: '40', minis: 39500, hysu: 39500, compRatio: 0.95 },
+    { key: 'DRINK 240', name: 'Cimory Yoghurt Drink 240 ml', category: 'Drink Yogurt', compCategory: 'YOGURT', gramasi: '240', minis: 8500, hysu: 8500, compRatio: 1.02 },
+    { key: 'ZERO 240', name: 'Cimory Yoghurt Drink Zero 240 ml', category: 'Drink Yogurt', compCategory: 'YOGURT', gramasi: '240', minis: 8500, hysu: 8500, compRatio: 1.02 },
+    { key: 'ZERO 200', name: 'Cimory Yoghurt Drink Zero 200 ml', category: 'Drink Yogurt', compCategory: 'YOGURT', gramasi: '200', minis: 4900, hysu: 4900, compRatio: 0.96 },
+    { key: 'DRINK 65', name: 'Cimory Yoghurt Drink 65 Ml (Pack)', category: 'Drink Yogurt', compCategory: 'YOGURT', gramasi: '65', minis: 10000, hysu: 10000, compRatio: 1.00 },
+    { key: 'UHT 750', name: 'Cimory UHT Milk 750 ml', category: 'Milk', compCategory: 'MILK', gramasi: '750', minis: 17500, hysu: 17500, compRatio: 0.97 },
+    { key: 'UHT 125', name: 'Cimory UHT Milk 125 ml', category: 'Milk', compCategory: 'MILK', gramasi: '125', minis: 4000, hysu: 4000, compRatio: 1.00 },
+    { key: 'UHT 250', name: 'Cimory UHT Milk 250 Ml', category: 'Milk', compCategory: 'MILK', gramasi: '250', minis: 7500, hysu: 7500, compRatio: 0.98 },
+    { key: 'UHT 225', name: 'Cimory UHT Milk 225 Ml', category: 'Milk', compCategory: 'MILK', gramasi: '225', minis: 7900, hysu: 7900, compRatio: 1.01 },
+    { key: 'FRESH MILK 950', name: 'Cimory Fresh Milk 950ml', category: 'Milk', compCategory: 'MILK', gramasi: '950', minis: 25000, hysu: 25000, compRatio: 0.96 },
+    { key: 'EAT MILK', name: 'Cimory Eat Milk 80gr', category: 'Cream Dessert', compCategory: 'DESSERT', gramasi: '80', minis: 8500, hysu: 8500, compRatio: 1.00 }
+  ],
+
+  // Helper Klasifikasi Channel: Minimarket ('minis') vs Hyper/Supermarket ('hysu')
+  getChannelType(accountName) {
+    if (!accountName) return 'minis';
+    const acc = String(accountName).toUpperCase();
+    if (acc.includes('SUPERINDO') || acc.includes('LION') || acc.includes('HYPERMART') || 
+        acc.includes('CARREFOUR') || acc.includes('LOTTE') || acc.includes('HERO') || 
+        acc.includes('GELAEL') || acc.includes('FARMERS') || acc.includes('RANCH') || 
+        acc.includes('AEON') || acc.includes('LULU') || acc.includes('PAPAYA') || 
+        acc.includes('HARI HARI') || acc.includes('BORMA') || acc.includes('SUPERMARKET') || 
+        acc.includes('HYPERMARKET')) {
+      return 'hysu';
+    }
+    return 'minis';
+  },
+
   CACHE_EXPIRY_MS: 30 * 60 * 1000,
   DEFAULT_TIMEOUT_MS: 15000
 };
