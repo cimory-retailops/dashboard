@@ -928,7 +928,12 @@
       let diffCount = 0;
       stores.forEach(s => {
         if (s.personil !== s._origPersonil || s.status !== s._origStatus) {
-          changeMap[s.id] = { personil: s.personil, status: s.status };
+          changeMap[s.id] = {
+            personil: s.personil,
+            status: s.status,
+            updated_by: s.updated_by,
+            updated_at: s.updated_at
+          };
           diffCount++;
         }
       });
@@ -953,6 +958,8 @@
         if (s) {
           s.personil = data.personil;
           s.status = data.status;
+          if (data.updated_by) s.updated_by = data.updated_by;
+          if (data.updated_at) s.updated_at = data.updated_at;
           diffCount++;
         }
       }
@@ -994,6 +1001,23 @@
     toast.textContent = msg;
     toast.classList.add('show');
     setTimeout(() => toast.classList.remove('show'), 2400);
+  }
+
+  function formatEditTimestamp(ts) {
+    if (!ts) return '-';
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return String(ts);
+      return d.toLocaleString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch(e) {
+      return String(ts);
+    }
   }
 
   // Init Map
@@ -1207,7 +1231,9 @@
           oldPersonil: s.personil,
           newPersonil: newPersonil,
           oldStatus: s.status,
-          newStatus: newPersonil ? 'assigned' : 'unassigned'
+          newStatus: newPersonil ? 'assigned' : 'unassigned',
+          oldUpdatedBy: s.updated_by,
+          oldUpdatedAt: s.updated_at
         });
 
         const oldPersonil = s.personil;
@@ -1222,6 +1248,8 @@
 
         s.personil = newPersonil;
         s.status = newPersonil ? 'assigned' : 'unassigned';
+        s.updated_by = currentUsername;
+        s.updated_at = new Date().toISOString();
 
         if (marker) {
           marker.setStyle(getMarkerStyle(s));
@@ -1340,6 +1368,8 @@
           <tr><td>Kab/Kota:</td><td>${s.kab || '-'}</td></tr>
           <tr><td>Status:</td><td><strong style="color:${s.personil ? '#86efac' : '#f87171'}">${s.personil ? s.personil : '⚠️ VACANT'}</strong></td></tr>
           <tr><td>Rute Hari:</td><td>Hari ke-${s.rute || 1}</td></tr>
+          <tr><td>Editor:</td><td><strong style="color:#38bdf8;">${s.updated_by || 'Baseline Awal'}</strong></td></tr>
+          <tr><td>Waktu Edit:</td><td><span style="color:#94a3b8; font-size:10px;">${formatEditTimestamp(s.updated_at)}</span></td></tr>
         </table>
         
         <div class="popup-actions">
@@ -1389,7 +1419,7 @@
   }
 
   // Reassign Store and update LayerGroup
-  function reassignStore(s, newPersonil, isRemote = false) {
+  function reassignStore(s, newPersonil, isRemote = false, remoteUser = null, remoteTime = null) {
     const oldPersonil = s.personil;
     const oldStatus = s.status;
 
@@ -1402,7 +1432,9 @@
         oldPersonil: oldPersonil,
         newPersonil: newPersonil,
         oldStatus: oldStatus,
-        newStatus: newPersonil ? 'assigned' : 'unassigned'
+        newStatus: newPersonil ? 'assigned' : 'unassigned',
+        oldUpdatedBy: s.updated_by,
+        oldUpdatedAt: s.updated_at
       });
       if (undoStack.length > MAX_UNDO) undoStack.shift();
       updateUndoCount();
@@ -1418,9 +1450,11 @@
       }
     }
 
-    // Apply new data
+    // Apply new data & timestamps
     s.personil = newPersonil;
     s.status = newPersonil ? 'assigned' : 'unassigned';
+    s.updated_by = isRemote ? (remoteUser || 'Teammate') : currentUsername;
+    s.updated_at = isRemote ? (remoteTime || new Date().toISOString()) : new Date().toISOString();
 
     // Update marker and add to new layerGroup
     if (marker) {
@@ -1567,6 +1601,8 @@
 
       s.personil = act.oldPersonil;
       s.status = act.oldStatus;
+      s.updated_by = act.oldUpdatedBy || 'Baseline Awal';
+      s.updated_at = act.oldUpdatedAt || null;
 
       if (s.status !== 'removed') {
         if (!marker) {
@@ -1892,7 +1928,7 @@
   btnExportExcel.addEventListener('click', () => {
     showToast('Menyiapkan file Excel revisi...');
 
-    const headers = ['MODUL', 'ACCOUNT', 'KODE TOKO', 'NAMA TOKO', 'KODE CREW', 'NAMA CREW', 'RUTE', 'LATITUDE', 'LONGITUDE', 'KECAMATAN', 'KAB_KOTA'];
+    const headers = ['MODUL', 'ACCOUNT', 'KODE TOKO', 'NAMA TOKO', 'KODE CREW', 'NAMA CREW', 'RUTE', 'LATITUDE', 'LONGITUDE', 'KECAMATAN', 'KAB_KOTA', 'DIEDIT OLEH', 'WAKTU REVISI'];
     const wb = XLSX.utils.book_new();
 
     const masterRows = [headers];
@@ -1912,7 +1948,9 @@
         s.lat,
         s.lon,
         s.kec || '',
-        s.kab || ''
+        s.kab || '',
+        s.updated_by || 'Baseline Awal',
+        formatEditTimestamp(s.updated_at)
       ];
       masterRows.push(row);
       if (personilGroups[s.personil]) {
@@ -1932,20 +1970,20 @@
     });
 
     // Sheet VACANT
-    const unassignedRows = [['ACCOUNT', 'KODE TOKO', 'NAMA TOKO', 'KECAMATAN', 'KAB_KOTA', 'LATITUDE', 'LONGITUDE']];
+    const unassignedRows = [['ACCOUNT', 'KODE TOKO', 'NAMA TOKO', 'KECAMATAN', 'KAB_KOTA', 'LATITUDE', 'LONGITUDE', 'DIEDIT OLEH', 'WAKTU REVISI']];
     stores.forEach(s => {
       if (s.status === 'unassigned') {
-        unassignedRows.push([s.account, s.code, s.name, s.kec, s.kab, s.lat, s.lon]);
+        unassignedRows.push([s.account, s.code, s.name, s.kec, s.kab, s.lat, s.lon, s.updated_by || 'Baseline Awal', formatEditTimestamp(s.updated_at)]);
       }
     });
     const wsUn = XLSX.utils.aoa_to_sheet(unassignedRows);
     XLSX.utils.book_append_sheet(wb, wsUn, 'VACANT');
 
     // Sheet DIHAPUS_DIBUANG
-    const removedRows = [['ACCOUNT', 'KODE TOKO', 'NAMA TOKO', 'KECAMATAN', 'KAB_KOTA']];
+    const removedRows = [['ACCOUNT', 'KODE TOKO', 'NAMA TOKO', 'KECAMATAN', 'KAB_KOTA', 'DIEDIT OLEH', 'WAKTU REVISI']];
     stores.forEach(s => {
       if (s.status === 'removed') {
-        removedRows.push([s.account, s.code, s.name, s.kec, s.kab]);
+        removedRows.push([s.account, s.code, s.name, s.kec, s.kab, s.updated_by || 'Baseline Awal', formatEditTimestamp(s.updated_at)]);
       }
     });
     const wsRem = XLSX.utils.aoa_to_sheet(removedRows);
@@ -2015,7 +2053,8 @@
         if (!payload || payload.sender === currentUsername) return;
         const s = stores.find(x => x.code === payload.code || x.id === payload.id);
         if (s) {
-          reassignStore(s, payload.newPersonil, true);
+          const remoteTime = payload.timestamp ? new Date(payload.timestamp).toISOString() : new Date().toISOString();
+          reassignStore(s, payload.newPersonil, true, payload.sender, remoteTime);
           showToast(`⚡ [${payload.sender}] ubah ${s.name} ➔ ${payload.newPersonil || 'VACANT'}`);
         }
       });
@@ -2183,7 +2222,7 @@
       while (hasMore) {
         const { data, error } = await supabaseClient
           .from('tbl_store_assignments')
-          .select('kode_toko, assigned_personil, status')
+          .select('kode_toko, assigned_personil, status, updated_by, updated_at')
           .range(from, from + step - 1);
 
         if (error || !data || data.length === 0) {
@@ -2208,6 +2247,8 @@
             const row = mapCloud.get(s.code);
             const cloudP = row.assigned_personil;
             const cloudStatus = row.status;
+            if (row.updated_by) s.updated_by = row.updated_by;
+            if (row.updated_at) s.updated_at = row.updated_at;
             if (s.personil !== cloudP || s.status !== cloudStatus) {
               s.personil = cloudP;
               s.status = cloudStatus;
