@@ -2129,12 +2129,32 @@ function dashboardApp() {
         const statusUpper = (a.status || '').toUpperCase().trim();
 
         if (statusUpper.includes('MASUK') || statusUpper.includes('HADIR') || statusUpper.includes('IN')) {
-          if (!entry.masuk || (a.waktu && a.waktu < entry.masuk.waktu)) {
+          if (!entry.masuk) {
             entry.masuk = a;
+          } else {
+            const curAnomaly = this.isGpsAnomaly(entry.masuk.koordinat);
+            const newAnomaly = this.isGpsAnomaly(a.koordinat);
+            if (curAnomaly && !newAnomaly) {
+              entry.masuk = a; // Upgrade otomatis dari GPS mati ke data absen yang GPS-nya nyala
+            } else if ((!curAnomaly && !newAnomaly) || (curAnomaly && newAnomaly)) {
+              if (a.waktu && a.waktu < entry.masuk.waktu) {
+                entry.masuk = a;
+              }
+            }
           }
         } else if (statusUpper.includes('PULANG') || statusUpper.includes('OUT')) {
-          if (!entry.pulang || (a.waktu && a.waktu > entry.pulang.waktu)) {
+          if (!entry.pulang) {
             entry.pulang = a;
+          } else {
+            const curAnomaly = this.isGpsAnomaly(entry.pulang.koordinat);
+            const newAnomaly = this.isGpsAnomaly(a.koordinat);
+            if (curAnomaly && !newAnomaly) {
+              entry.pulang = a; // Upgrade otomatis ke record yang GPS-nya nyala
+            } else if ((!curAnomaly && !newAnomaly) || (curAnomaly && newAnomaly)) {
+              if (a.waktu && a.waktu > entry.pulang.waktu) {
+                entry.pulang = a;
+              }
+            }
           }
         } else {
           entry.otherLogs.push(a);
@@ -6212,12 +6232,32 @@ function dashboardApp() {
         const statusUpper = (a.status || '').toUpperCase().trim();
 
         if (statusUpper.includes('MASUK') || statusUpper.includes('HADIR') || statusUpper.includes('IN')) {
-          if (!entry.masuk || (a.waktu && a.waktu < entry.masuk.waktu)) {
+          if (!entry.masuk) {
             entry.masuk = a;
+          } else {
+            const curAnomaly = this.isGpsAnomaly(entry.masuk.koordinat);
+            const newAnomaly = this.isGpsAnomaly(a.koordinat);
+            if (curAnomaly && !newAnomaly) {
+              entry.masuk = a;
+            } else if ((!curAnomaly && !newAnomaly) || (curAnomaly && newAnomaly)) {
+              if (a.waktu && a.waktu < entry.masuk.waktu) {
+                entry.masuk = a;
+              }
+            }
           }
         } else if (statusUpper.includes('PULANG') || statusUpper.includes('OUT')) {
-          if (!entry.pulang || (a.waktu && a.waktu > entry.pulang.waktu)) {
+          if (!entry.pulang) {
             entry.pulang = a;
+          } else {
+            const curAnomaly = this.isGpsAnomaly(entry.pulang.koordinat);
+            const newAnomaly = this.isGpsAnomaly(a.koordinat);
+            if (curAnomaly && !newAnomaly) {
+              entry.pulang = a;
+            } else if ((!curAnomaly && !newAnomaly) || (curAnomaly && newAnomaly)) {
+              if (a.waktu && a.waktu > entry.pulang.waktu) {
+                entry.pulang = a;
+              }
+            }
           }
         } else {
           entry.otherLogs.push(a);
