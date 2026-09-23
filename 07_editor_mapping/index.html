@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>🛰️ RPS Territory Editor - Google Earth Mode</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛰️</text></svg>">
   
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -2165,14 +2166,21 @@
       btnSyncSupabase.style.opacity = '0.6';
 
       const BATCH_SIZE = 500;
-      const total = stores.length;
+      
+      // Deduplikasi berdasarkan kode_toko agar Postgres tidak throw error ON CONFLICT (kode kembar dalam 1 batch)
+      const storeMap = new Map();
+      stores.forEach(s => {
+        if (s.code) storeMap.set(s.code, s);
+      });
+      const uniqueStores = Array.from(storeMap.values());
+      const total = uniqueStores.length;
       let syncedCount = 0;
 
       try {
         showToast(`☁️ Memulai upload ${total.toLocaleString('id-ID')} toko ke Supabase...`);
 
         for (let i = 0; i < total; i += BATCH_SIZE) {
-          const chunk = stores.slice(i, i + BATCH_SIZE).map(s => ({
+          const chunk = uniqueStores.slice(i, i + BATCH_SIZE).map(s => ({
             kode_toko: s.code,
             nama_toko: s.name,
             account: s.account || 'ALFAMART',
@@ -2198,7 +2206,7 @@
           btnSyncSupabase.innerHTML = `☁️ ${Math.round((syncedCount / total) * 100)}% (${syncedCount.toLocaleString('id-ID')}/${total.toLocaleString('id-ID')})`;
         }
 
-        showToast(`✅ SUKSES! Seluruh ${total.toLocaleString('id-ID')} toko tersimpan di Supabase Cloud.`);
+        showToast(`✅ SUKSES! Seluruh ${total.toLocaleString('id-ID')} toko unik tersimpan di Supabase Cloud.`);
       } catch (err) {
         console.error('Bulk sync failed:', err);
         showToast(`❌ Gagal upload: ${err.message || 'Error koneksi'}`);
@@ -2210,7 +2218,7 @@
     };
   }
 
-  // Load existing revisions from Supabase Cloud on boot
+  // Load existing revisions from Supabase Cloud on boot (Dynamic Live Cloud Stream)
   async function loadCloudAssignments() {
     if (!supabaseClient) return;
     try {
@@ -2222,7 +2230,7 @@
       while (hasMore) {
         const { data, error } = await supabaseClient
           .from('tbl_store_assignments')
-          .select('kode_toko, assigned_personil, status, updated_by, updated_at')
+          .select('kode_toko, nama_toko, account, modul, assigned_personil, status, rute, latitude, longitude, kecamatan, kab_kota, updated_by, updated_at')
           .range(from, from + step - 1);
 
         if (error || !data || data.length === 0) {
@@ -2240,45 +2248,75 @@
       if (allCloudData.length > 0) {
         let diffs = 0;
         const mapCloud = new Map();
-        allCloudData.forEach(r => mapCloud.set(r.kode_toko, r));
+        allCloudData.forEach(r => {
+          if (r.kode_toko) mapCloud.set(r.kode_toko, r);
+        });
 
+        // 1. Update status personil & rute toko yang sudah ada
         stores.forEach(s => {
           if (mapCloud.has(s.code)) {
             const row = mapCloud.get(s.code);
             const cloudP = row.assigned_personil;
-            const cloudStatus = row.status;
+            const cloudStatus = row.status || (cloudP ? 'assigned' : 'vacant');
             if (row.updated_by) s.updated_by = row.updated_by;
             if (row.updated_at) s.updated_at = row.updated_at;
+            if (row.rute) s.rute = row.rute;
             if (s.personil !== cloudP || s.status !== cloudStatus) {
               s.personil = cloudP;
               s.status = cloudStatus;
               diffs++;
             }
+            mapCloud.delete(s.code);
           }
         });
 
-        if (diffs > 0) {
-          // Re-sort markers into proper layerGroups
-          Object.values(mdsLayerGroups).forEach(lg => lg.clearLayers());
-          unassignedLayerGroup.clearLayers();
-          stores.forEach(s => {
-            if (s.status === 'removed') return;
-            const marker = markerStoreMap.get(s.id);
-            if (marker) {
-              marker.setStyle(getMarkerStyle(s));
-              marker.setTooltipContent(`${s.code} - ${s.name} [${s.personil || 'Vacant'}]`);
-              if (s.personil && mdsLayerGroups[s.personil]) {
-                mdsLayerGroups[s.personil].addLayer(marker);
-              } else if (!s.personil) {
-                unassignedLayerGroup.addLayer(marker);
-              }
-            }
-          });
+        // 2. Tambahkan toko baru dari Supabase jika belum ada di file lokal (Dynamic Fallback)
+        let nextId = stores.length + 1;
+        mapCloud.forEach((row, code) => {
+          if (row.latitude && row.longitude) {
+            const newStore = {
+              id: nextId++,
+              code: code,
+              name: row.nama_toko || code,
+              account: row.account || 'ALFAMART',
+              personil: row.assigned_personil || null,
+              modul: row.modul || 'DK',
+              rute: row.rute || 1,
+              lat: parseFloat(row.latitude),
+              lon: parseFloat(row.longitude),
+              kec: row.kecamatan || '',
+              kab: row.kab_kota || '',
+              is_dc: (row.nama_toko || '').toUpperCase().includes('DC') || (row.nama_toko || '').toUpperCase().includes('DEPO'),
+              status: row.status || (row.assigned_personil ? 'assigned' : 'vacant'),
+              updated_by: row.updated_by || 'Supabase Cloud',
+              updated_at: row.updated_at || new Date().toISOString()
+            };
+            stores.push(newStore);
+            createMarker(newStore);
+            diffs++;
+          }
+        });
 
-          updateCounters();
-          renderPersonilList();
-          showToast(`☁️ Cloud Sync: ${diffs} toko disinkronkan dengan data cloud terbaru.`);
-        }
+        // 3. Re-sort seluruh marker ke LayerGroup yang sesuai
+        Object.values(mdsLayerGroups).forEach(lg => lg.clearLayers());
+        unassignedLayerGroup.clearLayers();
+        stores.forEach(s => {
+          if (s.status === 'removed') return;
+          const marker = markerStoreMap.get(s.id);
+          if (marker) {
+            marker.setStyle(getMarkerStyle(s));
+            marker.setTooltipContent(`${s.code} - ${s.name} [${s.personil || 'Vacant'}]`);
+            if (s.personil && mdsLayerGroups[s.personil]) {
+              mdsLayerGroups[s.personil].addLayer(marker);
+            } else if (!s.personil) {
+              unassignedLayerGroup.addLayer(marker);
+            }
+          }
+        });
+
+        updateCounters();
+        renderPersonilList();
+        showToast(`☁️ Cloud Sync: ${allCloudData.length.toLocaleString('id-ID')} toko tersinkron langsung dari Supabase Cloud!`);
       }
     } catch(err) {
       console.warn('Load cloud assignments error:', err);
