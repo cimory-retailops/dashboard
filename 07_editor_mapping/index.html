@@ -708,9 +708,9 @@
     /* Notification toast */
     .toast {
       position: absolute;
-      bottom: 24px;
+      top: 24px;
       left: 50%;
-      transform: translateX(-50%) translateY(100px);
+      transform: translateX(-50%) translateY(-50px);
       background: rgba(15, 23, 42, 0.95);
       border: 1px solid var(--accent);
       color: #fff;
@@ -718,7 +718,7 @@
       border-radius: 10px;
       font-size: 12px;
       font-weight: 600;
-      z-index: 2000;
+      z-index: 3000;
       box-shadow: 0 12px 36px rgba(0,0,0,0.7);
       transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
       opacity: 0;
@@ -1715,16 +1715,68 @@
     showToast('Semua personil disembunyikan');
   });
 
+  // Mapping jatah kunjungan DC bulanan dari Excel revisi RPS (Target 480 Kunjungan)
+  const DC_CUSTOM_VISITS = {
+    "ANDRIZKY SIMBOLON::TY01": 3,
+    "ABDUL KHOLIK::TG02": 5,
+    "ABDUL KHOLIK::TG01": 3,
+    "ANDI IRFANSYAH::KZ01": 2,
+    "ANDRE ADITIA MULYANA::KZ01": 2,
+    "RINA ARIANA::2GZ1": 7,
+    "MARJUKI::TL01": 7,
+    "ANGGA SETIAWAN::1MZ1": 2,
+    "ANGGA SETIAWAN::TJP5": 2,
+    "IRFANTO ABINOWO PAMBUKO::KZ01": 2,
+    "MIA ANJELINA::CZ01": 2,
+    "MIA ANJELINA::TB01": 2,
+    "MUHAMMAD FEBRIMA NURSA::JZ01": 2,
+    "MUHAMMAD FIKRI DARMAWAN::XZ01": 2,
+    "MUHAMMAD FIKRI DARMAWAN::TNO1": 2,
+    "MUHAMMAD IRFAN NURSAID::JZ01": 2,
+    "NANA SUTISNA::XZ01": 3,
+    "NANA SUTISNA::TNO1": 2,
+    "NANANG JAZULI::JZ01": 2,
+    "NANANG JAZULI::TB01": 2,
+    "RIANSYAH RASYIDILHAMID::KZ01": 2,
+    "RISWANDI::JZ01": 3,
+    "RISWANDI::TNOW": 2,
+    "RIZALDI::1MZ1": 2,
+    "RIZALDI::TNOW": 2,
+    "SARIPUDIN::CZ01": 2,
+    "SARIPUDIN::TB01": 2,
+    "SASKIA PUTRI::JZ01": 2,
+    "SASKIA PUTRI::TB01": 3,
+    "TITI SRIYATI::1MZ1": 2,
+    "YANTO::KZ01": 3,
+    "ZORO HARMOKO::JZ01": 2,
+    "ZORO HARMOKO::TNOW": 2
+  };
+
+  function getStoreMonthlyVisits(s, personilName) {
+    const p = personilName || s.personil;
+    if (!p) return 1;
+    const key = `${p}::${s.code}`;
+    if (DC_CUSTOM_VISITS[key]) return DC_CUSTOM_VISITS[key];
+    const isDc = s.is_dc || (s.name && (s.name.toUpperCase().includes(' DC') || s.name.toUpperCase().includes('DEPO')));
+    if (isDc) return 4; // Aturan baku: 1 DC = 4 kunjungan sebulan (4 hari kerja x 1 DC)
+    return 1; // Toko biasa 1 kunjungan per bulan
+  }
+
   // Render Personil List in Sidebar
   function renderPersonilList() {
-    const counts = {};
-    mdsList.forEach(m => counts[m.name] = 0);
+    const counts = {}; // Jumlah toko fisik unik
+    const visits = {}; // Total kunjungan RPS bulanan (target 480)
+    mdsList.forEach(m => {
+      counts[m.name] = 0;
+      visits[m.name] = 0;
+    });
     let unassignedCount = 0;
 
     stores.forEach(s => {
       if (s.status === 'removed') return;
       if (s.personil && counts[s.personil] !== undefined) {
         counts[s.personil]++;
+        visits[s.personil] += getStoreMonthlyVisits(s, s.personil);
       } else if (!s.personil) {
         unassignedCount++;
       }
@@ -1764,31 +1816,31 @@
 
     personilListContainer.appendChild(unCard);
 
-    // 2. 22 MDS Cards: Prioritaskan yang under-target (< 480) ke jajaran paling atas!
+    // 2. 22 MDS Cards: Prioritaskan yang under-target (< 480 kunjungan) ke jajaran paling atas!
     const sortedMds = [...mdsList].sort((a, b) => {
-      const cntA = counts[a.name] || 0;
-      const cntB = counts[b.name] || 0;
-      const isUnderA = cntA < 480;
-      const isUnderB = cntB < 480;
+      const visA = visits[a.name] || 0;
+      const visB = visits[b.name] || 0;
+      const isUnderA = visA < 480;
+      const isUnderB = visB < 480;
 
       if (isUnderA && !isUnderB) return -1;
       if (!isUnderA && isUnderB) return 1;
       if (isUnderA && isUnderB) {
-        // Yang paling kurang (terendah) ditaruh paling atas
-        if (cntA !== cntB) return cntA - cntB;
+        if (visA !== visB) return visA - visB;
       }
       return a.name.localeCompare(b.name);
     });
 
     sortedMds.forEach(m => {
       const cnt = counts[m.name] || 0;
+      const vis = visits[m.name] || 0;
       const isVis = visibilityState[m.name];
-      const isUnder = cnt < 480;
-      const shortfall = 480 - cnt;
+      const isUnder = vis < 480;
+      const shortfall = 480 - vis;
 
       let targetClass = '';
-      if (cnt === 480) targetClass = 'target-ok';
-      else if (cnt > 480) targetClass = 'target-warn';
+      if (vis === 480) targetClass = 'target-ok';
+      else if (vis > 480) targetClass = 'target-warn';
       else targetClass = 'target-under';
 
       const item = document.createElement('div');
@@ -1798,11 +1850,16 @@
         <div class="personil-info">
           <button class="toggle-visibility-btn" title="${isVis ? 'Sembunyikan' : 'Tampilkan'}">${isVis ? '👁️' : '🕶️'}</button>
           <div class="color-dot" style="background: ${m.color};"></div>
-          <span class="personil-name">${m.name}</span>
-          ${isUnder ? `<span style="font-size:9.5px; font-weight:700; color:#fca5a5; margin-left:4px;">(Kurang ${shortfall})</span>` : ''}
+          <div style="display:flex; flex-direction:column; min-width:0;">
+            <span class="personil-name">${m.name}</span>
+            <span style="font-size:10px; color:#94a3b8; font-family:'JetBrains Mono', monospace; line-height:1.2;">
+              ${cnt} toko ${cnt !== vis ? `<span style="color:#38bdf8;">(${vis} kng)</span>` : ''}
+              ${isUnder ? `<span style="font-weight:700; color:#fca5a5; margin-left:2px;">(Kurang ${shortfall})</span>` : ''}
+            </span>
+          </div>
         </div>
         <div class="personil-actions">
-          <span class="count-badge ${targetClass}" title="${isUnder ? `Kurang ${shortfall} toko dari target 480` : `Target 480 terpenuhi`}">${isUnder ? `⚠️ ${cnt}` : cnt}</span>
+          <span class="count-badge ${targetClass}" title="${cnt} toko fisik, ${vis} kunjungan RPS bulanan (Target: 480)">${isUnder ? `⚠️ ${vis}` : (vis === 480 ? `✓ 480` : vis)}</span>
           <button class="btn-icon-sm btn-isolate" title="Isolasi (Hanya tampilkan personil ini)">Hanya</button>
           <button class="btn-icon-sm btn-focus" title="Fokus / Zoom ke Area MDS Ini">🎯</button>
         </div>
